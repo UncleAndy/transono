@@ -1,11 +1,7 @@
 use anyhow::Result;
 use rtrb::{Consumer, RingBuffer};
-use std::fs::File;
-use std::io::BufWriter;
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
-
-use hound::{SampleFormat, WavSpec, WavWriter};
 
 use crate::{audio::processor::AudioProcessor, openai::realtime::RealtimeClient};
 
@@ -42,9 +38,6 @@ impl OpenAiWorker {
                     }
                 };
 
-                let mut wav: Option<WavWriter<BufWriter<File>>> = None;
-                let mut wav_index = 0usize;
-
                 loop {
                     tokio::select! {
                         Some(audio) = input_rx.recv() => {
@@ -58,46 +51,12 @@ impl OpenAiWorker {
                                 Ok(crate::openai::events::ServerEvent::ResponseOutputAudioDelta { delta }) => {
                                     match crate::openai::audio::base64_to_pcm16(&delta) {
                                         Ok(chunk) => {
-
-                                            if wav.is_none() {
-                                                let spec = WavSpec {
-                                                    channels: 1,
-                                                    sample_rate: 24_000,
-                                                    bits_per_sample: 16,
-                                                    sample_format: SampleFormat::Int,
-                                                };
-
-                                                let filename = format!("openai_{wav_index}.wav");
-
-                                                println!("Recording {filename}");
-
-                                                wav = Some(
-                                                    WavWriter::create(filename, spec)
-                                                        .expect("create wav"),
-                                                );
-                                            }
-
-                                            if let Some(writer) = wav.as_mut() {
-                                                for &sample in &chunk {
-                                                    writer.write_sample(sample).ok();
-                                                }
-                                            }
-
                                             let _ = output_tx.push(chunk);
                                         }
 
                                         Err(err) => {
                                             eprintln!("decode: {err}");
                                         }
-                                    }
-                                }
-
-                                Ok(crate::openai::events::ServerEvent::ResponseOutputAudioDone) => {
-                                    // println!("ResponseOutputAudioDone");
-                                    if let Some(writer) = wav.take() {
-                                        writer.finalize().ok();
-                                        println!("WAV saved");
-                                        wav_index += 1;
                                     }
                                 }
 
