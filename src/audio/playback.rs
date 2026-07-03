@@ -8,34 +8,40 @@ use cpal::{
     StreamConfig,
 };
 
-use crate::audio::audio_buffer::CaptureSide;
+use crate::audio::audio_buffer::PipelineSide;
 
-pub struct AudioCapture {
+pub struct AudioPlayback {
     stream: Stream,
 }
 
-impl AudioCapture {
+impl AudioPlayback {
     pub fn new(
-        mut capture: CaptureSide,
+        mut pipeline: PipelineSide,
         device_name: Option<&str>,
     ) -> Result<Self> {
         let host = cpal::default_host();
 
         let device = select_device(&host, device_name)?;
-
         let config = select_config(&device)?;
 
-        let stream = device.build_input_stream::<f32, _, _>(
+        let stream = device.build_output_stream::<f32, _, _>(
             config,
-            move |data: &[f32], _| {
-                if let Some(id) = capture.acquire() {
-                    if capture.copy_into_frame(id, data) {
-                        let _ = capture.commit(id);
-                    }
+            move |output: &mut [f32], _| {
+                output.fill(0.0);
+
+                if let Some(id) = pipeline.receive() {
+                    pipeline.with_frame(id, |frame| {
+                        let len = frame.len.min(output.len());
+
+                        output[..len]
+                            .copy_from_slice(&frame.samples[..len]);
+                    });
+
+                    let _ = pipeline.release(id);
                 }
             },
             move |err| {
-                eprintln!("capture: {err}");
+                eprintln!("playback: {err}");
             },
             None,
         )?;
@@ -61,24 +67,24 @@ fn select_device(
     wanted: Option<&str>,
 ) -> Result<Device> {
     if let Some(name) = wanted {
-        for device in host.input_devices()? {
+        for device in host.output_devices()? {
             if device.to_string() == name {
                 return Ok(device);
             }
         }
 
-        bail!("Input device '{name}' not found");
+        bail!("Output device '{name}' not found");
     }
 
-    host.default_input_device()
-        .context("Default input device not found")
+    host.default_output_device()
+        .context("Default output device not found")
 }
 
 fn select_config(device: &Device) -> Result<StreamConfig> {
-    let cfg = device.default_input_config()?;
+    let cfg = device.default_output_config()?;
 
     if cfg.sample_format() != SampleFormat::F32 {
-        bail!("Input device must support f32");
+        bail!("Output device must support f32");
     }
 
     Ok(StreamConfig {
