@@ -24,11 +24,7 @@ impl AudioCapture {
         let stream = device.build_input_stream::<f32, _, _>(
             config,
             move |data: &[f32], _| {
-                if let Some(id) = capture.acquire() {
-                    if capture.write(id, data) {
-                        let _ = capture.commit(id);
-                    }
-                }
+                let _ = capture.send(data);
             },
             move |err| {
                 eprintln!("capture: {err}");
