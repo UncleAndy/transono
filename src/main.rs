@@ -1,8 +1,5 @@
-mod audio;
-mod openai;
-
 use anyhow::Result;
-use crate::openai::realtime::RealtimeClient;
+use realtime_translator::openai::realtime::RealtimeClient;
 
 #[tokio::main]
 async fn main() -> Result<()> {
