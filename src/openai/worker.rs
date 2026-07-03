@@ -19,10 +19,10 @@ impl OpenAiWorker {
         api_key: &str,
         instructions: &str,
     ) -> Result<Self> {
-        let (input_tx, input_rx) =
+        let (input_tx, mut input_rx) =
             RingBuffer::<Vec<i16>>::new(QUEUE_SIZE);
 
-        let (output_tx, output_rx) =
+        let (mut output_tx, output_rx) =
             RingBuffer::<Vec<i16>>::new(QUEUE_SIZE);
 
         let api_key = api_key.to_owned();
@@ -45,18 +45,48 @@ impl OpenAiWorker {
                     }
                 };
 
-                //
-                // Пока оставляем заглушку.
-                // Следующим коммитом сюда переедет
-                // вся работа с WebSocket.
-                //
-                let _ = (
-                    client,
-                    input_rx,
-                    output_tx,
-                );
+                loop {
+                    //
+                    // Отправляем накопленный звук.
+                    //
+                    while let Ok(audio) = input_rx.pop() {
+                        if let Err(err) = client.append_audio(&audio).await {
+                            eprintln!("append_audio: {err}");
+                            continue;
+                        }
 
-                futures::future::pending::<()>().await;
+                        if let Err(err) = client.commit_audio().await {
+                            eprintln!("commit_audio: {err}");
+                            continue;
+                        }
+
+                        if let Err(err) = client.create_response().await {
+                            eprintln!("create_response: {err}");
+                        }
+                    }
+
+                    //
+                    // Забираем всё готовое аудио.
+                    //
+                    loop {
+                        match client.next_audio().await {
+                            Ok(Some(chunk)) => {
+                                let _ = output_tx.push(chunk);
+                            }
+
+                            Ok(None) => {
+                                break;
+                            }
+
+                            Err(err) => {
+                                eprintln!("next_audio: {err}");
+                                break;
+                            }
+                        }
+                    }
+
+                    tokio::task::yield_now().await;
+                }
             });
         });
 
@@ -78,7 +108,7 @@ impl AudioProcessor for OpenAiWorker {
 
         Ok(())
     }
-    
+
     fn poll_audio(
         &mut self,
     ) -> Result<Option<Vec<i16>>> {
