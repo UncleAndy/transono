@@ -65,10 +65,8 @@ impl OpenAiWorker {
                                 }
 
                                 Ok(crate::openai::events::ServerEvent::SessionOutputAudioDelta { delta }) => {
-                                    println!("SessionOutputAudioDelta");
                                     match crate::openai::audio::base64_to_pcm16(&delta) {
                                         Ok(chunk) => {
-                                            println!("output_tx: {} chunks", chunk.len());
                                             let _ = output_tx.push(chunk);
                                         }
 
