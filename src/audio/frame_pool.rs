@@ -64,9 +64,7 @@ impl FramePool {
     pub fn get(&self, id: FrameId) -> &AudioFrame {
         debug_assert!((id as usize) < self.frames.len());
 
-        unsafe {
-            &*self.frames[id as usize].get()
-        }
+        unsafe { &*self.frames[id as usize].get() }
     }
 
     /// Изменяемый доступ.
@@ -74,8 +72,6 @@ impl FramePool {
     pub fn get_mut(&self, id: FrameId) -> &mut AudioFrame {
         debug_assert!((id as usize) < self.frames.len());
 
-        unsafe {
-            &mut *self.frames[id as usize].get()
-        }
+        unsafe { &mut *self.frames[id as usize].get() }
     }
 }

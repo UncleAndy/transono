@@ -6,10 +6,10 @@ use std::{
     thread::{self, JoinHandle},
 };
 
-use anyhow::Result;
 use crate::audio::audio_buffer::{FrameConsumer, FrameProducer};
 use crate::audio::processor::AudioProcessor;
-use crate::audio::simple_resampler::Resampler;
+use crate::audio::rubato_resampler::RubatoResampler;
+use anyhow::Result;
 
 const PROCESSOR_CHUNK: usize = 2400;
 
@@ -29,7 +29,7 @@ impl AudioPipeline {
 
         let thread = thread::spawn(move || {
             let mut playback = Vec::<f32>::new();
-            let mut resampler = Resampler::new().unwrap();
+            let mut resampler = RubatoResampler::new().unwrap();
             let mut processor_pcm = Vec::<i16>::new();
             let mut input_accumulator = Vec::<i16>::new();
 
@@ -53,10 +53,7 @@ impl AudioPipeline {
 
                 processor_pcm.clear();
 
-                if let Err(err) = resampler.in_processor(
-                    &playback,
-                    &mut processor_pcm,
-                ) {
+                if let Err(err) = resampler.in_processor(&playback, &mut processor_pcm) {
                     eprintln!("Resampler: {err}");
                     let _ = input.release(frame_id);
                     continue;
@@ -69,9 +66,7 @@ impl AudioPipeline {
                     continue;
                 }
 
-                if let Err(err) = processor.push_audio(
-                    &input_accumulator,
-                ) {
+                if let Err(err) = processor.push_audio(&input_accumulator) {
                     eprintln!("Processor: {err}");
                     input_accumulator.clear();
                     let _ = input.release(frame_id);
@@ -92,10 +87,7 @@ impl AudioPipeline {
 
                     playback.clear();
 
-                    if let Err(err) = resampler.out_processor(
-                        &chunk,
-                        &mut playback,
-                    ) {
+                    if let Err(err) = resampler.out_processor(&chunk, &mut playback) {
                         eprintln!("Resampler: {err}");
                         continue;
                     }
@@ -103,16 +95,13 @@ impl AudioPipeline {
                     let mut offset = 0;
 
                     while offset < playback.len() {
-                        let end = (offset + crate::audio::frame::FRAME_CAPACITY)
-                            .min(playback.len());
+                        let end =
+                            (offset + crate::audio::frame::FRAME_CAPACITY).min(playback.len());
 
                         if !output.send(&playback[offset..end]) {
-                            eprintln!(
-                                "Playback queue overflow: {} samples lost",
-                                end - offset,
-                            );
+                            eprintln!("Playback queue overflow: {} samples lost", end - offset,);
                         }
-                        
+
                         offset = end;
                     }
                 }
@@ -128,8 +117,7 @@ impl AudioPipeline {
     }
 
     pub fn stop(&mut self) {
-        self.running
-            .store(false, Ordering::Release);
+        self.running.store(false, Ordering::Release);
 
         if let Some(thread) = self.thread.take() {
             let _ = thread.join();

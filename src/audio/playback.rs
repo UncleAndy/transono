@@ -1,17 +1,10 @@
 use anyhow::{bail, Result};
 use cpal::{
     traits::{DeviceTrait, StreamTrait},
-    BufferSize,
-    Device,
-    SampleFormat,
-    Stream,
-    StreamConfig,
+    BufferSize, Device, SampleFormat, Stream, StreamConfig,
 };
 
-use crate::audio::{
-    audio_buffer::FrameConsumer,
-    frame::FrameId,
-};
+use crate::audio::{audio_buffer::FrameConsumer, frame::FrameId};
 
 pub struct AudioPlayback {
     stream: Stream,
@@ -24,10 +17,7 @@ struct PlaybackState {
 }
 
 impl AudioPlayback {
-    pub fn new(
-        device: Device,
-        mut playback: FrameConsumer,
-    ) -> Result<Self> {
+    pub fn new(device: Device, mut playback: FrameConsumer) -> Result<Self> {
         let config = select_config(&device)?;
 
         println!(
@@ -64,16 +54,9 @@ impl AudioPlayback {
                 }
 
                 if let Some(id) = state.current_frame {
-                    let finished = playback.read_frame(
-                        id,
-                        &mut state.offset,
-                        &mut state.mono,
-                    );
+                    let finished = playback.read_frame(id, &mut state.offset, &mut state.mono);
 
-                    for (stereo, sample) in output
-                        .chunks_exact_mut(2)
-                        .zip(state.mono.iter())
-                    {
+                    for (stereo, sample) in output.chunks_exact_mut(2).zip(state.mono.iter()) {
                         stereo[0] = *sample;
                         stereo[1] = *sample;
                     }

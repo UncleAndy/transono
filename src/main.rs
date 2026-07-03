@@ -2,11 +2,8 @@ use anyhow::Result;
 
 use realtime_translator::{
     audio::{
-        audio_buffer::AudioBuffer,
-        capture::AudioCapture,
-        device::AudioDevices,
-        pipeline::AudioPipeline,
-        playback::AudioPlayback,
+        audio_buffer::AudioBuffer, capture::AudioCapture, device::AudioDevices,
+        pipeline::AudioPipeline, playback::AudioPlayback,
     },
     openai::worker::OpenAiWorker,
 };
@@ -33,50 +30,36 @@ fn main() -> Result<()> {
     // Создаём два независимых буфера.
     //
 
-    let (capture_tx, pipeline_rx) =
-        AudioBuffer::new(FRAME_COUNT)?;
+    let (capture_tx, pipeline_rx) = AudioBuffer::new(FRAME_COUNT)?;
 
-    let (pipeline_tx, playback_rx) =
-        AudioBuffer::new(FRAME_COUNT)?;
+    let (pipeline_tx, playback_rx) = AudioBuffer::new(FRAME_COUNT)?;
 
     //
     // Создаём обработчик.
     //
 
-    let processor = Box::new(
-        OpenAiWorker::connect(
-            &api_key,
-            "You are a realtime translator.",
-        )?,
-    );
+    let processor = Box::new(OpenAiWorker::connect(
+        &api_key,
+        "You are a realtime translator.",
+    )?);
 
     //
     // Запускаем pipeline.
     //
 
-    let _pipeline = AudioPipeline::new(
-        pipeline_rx,
-        pipeline_tx,
-        processor,
-    )?;
+    let _pipeline = AudioPipeline::new(pipeline_rx, pipeline_tx, processor)?;
 
     //
     // Захват.
     //
 
-    let capture = AudioCapture::new(
-        input,
-        capture_tx,
-    )?;
+    let capture = AudioCapture::new(input, capture_tx)?;
 
     //
     // Воспроизведение.
     //
 
-    let playback = AudioPlayback::new(
-        output,
-        playback_rx,
-    )?;
+    let playback = AudioPlayback::new(output, playback_rx)?;
 
     //
     // Запускаем.

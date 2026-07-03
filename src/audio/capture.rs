@@ -1,11 +1,7 @@
 use anyhow::{bail, Result};
 use cpal::{
     traits::{DeviceTrait, StreamTrait},
-    BufferSize,
-    Device,
-    SampleFormat,
-    Stream,
-    StreamConfig,
+    BufferSize, Device, SampleFormat, Stream, StreamConfig,
 };
 
 use crate::audio::audio_buffer::FrameProducer;
@@ -15,10 +11,7 @@ pub struct AudioCapture {
 }
 
 impl AudioCapture {
-    pub fn new(
-        device: Device,
-        mut capture: FrameProducer,
-    ) -> Result<Self> {
+    pub fn new(device: Device, mut capture: FrameProducer) -> Result<Self> {
         let config = select_config(&device)?;
 
         println!(

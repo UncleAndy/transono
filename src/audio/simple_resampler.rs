@@ -13,11 +13,7 @@ impl Resampler {
     }
 
     /// 48 kHz f32 -> 24 kHz i16
-    pub fn in_processor(
-        &mut self,
-        input: &[f32],
-        output: &mut Vec<i16>,
-    ) -> Result<()> {
+    pub fn in_processor(&mut self, input: &[f32], output: &mut Vec<i16>) -> Result<()> {
         output.clear();
 
         // Временный вариант: простая децимация 2:1.
@@ -31,11 +27,7 @@ impl Resampler {
     }
 
     /// 24 kHz i16 -> 48 kHz f32
-    pub fn out_processor(
-        &mut self,
-        input: &[i16],
-        output: &mut Vec<f32>,
-    ) -> Result<()> {
+    pub fn out_processor(&mut self, input: &[i16], output: &mut Vec<f32>) -> Result<()> {
         output.clear();
 
         // Временный вариант: удвоение сэмплов.

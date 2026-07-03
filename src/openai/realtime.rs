@@ -1,37 +1,23 @@
 use anyhow::Result;
 
+use crate::openai::audio::{base64_to_pcm16, pcm16_to_base64};
 use crate::openai::{
     client::WsClient,
     events::ServerEvent,
-    protocol::{
-        InputAudioAppend,
-        InputAudioCommit,
-        ResponseCreate,
-        SessionUpdate,
-    },
+    protocol::{InputAudioAppend, InputAudioCommit, ResponseCreate, SessionUpdate},
 };
-use crate::openai::audio::{base64_to_pcm16, pcm16_to_base64};
 
-const REALTIME_URL: &str =
-    "wss://api.openai.com/v1/realtime?model=gpt-realtime";
+const REALTIME_URL: &str = "wss://api.openai.com/v1/realtime?model=gpt-realtime";
 
 pub struct RealtimeClient {
     ws: WsClient,
 }
 
 impl RealtimeClient {
-    pub async fn connect(
-        api_key: &str,
-        instructions: impl Into<String>,
-    ) -> Result<Self> {
-        let mut ws =
-            WsClient::connect(REALTIME_URL, api_key).await?;
+    pub async fn connect(api_key: &str, instructions: impl Into<String>) -> Result<Self> {
+        let mut ws = WsClient::connect(REALTIME_URL, api_key).await?;
 
-        let session = SessionUpdate::new(
-            "gpt-realtime",
-            instructions,
-            "alloy",
-        );
+        let session = SessionUpdate::new("gpt-realtime", instructions, "alloy");
 
         ws.send(&session).await?;
 
@@ -39,10 +25,7 @@ impl RealtimeClient {
     }
 
     #[inline]
-    pub async fn append_audio(
-        &mut self,
-        pcm16: &[i16],
-    ) -> Result<()> {
+    pub async fn append_audio(&mut self, pcm16: &[i16]) -> Result<()> {
         let audio = pcm16_to_base64(pcm16);
 
         let event = InputAudioAppend::new(&audio);
@@ -50,9 +33,7 @@ impl RealtimeClient {
         self.ws.send(&event).await
     }
 
-    pub async fn next_audio(
-        &mut self,
-    ) -> anyhow::Result<Option<Vec<i16>>> {
+    pub async fn next_audio(&mut self) -> anyhow::Result<Option<Vec<i16>>> {
         loop {
             match self.next_event().await? {
                 ServerEvent::ResponseOutputAudioDelta { delta } => {
@@ -79,9 +60,7 @@ impl RealtimeClient {
     }
 
     #[inline]
-    pub async fn next_event(
-        &mut self,
-    ) -> Result<ServerEvent> {
+    pub async fn next_event(&mut self) -> Result<ServerEvent> {
         self.ws.recv().await
     }
 

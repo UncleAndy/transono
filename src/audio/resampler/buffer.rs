@@ -1,5 +1,3 @@
-use std::fmt::Debug;
-
 pub struct SampleBuffer<T> {
     data: Vec<T>,
     head: usize,
@@ -30,18 +28,12 @@ impl<T: Copy> SampleBuffer<T> {
     }
 
     #[inline(always)]
-    pub fn push(
-        &mut self,
-        input: &[T],
-    ) {
+    pub fn push(&mut self, input: &[T]) {
         self.data.extend_from_slice(input);
     }
 
     #[inline(always)]
-    pub fn read(
-        &self,
-        count: usize,
-    ) -> Option<&[T]> {
+    pub fn read(&self, count: usize) -> Option<&[T]> {
         if self.available() < count {
             return None;
         }
@@ -49,10 +41,7 @@ impl<T: Copy> SampleBuffer<T> {
         Some(&self.data[self.head..self.head + count])
     }
 
-    pub fn consume(
-        &mut self,
-        count: usize,
-    ) {
+    pub fn consume(&mut self, count: usize) {
         assert!(count <= self.available());
 
         self.head += count;

@@ -12,11 +12,7 @@ async fn main() -> Result<()> {
 
     let api_key = std::env::var("OPENAI_API_KEY")?;
 
-    let mut client = RealtimeClient::connect(
-        &api_key,
-        "You are a realtime translator.",
-    )
-        .await?;
+    let mut client = RealtimeClient::connect(&api_key, "You are a realtime translator.").await?;
 
     println!("Connected.");
 

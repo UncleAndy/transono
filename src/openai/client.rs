@@ -4,13 +4,8 @@ use serde::{de::DeserializeOwned, Serialize};
 use tokio::net::TcpStream;
 use tokio_tungstenite::{
     connect_async_tls_with_config,
-    tungstenite::{
-        client::IntoClientRequest,
-        protocol::WebSocketConfig,
-        Message,
-    },
-    MaybeTlsStream,
-    WebSocketStream,
+    tungstenite::{client::IntoClientRequest, protocol::WebSocketConfig, Message},
+    MaybeTlsStream, WebSocketStream,
 };
 
 type WsStream = WebSocketStream<MaybeTlsStream<TcpStream>>;
@@ -20,47 +15,31 @@ pub struct WsClient {
 }
 
 impl WsClient {
-    pub async fn connect(
-        url: &str,
-        api_key: &str,
-    ) -> Result<Self> {
+    pub async fn connect(url: &str, api_key: &str) -> Result<Self> {
         let mut request = url.into_client_request()?;
 
-        request.headers_mut().insert(
-            "Authorization",
-            format!("Bearer {api_key}").parse()?,
-        );
+        request
+            .headers_mut()
+            .insert("Authorization", format!("Bearer {api_key}").parse()?);
 
         let config = WebSocketConfig::default();
 
-        let (stream, _) = connect_async_tls_with_config(
-            request,
-            Some(config),
-            false,
-            None,
-        )
+        let (stream, _) = connect_async_tls_with_config(request, Some(config), false, None)
             .await
             .context("WebSocket connect failed")?;
 
         Ok(Self { stream })
     }
 
-    pub async fn send<T: Serialize>(
-        &mut self,
-        value: &T,
-    ) -> Result<()> {
+    pub async fn send<T: Serialize>(&mut self, value: &T) -> Result<()> {
         let json = serde_json::to_string(value)?;
 
-        self.stream
-            .send(Message::Text(json.into()))
-            .await?;
+        self.stream.send(Message::Text(json.into())).await?;
 
         Ok(())
     }
 
-    pub async fn recv<T: DeserializeOwned>(
-        &mut self,
-    ) -> Result<T> {
+    pub async fn recv<T: DeserializeOwned>(&mut self) -> Result<T> {
         loop {
             let Some(message) = self.stream.next().await else {
                 anyhow::bail!("websocket closed");
@@ -74,9 +53,7 @@ impl WsClient {
                 Message::Binary(_) => {}
 
                 Message::Ping(data) => {
-                    self.stream
-                        .send(Message::Pong(data))
-                        .await?;
+                    self.stream.send(Message::Pong(data)).await?;
                 }
 
                 Message::Pong(_) => {}

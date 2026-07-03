@@ -4,19 +4,13 @@ use serde::Deserialize;
 #[serde(tag = "type")]
 pub enum ServerEvent {
     #[serde(rename = "session.created")]
-    SessionCreated {
-        session: Session,
-    },
+    SessionCreated { session: Session },
 
     #[serde(rename = "session.updated")]
-    SessionUpdated {
-        session: Session,
-    },
+    SessionUpdated { session: Session },
 
     #[serde(rename = "response.output_audio.delta")]
-    ResponseOutputAudioDelta {
-        delta: String,
-    },
+    ResponseOutputAudioDelta { delta: String },
 
     #[serde(rename = "response.output_audio.done")]
     ResponseOutputAudioDone,
@@ -35,11 +29,9 @@ pub enum ServerEvent {
 
     #[serde(rename = "response.created")]
     ResponseCreated,
-    
+
     #[serde(rename = "error")]
-    Error {
-        error: ErrorInfo,
-    },
+    Error { error: ErrorInfo },
 
     #[serde(other)]
     Unknown,

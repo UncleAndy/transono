@@ -1,16 +1,13 @@
-use std::fs::File;
-use std::io::BufWriter;
 use anyhow::Result;
 use rtrb::{Consumer, RingBuffer};
+use std::fs::File;
+use std::io::BufWriter;
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
 
 use hound::{SampleFormat, WavSpec, WavWriter};
 
-use crate::{
-    audio::processor::AudioProcessor,
-    openai::realtime::RealtimeClient,
-};
+use crate::{audio::processor::AudioProcessor, openai::realtime::RealtimeClient};
 
 const QUEUE_SIZE: usize = 256;
 
@@ -20,15 +17,10 @@ pub struct OpenAiWorker {
 }
 
 impl OpenAiWorker {
-    pub fn connect(
-        api_key: &str,
-        instructions: &str,
-    ) -> Result<Self> {
-        let (input_tx, mut input_rx) =
-            mpsc::unbounded_channel::<Vec<i16>>();
+    pub fn connect(api_key: &str, instructions: &str) -> Result<Self> {
+        let (input_tx, mut input_rx) = mpsc::unbounded_channel::<Vec<i16>>();
 
-        let (mut output_tx, output_rx) =
-            RingBuffer::<Vec<i16>>::new(QUEUE_SIZE);
+        let (mut output_tx, output_rx) = RingBuffer::<Vec<i16>>::new(QUEUE_SIZE);
 
         let api_key = api_key.to_owned();
         let instructions = instructions.to_owned();
@@ -132,18 +124,13 @@ impl OpenAiWorker {
 }
 
 impl AudioProcessor for OpenAiWorker {
-    fn push_audio(
-        &mut self,
-        input: &[i16],
-    ) -> Result<()> {
+    fn push_audio(&mut self, input: &[i16]) -> Result<()> {
         self.input
             .send(input.to_vec())
             .map_err(|_| anyhow::anyhow!("OpenAI worker stopped"))
     }
 
-    fn poll_audio(
-        &mut self,
-    ) -> Result<Option<Vec<i16>>> {
+    fn poll_audio(&mut self) -> Result<Option<Vec<i16>>> {
         match self.output.pop() {
             Ok(chunk) => Ok(Some(chunk)),
             Err(rtrb::PopError::Empty) => Ok(None),

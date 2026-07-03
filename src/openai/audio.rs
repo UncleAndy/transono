@@ -1,7 +1,4 @@
-use base64::{
-    engine::general_purpose::STANDARD,
-    Engine,
-};
+use base64::{engine::general_purpose::STANDARD, Engine};
 
 /// PCM16 -> Base64
 #[inline]

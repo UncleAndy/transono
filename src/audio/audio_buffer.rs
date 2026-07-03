@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use anyhow::{Result};
+use anyhow::Result;
 use rtrb::{Consumer, Producer, RingBuffer};
 
 use crate::audio::{
@@ -59,11 +59,7 @@ impl FrameProducer {
     }
 
     #[inline(always)]
-    pub fn write(
-        &self,
-        id: FrameId,
-        data: &[f32],
-    ) -> bool {
+    pub fn write(&self, id: FrameId, data: &[f32]) -> bool {
         let frame = self.pool.get_mut(id);
 
         if data.len() > frame.samples.len() {
@@ -83,10 +79,7 @@ impl FrameProducer {
             .map_err(|_| anyhow::anyhow!("filled queue overflow"))
     }
 
-    pub fn send(
-        &mut self,
-        data: &[f32],
-    ) -> bool {
+    pub fn send(&mut self, data: &[f32]) -> bool {
         let Some(id) = self.acquire() else {
             eprintln!("PLAYBACK BUFFER UNDERRUN");
             return false;
@@ -94,8 +87,7 @@ impl FrameProducer {
 
         assert!(self.write(id, data), "frame too large");
 
-        self.commit(id)
-            .expect("filled queue overflow");
+        self.commit(id).expect("filled queue overflow");
 
         true
     }
@@ -108,11 +100,7 @@ impl FrameConsumer {
     }
 
     #[inline(always)]
-    pub fn read<R>(
-        &self,
-        id: FrameId,
-        f: impl FnOnce(&AudioFrame) -> R,
-    ) -> R {
+    pub fn read<R>(&self, id: FrameId, f: impl FnOnce(&AudioFrame) -> R) -> R {
         let frame = self.pool.get(id);
         f(frame)
     }
@@ -127,18 +115,12 @@ impl FrameConsumer {
     }
 
     #[inline(always)]
-    pub fn read_frame(
-        &self,
-        id: FrameId,
-        offset: &mut usize,
-        output: &mut [f32],
-    ) -> bool {
+    pub fn read_frame(&self, id: FrameId, offset: &mut usize, output: &mut [f32]) -> bool {
         self.read(id, |frame| {
             let available = frame.len.saturating_sub(*offset);
             let copied = available.min(output.len());
 
-            output[..copied]
-                .copy_from_slice(&frame.samples[*offset..*offset + copied]);
+            output[..copied].copy_from_slice(&frame.samples[*offset..*offset + copied]);
 
             if copied < output.len() {
                 output[copied..].fill(0.0);
