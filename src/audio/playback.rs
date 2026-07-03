@@ -17,6 +17,12 @@ pub struct AudioPlayback {
     stream: Stream,
 }
 
+struct PlaybackState {
+    current_frame: Option<FrameId>,
+    offset: usize,
+    mono: Vec<f32>,
+}
+
 impl AudioPlayback {
     pub fn new(
         device: Device,
@@ -31,8 +37,11 @@ impl AudioPlayback {
             config.buffer_size,
         );
 
-        let mut current_frame: Option<FrameId> = None;
-        let mut offset = 0usize;
+        let mut state = PlaybackState {
+            current_frame: None,
+            offset: 0,
+            mono: Vec::new(),
+        };
 
         let stream = device.build_output_stream::<f32, _, _>(
             config,
@@ -45,24 +54,25 @@ impl AudioPlayback {
                 // Небольшой рабочий буфер.
                 // Пока оставляем Vec, потом уберём аллокацию.
                 //
-                let mut mono = vec![0.0f32; frames];
-
-                if current_frame.is_none() {
-                    current_frame = playback.receive();
-                    offset = 0;
+                if state.mono.len() != frames {
+                    state.mono.resize(frames, 0.0);
                 }
 
-                if let Some(id) = current_frame {
+                if state.current_frame.is_none() {
+                    state.current_frame = playback.receive();
+                    state.offset = 0;
+                }
 
+                if let Some(id) = state.current_frame {
                     let finished = playback.read_frame(
                         id,
-                        &mut offset,
-                        &mut mono,
+                        &mut state.offset,
+                        &mut state.mono,
                     );
 
                     for (stereo, sample) in output
                         .chunks_exact_mut(2)
-                        .zip(mono.iter())
+                        .zip(state.mono.iter())
                     {
                         stereo[0] = *sample;
                         stereo[1] = *sample;
@@ -70,8 +80,8 @@ impl AudioPlayback {
 
                     if finished {
                         let _ = playback.release(id);
-                        current_frame = None;
-                        offset = 0;
+                        state.current_frame = None;
+                        state.offset = 0;
                     }
                 }
             },
