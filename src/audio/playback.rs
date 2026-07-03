@@ -30,13 +30,7 @@ impl AudioPlayback {
                 output.fill(0.0);
 
                 if let Some(id) = pipeline.receive() {
-                    pipeline.with_frame(id, |frame| {
-                        let len = frame.len.min(output.len());
-
-                        output[..len]
-                            .copy_from_slice(&frame.samples[..len]);
-                    });
-
+                    pipeline.copy_from_frame(id, output);
                     let _ = pipeline.release(id);
                 }
             },

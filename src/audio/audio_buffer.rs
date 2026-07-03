@@ -109,4 +109,21 @@ impl PipelineSide {
             .push(id)
             .map_err(|_| anyhow::anyhow!("free queue overflow"))
     }
+
+    #[inline(always)]
+    pub fn copy_from_frame(
+        &self,
+        id: FrameId,
+        output: &mut [f32],
+    ) {
+        self.with_frame(id, |frame| {
+            let len = frame.len.min(output.len());
+
+            output[..len].copy_from_slice(&frame.samples[..len]);
+
+            if len < output.len() {
+                output[len..].fill(0.0);
+            }
+        });
+    }
 }
