@@ -3,8 +3,6 @@
 //! Все кадры имеют фиксированный размер буфера.
 //! Поле `len` указывает количество валидных сэмплов.
 
-use std::time::Instant;
-
 /// Максимальное количество сэмплов в одном кадре.
 ///
 /// Должно быть больше максимального размера callback CPAL.
@@ -17,9 +15,6 @@ pub type FrameId = u32;
 /// Один аудиокадр.
 #[derive(Debug)]
 pub struct AudioFrame {
-    /// Время получения кадра.
-    pub timestamp: Instant,
-
     /// Количество валидных сэмплов.
     pub len: usize,
 
@@ -30,7 +25,6 @@ pub struct AudioFrame {
 impl Default for AudioFrame {
     fn default() -> Self {
         Self {
-            timestamp: Instant::now(),
             len: 0,
             samples: [0.0; FRAME_CAPACITY],
         }
@@ -42,7 +36,6 @@ impl AudioFrame {
     #[inline(always)]
     pub fn clear(&mut self) {
         self.len = 0;
-        self.timestamp = Instant::now();
     }
 
     /// Возвращает заполненную часть буфера.
@@ -62,7 +55,6 @@ impl AudioFrame {
     pub fn copy_from(&mut self, input: &[f32]) {
         debug_assert!(input.len() <= FRAME_CAPACITY);
 
-        self.timestamp = Instant::now();
         self.len = input.len();
 
         self.samples[..input.len()].copy_from_slice(input);
