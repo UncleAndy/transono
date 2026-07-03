@@ -6,3 +6,4 @@ pub mod frame_pool;
 pub mod audio_buffer;
 pub mod playback;
 pub mod pipeline;
+pub mod resampler;
