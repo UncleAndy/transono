@@ -93,7 +93,7 @@ impl SessionUpdate {
                         turn_detection: TurnDetection {
                             detection_type: "server_vad",
                             prefix_padding_ms: 1000,
-                            silence_duration_ms: 400,
+                            silence_duration_ms: 100,
                         },
                     },
 
