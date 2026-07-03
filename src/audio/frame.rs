@@ -7,7 +7,7 @@
 ///
 /// Должно быть больше максимального размера callback CPAL.
 /// 2048 сэмплов при 48 кГц соответствуют ≈42.7 мс.
-pub const FRAME_CAPACITY: usize = 2048;
+pub const FRAME_CAPACITY: usize = 4096;
 
 /// Индекс кадра в пуле.
 pub type FrameId = u32;
@@ -48,5 +48,16 @@ impl AudioFrame {
     #[inline(always)]
     pub fn samples_mut(&mut self) -> &mut [f32] {
         &mut self.samples[..self.len]
+    }
+
+    #[inline(always)]
+    pub fn copy_from(&mut self, input: &[f32]) -> bool {
+        if input.len() > FRAME_CAPACITY {
+            return false;
+        }
+
+        self.len = input.len();
+        self.samples[..input.len()].copy_from_slice(input);
+        true
     }
 }

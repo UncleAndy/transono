@@ -59,9 +59,23 @@ impl CaptureSide {
     }
 
     #[inline(always)]
-    pub fn frame_mut(&self, id: FrameId) -> &mut AudioFrame {
-        self.pool.get_mut(id)
+    pub fn copy_into_frame(
+        &self,
+        id: FrameId,
+        data: &[f32],
+    ) -> bool {
+        let frame = self.pool.get_mut(id);
+
+        if data.len() > frame.samples.len() {
+            return false;
+        }
+
+        frame.len = data.len();
+        frame.samples[..data.len()].copy_from_slice(data);
+
+        true
     }
+
 
     #[inline(always)]
     pub fn commit(&mut self, id: FrameId) -> Result<()> {
@@ -78,12 +92,17 @@ impl PipelineSide {
     }
 
     #[inline(always)]
-    pub fn frame(&self, id: FrameId) -> &AudioFrame {
-        self.pool.get(id)
+    pub fn with_frame<R>(
+        &self,
+        id: FrameId,
+        f: impl FnOnce(&AudioFrame) -> R,
+    ) -> R {
+        let frame = self.pool.get(id);
+        f(frame)
     }
 
     #[inline(always)]
-    pub fn release(&mut self, id: FrameId) -> Result<()> {
+    pub fn release(&mut self, id: FrameId) -> anyhow::Result<()> {
         self.pool.get_mut(id).clear();
 
         self.free
