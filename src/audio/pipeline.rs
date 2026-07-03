@@ -26,7 +26,6 @@ impl AudioPipeline {
         let thread_running = running.clone();
 
         let thread = thread::spawn(move || {
-            let mut input_pcm = Vec::<i16>::new();
             let mut output_chunks = Vec::<Vec<i16>>::new();
             let mut playback = Vec::<f32>::new();
             let mut resampler = Resampler::new().unwrap();
@@ -52,11 +51,15 @@ impl AudioPipeline {
 
                 processor_pcm.clear();
 
-                let _ = resampler.in_processor(
+                if let Err(err) = resampler.in_processor(
                     &playback,
                     &mut processor_pcm,
-                );
-
+                ) {
+                    eprintln!("Resampler: {err}");
+                    let _ = input.release(frame_id);
+                    continue;
+                }
+                
                 output_chunks.clear();
 
                 if processor.process(&processor_pcm, &mut output_chunks).is_ok() {
