@@ -8,7 +8,7 @@ use cpal::{
     StreamConfig,
 };
 
-use crate::audio::audio_buffer::FrameCustomer;
+use crate::audio::audio_buffer::FrameConsumer;
 
 pub struct AudioPlayback {
     stream: Stream,
@@ -16,7 +16,7 @@ pub struct AudioPlayback {
 
 impl AudioPlayback {
     pub fn new(
-        mut pipeline: FrameCustomer,
+        mut pipeline: FrameConsumer,
         device_name: Option<&str>,
     ) -> Result<Self> {
         let host = cpal::default_host();

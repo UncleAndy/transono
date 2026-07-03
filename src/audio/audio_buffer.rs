@@ -16,7 +16,7 @@ pub struct FrameProducer {
     filled: Producer<FrameId>,
 }
 
-pub struct FrameCustomer {
+pub struct FrameConsumer {
     pool: Arc<FramePool>,
     free: Producer<FrameId>,
     filled: Consumer<FrameId>,
@@ -25,7 +25,7 @@ pub struct FrameCustomer {
 pub struct AudioBuffer;
 
 impl AudioBuffer {
-    pub fn new(frame_count: usize) -> Result<(FrameProducer, FrameCustomer)> {
+    pub fn new(frame_count: usize) -> Result<(FrameProducer, FrameConsumer)> {
         let pool = Arc::new(FramePool::new(frame_count));
 
         let (mut free_tx, free_rx) = RingBuffer::<FrameId>::new(frame_count);
@@ -43,7 +43,7 @@ impl AudioBuffer {
                 free: free_rx,
                 filled: filled_tx,
             },
-            FrameCustomer {
+            FrameConsumer {
                 pool,
                 free: free_tx,
                 filled: filled_rx,
@@ -85,7 +85,7 @@ impl FrameProducer {
     }
 }
 
-impl FrameCustomer {
+impl FrameConsumer {
     #[inline(always)]
     pub fn receive(&mut self) -> Option<FrameId> {
         self.filled.pop().ok()
