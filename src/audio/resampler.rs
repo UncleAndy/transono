@@ -13,7 +13,7 @@ impl Resampler {
     }
 
     /// 48 kHz f32 -> 24 kHz i16
-    pub fn capture_to_openai(
+    pub fn in_processor(
         &mut self,
         input: &[f32],
         output: &mut Vec<i16>,
@@ -31,7 +31,7 @@ impl Resampler {
     }
 
     /// 24 kHz i16 -> 48 kHz f32
-    pub fn openai_to_playback(
+    pub fn out_processor(
         &mut self,
         input: &[i16],
         output: &mut Vec<f32>,
