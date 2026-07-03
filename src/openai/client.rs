@@ -31,11 +31,6 @@ impl WsClient {
             format!("Bearer {api_key}").parse()?,
         );
 
-        request.headers_mut().insert(
-            "OpenAI-Beta",
-            "realtime=v1".parse()?,
-        );
-
         let config = WebSocketConfig::default();
 
         let (stream, _) = connect_async_tls_with_config(

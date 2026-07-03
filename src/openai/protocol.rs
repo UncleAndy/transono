@@ -8,34 +8,64 @@ pub struct SessionUpdate {
     pub session: Session,
 }
 
-#[derive(Debug, Clone, Copy, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum AudioFormat {
-    Pcm16,
-    G711Ulaw,
-    G711Alaw,
-}
-
-#[derive(Debug, Clone, Copy, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Modality {
-    Text,
-    Audio,
-}
-
 #[derive(Debug, Serialize)]
 pub struct Session {
+    #[serde(rename = "type")]
+    pub session_type: &'static str,
+
     pub model: String,
 
     pub instructions: String,
 
-    pub input_audio_format: AudioFormat,
+    pub audio: Audio,
 
-    pub output_audio_format: AudioFormat,
+    pub output_modalities: Vec<OutputModality>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct Audio {
+    pub input: AudioInput,
+
+    pub output: AudioOutput,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AudioInput {
+    pub format: AudioFormat,
+
+    pub turn_detection: TurnDetection,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AudioOutput {
+    pub format: AudioFormat,
 
     pub voice: String,
+}
 
-    pub modalities: Vec<Modality>,
+#[derive(Debug, Serialize)]
+pub struct AudioFormat {
+    #[serde(rename = "type")]
+    pub format_type: &'static str,
+
+    pub rate: u32,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TurnDetection {
+    #[serde(rename = "type")]
+    pub detection_type: &'static str,
+
+    pub prefix_padding_ms: u32,
+
+    pub silence_duration_ms: u32,
+}
+
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OutputModality {
+    Audio,
+    Text,
 }
 
 impl SessionUpdate {
@@ -47,12 +77,37 @@ impl SessionUpdate {
         Self {
             event_type: "session.update",
             session: Session {
+                session_type: "realtime",
+
                 model: model.into(),
+
                 instructions: instructions.into(),
-                input_audio_format: AudioFormat::Pcm16,
-                output_audio_format: AudioFormat::Pcm16,
-                voice: voice.into(),
-                modalities: vec![Modality::Audio],
+
+                audio: Audio {
+                    input: AudioInput {
+                        format: AudioFormat {
+                            format_type: "audio/pcm",
+                            rate: 24_000,
+                        },
+
+                        turn_detection: TurnDetection {
+                            detection_type: "server_vad",
+                            prefix_padding_ms: 1000,
+                            silence_duration_ms: 400,
+                        },
+                    },
+
+                    output: AudioOutput {
+                        format: AudioFormat {
+                            format_type: "audio/pcm",
+                            rate: 24_000,
+                        },
+
+                        voice: voice.into(),
+                    },
+                },
+
+                output_modalities: vec![OutputModality::Audio],
             },
         }
     }

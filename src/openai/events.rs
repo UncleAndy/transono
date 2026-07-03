@@ -13,13 +13,13 @@ pub enum ServerEvent {
         session: Session,
     },
 
-    #[serde(rename = "response.audio.delta")]
-    ResponseAudioDelta {
+    #[serde(rename = "response.output_audio.delta")]
+    ResponseOutputAudioDelta {
         delta: String,
     },
 
-    #[serde(rename = "response.audio.done")]
-    ResponseAudioDone,
+    #[serde(rename = "response.output_audio.done")]
+    ResponseOutputAudioDone,
 
     #[serde(rename = "response.done")]
     ResponseDone,
@@ -28,13 +28,17 @@ pub enum ServerEvent {
     Error {
         error: ErrorInfo,
     },
+
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct Session {
     pub id: String,
 
-    pub model: String,
+    #[serde(default)]
+    pub model: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
