@@ -88,6 +88,7 @@ impl FrameProducer {
         data: &[f32],
     ) -> bool {
         let Some(id) = self.acquire() else {
+            eprintln!("PLAYBACK BUFFER UNDERRUN");
             return false;
         };
 

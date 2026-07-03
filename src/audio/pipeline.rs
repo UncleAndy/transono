@@ -106,8 +106,13 @@ impl AudioPipeline {
                         let end = (offset + crate::audio::frame::FRAME_CAPACITY)
                             .min(playback.len());
 
-                        let _ = output.send(&playback[offset..end]);
-
+                        if !output.send(&playback[offset..end]) {
+                            eprintln!(
+                                "Playback queue overflow: {} samples lost",
+                                end - offset,
+                            );
+                        }
+                        
                         offset = end;
                     }
                 }

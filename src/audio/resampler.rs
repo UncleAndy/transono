@@ -1,3 +1,5 @@
+mod buffer;
+
 use anyhow::Result;
 
 /// Временный интерфейс ресемплера.
