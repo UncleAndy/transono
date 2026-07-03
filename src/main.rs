@@ -1,16 +1,30 @@
 mod audio;
 mod openai;
 
-use crate::openai::events::ServerEvent;
+use anyhow::Result;
+use crate::openai::realtime::RealtimeClient;
 
-fn main() {
-    let json = r#"
-    {
-        "type":"response.audio.done"
+#[tokio::main]
+async fn main() -> Result<()> {
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("failed to install rustls crypto provider");
+
+    let api_key =
+        std::env::var("OPENAI_API_KEY")?;
+
+    let mut client =
+        RealtimeClient::connect(
+            &api_key,
+            "You are a realtime translator.",
+        )
+            .await?;
+
+    println!("Connected.");
+
+    loop {
+        let event = client.next_event().await?;
+
+        println!("{event:#?}");
     }
-    "#;
-
-    let event: ServerEvent = serde_json::from_str(json).unwrap();
-
-    println!("{event:#?}");
 }
