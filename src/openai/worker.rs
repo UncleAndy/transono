@@ -57,17 +57,18 @@ impl AudioProcessor for OpenAiWorker {
     fn process(
         &mut self,
         input: &[i16],
-    ) -> Result<Vec<Vec<i16>>> {
+        output: &mut Vec<Vec<i16>>,
+    ) -> anyhow::Result<()> {
+        output.clear();
+
         self.append_audio(input)?;
         self.commit()?;
         self.create_response()?;
 
-        let mut chunks = Vec::new();
-
-        while let Some(audio) = self.next_audio()? {
-            chunks.push(audio);
+        while let Some(chunk) = self.next_audio()? {
+            output.push(chunk);
         }
 
-        Ok(chunks)
+        Ok(())
     }
 }
