@@ -47,41 +47,45 @@ impl OpenAiWorker {
                 };
 
                 loop {
-                    //
-                    // Отправляем накопленный звук.
-                    //
-                    while let Some(audio) = input_rx.recv().await {
-                        if let Err(err) = client.append_audio(&audio).await {
-                            eprintln!("append_audio: {err}");
-                            continue;
-                        }
-
-                        if let Err(err) = client.commit_audio().await {
-                            eprintln!("commit_audio: {err}");
-                            continue;
-                        }
-
-                        if let Err(err) = client.create_response().await {
-                            eprintln!("create_response: {err}");
-                        }
-                    }
-
-                    //
-                    // Забираем всё готовое аудио.
-                    //
                     loop {
-                        match client.next_audio().await {
-                            Ok(Some(chunk)) => {
-                                let _ = output_tx.push(chunk);
+                        tokio::select! {
+                            Some(audio) = input_rx.recv() => {
+                                if let Err(err) = client.append_audio(&audio).await {
+                                    eprintln!("append_audio: {err}");
+                                    continue;
+                                }
+
+                                if let Err(err) = client.commit_audio().await {
+                                    eprintln!("commit_audio: {err}");
+                                    continue;
+                                }
+
+                                if let Err(err) = client.create_response().await {
+                                    eprintln!("create_response: {err}");
+                                }
                             }
 
-                            Ok(None) => {
-                                break;
-                            }
+                            event = client.next_event() => {
+                                match event {
+                                    Ok(crate::openai::events::ServerEvent::ResponseOutputAudioDelta { delta }) => {
+                                        if let Ok(chunk) =
+                                            crate::openai::audio::base64_to_pcm16(&delta)
+                                        {
+                                            let _ = output_tx.push(chunk);
+                                        }
+                                    }
 
-                            Err(err) => {
-                                eprintln!("next_audio: {err}");
-                                break;
+                                    Ok(crate::openai::events::ServerEvent::ResponseOutputAudioDone) => {
+                                    }
+
+                                    Ok(_) => {
+                                    }
+
+                                    Err(err) => {
+                                        eprintln!("next_event: {err}");
+                                        break;
+                                    }
+                                }
                             }
                         }
                     }
