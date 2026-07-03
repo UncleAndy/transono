@@ -1,7 +1,7 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result};
 use cpal::{
     traits::{DeviceTrait, HostTrait},
-    Device, Host, HostId, SampleFormat, SupportedStreamConfig,
+    Device, Host,
 };
 
 pub struct AudioDevices {

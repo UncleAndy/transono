@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use anyhow::{Context, Result};
+use anyhow::{Result};
 use rtrb::{Consumer, Producer, RingBuffer};
 
 use crate::audio::{
@@ -117,7 +117,7 @@ impl FrameConsumer {
     }
 
     #[inline(always)]
-    pub fn release(&mut self, id: FrameId) -> anyhow::Result<()> {
+    pub fn release(&mut self, id: FrameId) -> Result<()> {
         self.pool.get_mut(id).clear();
 
         self.free

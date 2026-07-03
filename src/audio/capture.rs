@@ -1,6 +1,6 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, Result};
 use cpal::{
-    traits::{DeviceTrait, HostTrait, StreamTrait},
+    traits::{DeviceTrait, StreamTrait},
     BufferSize,
     Device,
     SampleFormat,
@@ -50,24 +50,6 @@ impl AudioCapture {
         self.stream.pause()?;
         Ok(())
     }
-}
-
-fn select_device(
-    host: &cpal::Host,
-    wanted: Option<&str>,
-) -> Result<Device> {
-    if let Some(name) = wanted {
-        for device in host.input_devices()? {
-            if device.to_string() == name {
-                return Ok(device);
-            }
-        }
-
-        bail!("Input device '{name}' not found");
-    }
-
-    host.default_input_device()
-        .context("Default input device not found")
 }
 
 fn select_config(device: &Device) -> Result<StreamConfig> {
