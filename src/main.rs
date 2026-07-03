@@ -1,9 +1,14 @@
 mod audio;
+mod openai;
 
-use anyhow::Result;
+use crate::openai::protocol::*;
 
-use crate::audio::audio_buffer::AudioBuffer;
+fn main() {
+    let s = SessionUpdate::new(
+        "gpt-realtime",
+        "You are translator",
+        "alloy",
+    );
 
-fn main() -> Result<()> {
-    Ok(())
+    println!("{}", serde_json::to_string_pretty(&s).unwrap());
 }
