@@ -16,13 +16,9 @@ pub struct AudioCapture {
 
 impl AudioCapture {
     pub fn new(
+        device: Device,
         mut capture: FrameProducer,
-        device_name: Option<&str>,
     ) -> Result<Self> {
-        let host = cpal::default_host();
-
-        let device = select_device(&host, device_name)?;
-
         let config = select_config(&device)?;
 
         let stream = device.build_input_stream::<f32, _, _>(

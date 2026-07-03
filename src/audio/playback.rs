@@ -16,12 +16,9 @@ pub struct AudioPlayback {
 
 impl AudioPlayback {
     pub fn new(
-        mut pipeline: FrameConsumer,
-        device_name: Option<&str>,
+        device: Device,
+        mut playback: FrameConsumer,
     ) -> Result<Self> {
-        let host = cpal::default_host();
-
-        let device = select_device(&host, device_name)?;
         let config = select_config(&device)?;
 
         let stream = device.build_output_stream::<f32, _, _>(
@@ -29,9 +26,9 @@ impl AudioPlayback {
             move |output: &mut [f32], _| {
                 output.fill(0.0);
 
-                if let Some(id) = pipeline.receive() {
-                    pipeline.copy_from_frame(id, output);
-                    let _ = pipeline.release(id);
+                if let Some(id) = playback.receive() {
+                    playback.copy_from_frame(id, output);
+                    let _ = playback.release(id);
                 }
             },
             move |err| {
