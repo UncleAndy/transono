@@ -126,19 +126,26 @@ impl FrameConsumer {
     }
 
     #[inline(always)]
-    pub fn copy_from_frame(
+    pub fn read_frame(
         &self,
         id: FrameId,
+        offset: &mut usize,
         output: &mut [f32],
-    ) {
+    ) -> bool {
         self.read(id, |frame| {
-            let len = frame.len.min(output.len());
+            let available = frame.len.saturating_sub(*offset);
+            let copied = available.min(output.len());
 
-            output[..len].copy_from_slice(&frame.samples[..len]);
+            output[..copied]
+                .copy_from_slice(&frame.samples[*offset..*offset + copied]);
 
-            if len < output.len() {
-                output[len..].fill(0.0);
+            if copied < output.len() {
+                output[copied..].fill(0.0);
             }
-        });
+
+            *offset += copied;
+
+            *offset >= frame.len
+        })
     }
 }

@@ -8,7 +8,10 @@ use cpal::{
     StreamConfig,
 };
 
-use crate::audio::audio_buffer::FrameConsumer;
+use crate::audio::{
+    audio_buffer::FrameConsumer,
+    frame::FrameId,
+};
 
 pub struct AudioPlayback {
     stream: Stream,
@@ -28,24 +31,48 @@ impl AudioPlayback {
             config.buffer_size,
         );
 
+        let mut current_frame: Option<FrameId> = None;
+        let mut offset = 0usize;
+
         let stream = device.build_output_stream::<f32, _, _>(
             config,
             move |output: &mut [f32], _| {
                 output.fill(0.0);
 
-                if let Some(id) = playback.receive() {
-                    let frames = output.len() / 2;
+                let frames = output.len() / 2;
 
-                    let mut mono = vec![0.0f32; frames];
+                //
+                // Небольшой рабочий буфер.
+                // Пока оставляем Vec, потом уберём аллокацию.
+                //
+                let mut mono = vec![0.0f32; frames];
 
-                    playback.copy_from_frame(id, &mut mono);
+                if current_frame.is_none() {
+                    current_frame = playback.receive();
+                    offset = 0;
+                }
 
-                    for (stereo, sample) in output.chunks_exact_mut(2).zip(mono.iter()) {
+                if let Some(id) = current_frame {
+
+                    let finished = playback.read_frame(
+                        id,
+                        &mut offset,
+                        &mut mono,
+                    );
+
+                    for (stereo, sample) in output
+                        .chunks_exact_mut(2)
+                        .zip(mono.iter())
+                    {
                         stereo[0] = *sample;
                         stereo[1] = *sample;
                     }
 
-                    let _ = playback.release(id);
+                    if finished {
+                        let _ = playback.release(id);
+                        current_frame = None;
+                        offset = 0;
+                    }
                 }
             },
             move |err| {
