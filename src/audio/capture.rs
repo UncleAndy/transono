@@ -8,7 +8,7 @@ use cpal::{
     StreamConfig,
 };
 
-use crate::audio::audio_buffer::CaptureSide;
+use crate::audio::audio_buffer::FrameProducer;
 
 pub struct AudioCapture {
     stream: Stream,
@@ -16,7 +16,7 @@ pub struct AudioCapture {
 
 impl AudioCapture {
     pub fn new(
-        mut capture: CaptureSide,
+        mut capture: FrameProducer,
         device_name: Option<&str>,
     ) -> Result<Self> {
         let host = cpal::default_host();

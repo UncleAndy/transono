@@ -10,13 +10,13 @@ use crate::audio::{
     frame_pool::FramePool,
 };
 
-pub struct CaptureSide {
+pub struct FrameProducer {
     pool: Arc<FramePool>,
     free: Consumer<FrameId>,
     filled: Producer<FrameId>,
 }
 
-pub struct PipelineSide {
+pub struct FrameCustomer {
     pool: Arc<FramePool>,
     free: Producer<FrameId>,
     filled: Consumer<FrameId>,
@@ -25,7 +25,7 @@ pub struct PipelineSide {
 pub struct AudioBuffer;
 
 impl AudioBuffer {
-    pub fn new(frame_count: usize) -> Result<(CaptureSide, PipelineSide)> {
+    pub fn new(frame_count: usize) -> Result<(FrameProducer, FrameCustomer)> {
         let pool = Arc::new(FramePool::new(frame_count));
 
         let (mut free_tx, free_rx) = RingBuffer::<FrameId>::new(frame_count);
@@ -38,12 +38,12 @@ impl AudioBuffer {
         }
 
         Ok((
-            CaptureSide {
+            FrameProducer {
                 pool: Arc::clone(&pool),
                 free: free_rx,
                 filled: filled_tx,
             },
-            PipelineSide {
+            FrameCustomer {
                 pool,
                 free: free_tx,
                 filled: filled_rx,
@@ -52,7 +52,7 @@ impl AudioBuffer {
     }
 }
 
-impl CaptureSide {
+impl FrameProducer {
     #[inline(always)]
     pub fn acquire(&mut self) -> Option<FrameId> {
         self.free.pop().ok()
@@ -85,7 +85,7 @@ impl CaptureSide {
     }
 }
 
-impl PipelineSide {
+impl FrameCustomer {
     #[inline(always)]
     pub fn receive(&mut self) -> Option<FrameId> {
         self.filled.pop().ok()
