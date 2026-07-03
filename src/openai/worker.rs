@@ -3,6 +3,8 @@ use rtrb::{Consumer, RingBuffer};
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
 
+use hound::{SampleFormat, WavSpec, WavWriter};
+
 use crate::{
     audio::processor::AudioProcessor,
     openai::realtime::RealtimeClient,
@@ -47,50 +49,42 @@ impl OpenAiWorker {
                 };
 
                 loop {
-                    loop {
-                        tokio::select! {
-                            Some(audio) = input_rx.recv() => {
-                                if let Err(err) = client.append_audio(&audio).await {
-                                    eprintln!("append_audio: {err}");
-                                    continue;
-                                }
-
-                                if let Err(err) = client.commit_audio().await {
-                                    eprintln!("commit_audio: {err}");
-                                    continue;
-                                }
-
-                                if let Err(err) = client.create_response().await {
-                                    eprintln!("create_response: {err}");
-                                }
+                    tokio::select! {
+                        Some(audio) = input_rx.recv() => {
+                            if let Err(err) = client.append_audio(&audio).await {
+                                eprintln!("append_audio: {err}");
                             }
+                        }
 
-                            event = client.next_event() => {
-                                match event {
-                                    Ok(crate::openai::events::ServerEvent::ResponseOutputAudioDelta { delta }) => {
-                                        if let Ok(chunk) =
-                                            crate::openai::audio::base64_to_pcm16(&delta)
-                                        {
+                        event = client.next_event() => {
+                            match event {
+                                Ok(crate::openai::events::ServerEvent::ResponseOutputAudioDelta { delta }) => {
+                                    match crate::openai::audio::base64_to_pcm16(&delta) {
+                                        Ok(chunk) => {
                                             let _ = output_tx.push(chunk);
                                         }
-                                    }
 
-                                    Ok(crate::openai::events::ServerEvent::ResponseOutputAudioDone) => {
+                                        Err(err) => {
+                                            eprintln!("decode: {err}");
+                                        }
                                     }
+                                }
 
-                                    Ok(_) => {
-                                    }
+                                Ok(crate::openai::events::ServerEvent::ResponseOutputAudioDone) => {
+                                    println!("ResponseOutputAudioDone");
+                                }
 
-                                    Err(err) => {
-                                        eprintln!("next_event: {err}");
-                                        break;
-                                    }
+                                Ok(event) => {
+                                    println!("{event:#?}");
+                                }
+
+                                Err(err) => {
+                                    eprintln!("next_event: {err}");
+                                    break;
                                 }
                             }
                         }
                     }
-
-                    tokio::task::yield_now().await;
                 }
             });
         });

@@ -24,6 +24,18 @@ pub enum ServerEvent {
     #[serde(rename = "response.done")]
     ResponseDone,
 
+    #[serde(rename = "input_audio_buffer.speech_started")]
+    InputAudioBufferSpeechStarted,
+
+    #[serde(rename = "input_audio_buffer.speech_stopped")]
+    InputAudioBufferSpeechStopped,
+
+    #[serde(rename = "input_audio_buffer.committed")]
+    InputAudioBufferCommitted,
+
+    #[serde(rename = "response.created")]
+    ResponseCreated,
+    
     #[serde(rename = "error")]
     Error {
         error: ErrorInfo,
