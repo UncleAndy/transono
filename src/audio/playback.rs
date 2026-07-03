@@ -21,13 +21,30 @@ impl AudioPlayback {
     ) -> Result<Self> {
         let config = select_config(&device)?;
 
+        println!(
+            "Playback: rate={} channels={} buffer={:?}",
+            config.sample_rate.to_string(),
+            config.channels.to_string(),
+            config.buffer_size,
+        );
+
         let stream = device.build_output_stream::<f32, _, _>(
             config,
             move |output: &mut [f32], _| {
                 output.fill(0.0);
 
                 if let Some(id) = playback.receive() {
-                    playback.copy_from_frame(id, output);
+                    let frames = output.len() / 2;
+
+                    let mut mono = vec![0.0f32; frames];
+
+                    playback.copy_from_frame(id, &mut mono);
+
+                    for (stereo, sample) in output.chunks_exact_mut(2).zip(mono.iter()) {
+                        stereo[0] = *sample;
+                        stereo[1] = *sample;
+                    }
+
                     let _ = playback.release(id);
                 }
             },

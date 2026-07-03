@@ -21,10 +21,23 @@ impl AudioCapture {
     ) -> Result<Self> {
         let config = select_config(&device)?;
 
+        println!(
+            "Capture: rate={} channels={} buffer={:?}",
+            config.sample_rate.to_string(),
+            config.channels.to_string(),
+            config.buffer_size,
+        );
+
         let stream = device.build_input_stream::<f32, _, _>(
             config,
             move |data: &[f32], _| {
-                let _ = capture.send(data);
+                let mut mono = Vec::with_capacity(data.len() / 2);
+
+                for lr in data.chunks_exact(2) {
+                    mono.push((lr[0] + lr[1]) * 0.5);
+                }
+
+                let _ = capture.send(&mono);
             },
             move |err| {
                 eprintln!("capture: {err}");
