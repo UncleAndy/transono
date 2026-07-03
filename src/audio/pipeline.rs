@@ -9,7 +9,7 @@ use std::{
 use anyhow::Result;
 use crate::audio::audio_buffer::{FrameConsumer, FrameProducer};
 use crate::audio::processor::AudioProcessor;
-use crate::audio::resampler::Resampler;
+use crate::audio::simple_resampler::Resampler;
 
 const PROCESSOR_CHUNK: usize = 2400;
 
