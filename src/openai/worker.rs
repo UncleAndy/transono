@@ -1,12 +1,17 @@
 use anyhow::Result;
+use rtrb::{Consumer, Producer, RingBuffer};
 use tokio::runtime::Runtime;
 
-use crate::openai::realtime::RealtimeClient;
-use crate::audio::processor::AudioProcessor;
+use crate::{
+    audio::processor::AudioProcessor,
+    openai::realtime::RealtimeClient,
+};
+
+const QUEUE_SIZE: usize = 64;
 
 pub struct OpenAiWorker {
-    rt: Runtime,
-    client: RealtimeClient,
+    input: Producer<Vec<i16>>,
+    output: Consumer<Vec<i16>>,
 }
 
 impl OpenAiWorker {
@@ -14,45 +19,51 @@ impl OpenAiWorker {
         api_key: &str,
         instructions: &str,
     ) -> Result<Self> {
-        let rt = Runtime::new()?;
+        let (input_tx, input_rx) =
+            RingBuffer::<Vec<i16>>::new(QUEUE_SIZE);
 
-        let client = rt.block_on(async {
-            RealtimeClient::connect(api_key, instructions).await
-        })?;
+        let (output_tx, output_rx) =
+            RingBuffer::<Vec<i16>>::new(QUEUE_SIZE);
+
+        let api_key = api_key.to_owned();
+        let instructions = instructions.to_owned();
+
+        std::thread::spawn(move || {
+            let rt = Runtime::new().unwrap();
+
+            rt.block_on(async move {
+                let mut client = match RealtimeClient::connect(
+                    &api_key,
+                    &instructions,
+                )
+                    .await
+                {
+                    Ok(client) => client,
+                    Err(err) => {
+                        eprintln!("Realtime: {err}");
+                        return;
+                    }
+                };
+
+                //
+                // Пока оставляем заглушку.
+                // Следующим коммитом сюда переедет
+                // вся работа с WebSocket.
+                //
+                let _ = (
+                    client,
+                    input_rx,
+                    output_tx,
+                );
+
+                futures::future::pending::<()>().await;
+            });
+        });
 
         Ok(Self {
-            rt,
-            client,
+            input: input_tx,
+            output: output_rx,
         })
-    }
-
-    #[inline]
-    pub fn append_audio(
-        &mut self,
-        pcm: &[i16],
-    ) -> Result<()> {
-        self.rt
-            .block_on(self.client.append_audio(pcm))
-    }
-
-    #[inline]
-    pub fn commit(&mut self) -> Result<()> {
-        self.rt
-            .block_on(self.client.commit_audio())
-    }
-
-    #[inline]
-    pub fn create_response(&mut self) -> Result<()> {
-        self.rt
-            .block_on(self.client.create_response())
-    }
-
-    #[inline]
-    pub fn next_audio(
-        &mut self,
-    ) -> Result<Option<Vec<i16>>> {
-        self.rt
-            .block_on(self.client.next_audio())
     }
 }
 
@@ -61,15 +72,19 @@ impl AudioProcessor for OpenAiWorker {
         &mut self,
         input: &[i16],
     ) -> Result<()> {
-        self.append_audio(input)?;
-        self.commit()?;
-        self.create_response()?;
+        self.input
+            .push(input.to_vec())
+            .map_err(|_| anyhow::anyhow!("OpenAI input queue overflow"))?;
+
         Ok(())
     }
-
+    
     fn poll_audio(
         &mut self,
     ) -> Result<Option<Vec<i16>>> {
-        self.next_audio()
+        match self.output.pop() {
+            Ok(chunk) => Ok(Some(chunk)),
+            Err(rtrb::PopError::Empty) => Ok(None),
+        }
     }
 }
