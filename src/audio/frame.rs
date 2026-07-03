@@ -49,14 +49,4 @@ impl AudioFrame {
     pub fn samples_mut(&mut self) -> &mut [f32] {
         &mut self.samples[..self.len]
     }
-
-    /// Заполняет кадр данными.
-    #[inline(always)]
-    pub fn copy_from(&mut self, input: &[f32]) {
-        debug_assert!(input.len() <= FRAME_CAPACITY);
-
-        self.len = input.len();
-
-        self.samples[..input.len()].copy_from_slice(input);
-    }
 }
