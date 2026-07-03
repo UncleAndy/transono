@@ -1,14 +1,16 @@
 mod audio;
 mod openai;
 
-use crate::openai::protocol::*;
+use crate::openai::events::ServerEvent;
 
 fn main() {
-    let s = SessionUpdate::new(
-        "gpt-realtime",
-        "You are translator",
-        "alloy",
-    );
+    let json = r#"
+    {
+        "type":"response.audio.done"
+    }
+    "#;
 
-    println!("{}", serde_json::to_string_pretty(&s).unwrap());
+    let event: ServerEvent = serde_json::from_str(json).unwrap();
+
+    println!("{event:#?}");
 }
