@@ -1,5 +1,5 @@
 [package]
-name = "realtime_voice_translator"
+name = "realtime_translator"
 version = "0.1.0"
 edition = "2021"
 
