@@ -1,26 +1,16 @@
 use anyhow::Result;
 
-use realtime_voice_translator::audio::{*};
+use realtime_voice_translator::audio::ring_buffer::create;
 
 fn main() -> Result<()> {
-    let mut pool = frame_pool::FramePool::new(4);
 
-    assert_eq!(pool.capacity(), 4);
-    assert_eq!(pool.available(), 4);
+    let (mut tx, mut rx) = create(4)?;
 
-    let a = pool.acquire()?;
-    let b = pool.acquire()?;
+    tx.push(10).unwrap();
+    tx.push(20).unwrap();
 
-    assert_eq!(pool.available(), 2);
-
-    pool.get_mut(a).copy_from(&[1.0, 2.0, 3.0]);
-
-    assert_eq!(pool.get(a).samples(), &[1.0, 2.0, 3.0]);
-
-    pool.release(a);
-    pool.release(b);
-
-    assert_eq!(pool.available(), 4);
+    assert_eq!(rx.pop().unwrap(), 10);
+    assert_eq!(rx.pop().unwrap(), 20);
 
     Ok(())
 }
