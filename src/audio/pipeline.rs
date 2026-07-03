@@ -82,9 +82,18 @@ impl AudioPipeline {
                         continue;
                     }
 
-                    let _ = output.send(&playback);
-                }
+                    let mut offset = 0;
 
+                    while offset < playback.len() {
+                        let end = (offset + crate::audio::frame::FRAME_CAPACITY)
+                            .min(playback.len());
+
+                        let _ = output.send(&playback[offset..end]);
+
+                        offset = end;
+                    }
+                }
+                
                 let _ = input.release(frame_id);
             }
         });
