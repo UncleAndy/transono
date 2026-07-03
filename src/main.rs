@@ -1,24 +1,30 @@
+mod audio;
+
 use anyhow::Result;
 
-pub mod audio;
-
-use crate::audio::frame::FrameId;
-use crate::audio::ring_buffer::FrameQueues;
+use crate::audio::audio_buffer::AudioBuffer;
 
 fn main() -> Result<()> {
 
-    let mut queues = FrameQueues::new(4)?;
+    let (mut capture, mut pipeline) =
+        AudioBuffer::new(4)?;
 
-    for id in 0..4 {
-        queues.free_tx.push(id as FrameId).unwrap();
-    }
+    let id = capture.acquire().unwrap();
 
-    assert_eq!(queues.free_rx.pop().unwrap(), 0);
-    assert_eq!(queues.free_rx.pop().unwrap(), 1);
+    capture.frame_mut(id).copy_from(&[1.0,2.0,3.0]);
 
-    queues.filled_tx.push(42).unwrap();
+    capture.commit(id)?;
 
-    assert_eq!(queues.filled_rx.pop().unwrap(), 42);
+    let id = pipeline.receive().unwrap();
+
+    assert_eq!(
+        pipeline.frame(id).samples(),
+        &[1.0,2.0,3.0]
+    );
+
+    pipeline.release(id)?;
+
+    assert!(capture.acquire().is_some());
 
     Ok(())
 }
