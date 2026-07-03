@@ -1,6 +1,7 @@
 use anyhow::Result;
-use rtrb::{Consumer, Producer, RingBuffer};
+use rtrb::{Consumer, RingBuffer};
 use tokio::runtime::Runtime;
+use tokio::sync::mpsc;
 
 use crate::{
     audio::processor::AudioProcessor,
@@ -10,7 +11,7 @@ use crate::{
 const QUEUE_SIZE: usize = 64;
 
 pub struct OpenAiWorker {
-    input: Producer<Vec<i16>>,
+    input: mpsc::UnboundedSender<Vec<i16>>,
     output: Consumer<Vec<i16>>,
 }
 
@@ -20,7 +21,7 @@ impl OpenAiWorker {
         instructions: &str,
     ) -> Result<Self> {
         let (input_tx, mut input_rx) =
-            RingBuffer::<Vec<i16>>::new(QUEUE_SIZE);
+            mpsc::unbounded_channel::<Vec<i16>>();
 
         let (mut output_tx, output_rx) =
             RingBuffer::<Vec<i16>>::new(QUEUE_SIZE);
@@ -49,7 +50,7 @@ impl OpenAiWorker {
                     //
                     // Отправляем накопленный звук.
                     //
-                    while let Ok(audio) = input_rx.pop() {
+                    while let Some(audio) = input_rx.recv().await {
                         if let Err(err) = client.append_audio(&audio).await {
                             eprintln!("append_audio: {err}");
                             continue;
@@ -103,10 +104,8 @@ impl AudioProcessor for OpenAiWorker {
         input: &[i16],
     ) -> Result<()> {
         self.input
-            .push(input.to_vec())
-            .map_err(|_| anyhow::anyhow!("OpenAI input queue overflow"))?;
-
-        Ok(())
+            .send(input.to_vec())
+            .map_err(|_| anyhow::anyhow!("OpenAI worker stopped"))
     }
 
     fn poll_audio(
