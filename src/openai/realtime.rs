@@ -1,5 +1,4 @@
 use anyhow::Result;
-use base64::{engine::general_purpose::STANDARD, Engine};
 
 use crate::openai::{
     client::WsClient,
@@ -11,6 +10,7 @@ use crate::openai::{
         SessionUpdate,
     },
 };
+use crate::openai::audio::{base64_to_pcm16, pcm16_to_base64};
 
 const REALTIME_URL: &str =
     "wss://api.openai.com/v1/realtime?model=gpt-realtime";
@@ -43,18 +43,29 @@ impl RealtimeClient {
         &mut self,
         pcm16: &[i16],
     ) -> Result<()> {
-        let bytes = unsafe {
-            std::slice::from_raw_parts(
-                pcm16.as_ptr() as *const u8,
-                pcm16.len() * 2,
-            )
-        };
-
-        let audio = STANDARD.encode(bytes);
+        let audio = pcm16_to_base64(pcm16);
 
         let event = InputAudioAppend::new(&audio);
 
         self.ws.send(&event).await
+    }
+
+    pub async fn next_audio(
+        &mut self,
+    ) -> anyhow::Result<Option<Vec<i16>>> {
+        loop {
+            match self.next_event().await? {
+                ServerEvent::ResponseOutputAudioDelta { delta } => {
+                    return Ok(Some(base64_to_pcm16(&delta)?));
+                }
+
+                ServerEvent::ResponseOutputAudioDone => {
+                    return Ok(None);
+                }
+
+                _ => {}
+            }
+        }
     }
 
     #[inline]
