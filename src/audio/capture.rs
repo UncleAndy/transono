@@ -29,7 +29,7 @@ impl AudioCapture {
             config,
             move |data: &[f32], _| {
                 if let Some(id) = capture.acquire() {
-                    if capture.copy_into_frame(id, data) {
+                    if capture.write(id, data) {
                         let _ = capture.commit(id);
                     }
                 }

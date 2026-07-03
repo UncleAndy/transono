@@ -2,6 +2,7 @@ use anyhow::Result;
 use tokio::runtime::Runtime;
 
 use crate::openai::realtime::RealtimeClient;
+use crate::audio::processor::AudioProcessor;
 
 pub struct OpenAiWorker {
     rt: Runtime,
@@ -49,5 +50,24 @@ impl OpenAiWorker {
     ) -> Result<Option<Vec<i16>>> {
         self.rt
             .block_on(self.client.next_audio())
+    }
+}
+
+impl AudioProcessor for OpenAiWorker {
+    fn process(
+        &mut self,
+        input: &[i16],
+    ) -> Result<Vec<Vec<i16>>> {
+        self.append_audio(input)?;
+        self.commit()?;
+        self.create_response()?;
+
+        let mut chunks = Vec::new();
+
+        while let Some(audio) = self.next_audio()? {
+            chunks.push(audio);
+        }
+
+        Ok(chunks)
     }
 }

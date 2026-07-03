@@ -59,7 +59,7 @@ impl FrameProducer {
     }
 
     #[inline(always)]
-    pub fn copy_into_frame(
+    pub fn write(
         &self,
         id: FrameId,
         data: &[f32],
@@ -92,7 +92,7 @@ impl FrameConsumer {
     }
 
     #[inline(always)]
-    pub fn with_frame<R>(
+    pub fn read<R>(
         &self,
         id: FrameId,
         f: impl FnOnce(&AudioFrame) -> R,
@@ -116,7 +116,7 @@ impl FrameConsumer {
         id: FrameId,
         output: &mut [f32],
     ) {
-        self.with_frame(id, |frame| {
+        self.read(id, |frame| {
             let len = frame.len.min(output.len());
 
             output[..len].copy_from_slice(&frame.samples[..len]);
