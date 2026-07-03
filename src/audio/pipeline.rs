@@ -4,15 +4,11 @@ use std::{
         Arc,
     },
     thread::{self, JoinHandle},
-    time::Duration,
 };
 
 use anyhow::Result;
 
-use crate::{
-    audio::resampler::Resampler,
-    openai::worker::OpenAiWorker,
-};
+use crate::audio::processor::AudioProcessor;
 
 pub struct AudioPipeline {
     running: Arc<AtomicBool>,
@@ -21,80 +17,24 @@ pub struct AudioPipeline {
 
 impl AudioPipeline {
     pub fn new(
-        api_key: String,
-        instructions: String,
+        mut processor: Box<dyn AudioProcessor>,
     ) -> Result<Self> {
         let running = Arc::new(AtomicBool::new(true));
-
         let thread_running = running.clone();
 
         let thread = thread::spawn(move || {
-            let mut worker = match OpenAiWorker::connect(
-                &api_key,
-                &instructions,
-            ) {
-                Ok(worker) => worker,
-                Err(err) => {
-                    eprintln!("OpenAI: {err:?}");
-                    return;
-                }
-            };
-
-            let mut resampler = match Resampler::new() {
-                Ok(r) => r,
-                Err(err) => {
-                    eprintln!("Resampler: {err:?}");
-                    return;
-                }
-            };
-
-            let mut input_pcm = Vec::<i16>::new();
-            let mut output_pcm = Vec::<i16>::new();
-            let mut playback = Vec::<f32>::new();
+            let mut output_chunks = Vec::<Vec<i16>>::new();
 
             while thread_running.load(Ordering::Acquire) {
+                output_chunks.clear();
+
+                // Следующим коммитом здесь будет:
                 //
-                // Следующий этап:
+                // processor.process(input, &mut output_chunks)?;
                 //
-                // capture frame
-                //      ↓
-                // resampler.capture_to_openai(...)
-                //      ↓
-                // worker.append_audio(...)
-                //
-                // Пока просто проверяем получение ответа.
-                //
+                // Пока пайплайн только живёт.
 
-                match worker.next_audio() {
-                    Ok(Some(chunk)) => {
-                        output_pcm.extend(chunk);
-
-                        if resampler
-                            .openai_to_playback(
-                                &output_pcm,
-                                &mut playback,
-                            )
-                            .is_ok()
-                        {
-                            output_pcm.clear();
-
-                            //
-                            // Следующий коммит:
-                            // отправляем playback
-                            // в AudioBuffer.
-                            //
-                        }
-                    }
-
-                    Ok(None) => {}
-
-                    Err(err) => {
-                        eprintln!("Realtime: {err:?}");
-                        thread::sleep(Duration::from_millis(100));
-                    }
-                }
-
-                let _ = &mut input_pcm;
+                thread::yield_now();
             }
         });
 
