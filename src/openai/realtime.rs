@@ -17,7 +17,7 @@ impl RealtimeClient {
     pub async fn connect(api_key: &str, instructions: impl Into<String>) -> Result<Self> {
         let mut ws = WsClient::connect(REALTIME_URL, api_key).await?;
 
-        let session = SessionUpdate::new("gpt-realtime", instructions, "alloy");
+        let session = SessionUpdate::new("gpt-realtime", instructions, "cedar");
 
         ws.send(&session).await?;
 
