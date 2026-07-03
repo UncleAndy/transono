@@ -11,6 +11,8 @@ use crate::audio::audio_buffer::{FrameConsumer, FrameProducer};
 use crate::audio::processor::AudioProcessor;
 use crate::audio::resampler::Resampler;
 
+const PROCESSOR_CHUNK: usize = 2400;
+
 pub struct AudioPipeline {
     running: Arc<AtomicBool>,
     thread: Option<JoinHandle<()>>,
@@ -26,10 +28,10 @@ impl AudioPipeline {
         let thread_running = running.clone();
 
         let thread = thread::spawn(move || {
-            let mut output_chunks = Vec::<Vec<i16>>::new();
             let mut playback = Vec::<f32>::new();
             let mut resampler = Resampler::new().unwrap();
             let mut processor_pcm = Vec::<i16>::new();
+            let mut input_accumulator = Vec::<i16>::new();
 
             while thread_running.load(Ordering::Acquire) {
                 let Some(frame_id) = input.receive() else {
@@ -60,22 +62,38 @@ impl AudioPipeline {
                     continue;
                 }
 
-                output_chunks.clear();
+                input_accumulator.extend_from_slice(&processor_pcm);
 
-                if let Err(err) = processor.process(
-                    &processor_pcm,
-                    &mut output_chunks,
-                ) {
-                    eprintln!("Processor: {err}");
+                if input_accumulator.len() < PROCESSOR_CHUNK {
                     let _ = input.release(frame_id);
                     continue;
                 }
 
-                for chunk in &output_chunks {
+                if let Err(err) = processor.push_audio(
+                    &input_accumulator,
+                ) {
+                    eprintln!("Processor: {err}");
+                    input_accumulator.clear();
+                    let _ = input.release(frame_id);
+                    continue;
+                }
+
+                input_accumulator.clear();
+
+                loop {
+                    let chunk = match processor.poll_audio() {
+                        Ok(Some(chunk)) => chunk,
+                        Ok(None) => break,
+                        Err(err) => {
+                            eprintln!("Processor: {err}");
+                            break;
+                        }
+                    };
+
                     playback.clear();
 
                     if let Err(err) = resampler.out_processor(
-                        chunk,
+                        &chunk,
                         &mut playback,
                     ) {
                         eprintln!("Resampler: {err}");
@@ -93,7 +111,7 @@ impl AudioPipeline {
                         offset = end;
                     }
                 }
-                
+
                 let _ = input.release(frame_id);
             }
         });

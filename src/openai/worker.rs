@@ -20,7 +20,10 @@ impl OpenAiWorker {
             RealtimeClient::connect(api_key, instructions).await
         })?;
 
-        Ok(Self { rt, client })
+        Ok(Self {
+            rt,
+            client,
+        })
     }
 
     #[inline]
@@ -54,21 +57,19 @@ impl OpenAiWorker {
 }
 
 impl AudioProcessor for OpenAiWorker {
-    fn process(
+    fn push_audio(
         &mut self,
         input: &[i16],
-        output: &mut Vec<Vec<i16>>,
-    ) -> anyhow::Result<()> {
-        output.clear();
-
+    ) -> Result<()> {
         self.append_audio(input)?;
         self.commit()?;
         self.create_response()?;
-
-        while let Some(chunk) = self.next_audio()? {
-            output.push(chunk);
-        }
-
         Ok(())
+    }
+
+    fn poll_audio(
+        &mut self,
+    ) -> Result<Option<Vec<i16>>> {
+        self.next_audio()
     }
 }
