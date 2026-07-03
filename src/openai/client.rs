@@ -41,28 +41,42 @@ impl WsClient {
 
     pub async fn recv<T: DeserializeOwned>(&mut self) -> Result<T> {
         loop {
-            let Some(message) = self.stream.next().await else {
-                anyhow::bail!("websocket closed");
+            let message = match self.stream.next().await.unwrap() {
+                Ok(msg) => {
+                    println!("DBG: msg - '{:?}'", &msg);
+                    msg
+                }
+                Err(_) => {
+                    anyhow::bail!("websocket closed");
+                }
             };
 
-            match message? {
+            match message {
                 Message::Text(text) => {
+                    println!("Message::Text");
                     return Ok(serde_json::from_str(&text)?);
                 }
 
-                Message::Binary(_) => {}
+                Message::Binary(_) => {
+                    println!("Message::Binary");
+                }
 
                 Message::Ping(data) => {
+                    println!("Message::Ping");
                     self.stream.send(Message::Pong(data)).await?;
                 }
 
-                Message::Pong(_) => {}
+                Message::Pong(_) => {
+                    println!("Message::Pong");
+                }
 
                 Message::Close(frame) => {
                     anyhow::bail!("connection closed: {frame:?}");
                 }
 
-                _ => {}
+                _ => {
+                    println!("Message::? {:?}", message);
+                }
             }
         }
     }

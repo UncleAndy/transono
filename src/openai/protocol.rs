@@ -10,37 +10,52 @@ pub struct SessionUpdate {
 
 #[derive(Debug, Serialize)]
 pub struct Session {
+    #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "type")]
-    pub session_type: &'static str,
+    pub session_type: Option<&'static str>,
 
-    pub model: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
 
-    pub instructions: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub instructions: Option<String>,
 
     pub audio: Audio,
 
-    pub output_modalities: Vec<OutputModality>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_modalities: Option<Vec<OutputModality>>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub modalities: Option<Vec<OutputModality>>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct Audio {
-    pub input: AudioInput,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input: Option<AudioInput>,
 
     pub output: AudioOutput,
 }
 
 #[derive(Debug, Serialize)]
 pub struct AudioInput {
-    pub format: AudioFormat,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub format: Option<AudioFormat>,
 
-    pub turn_detection: TurnDetection,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub turn_detection: Option<TurnDetection>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct AudioOutput {
-    pub format: AudioFormat,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub format: Option<AudioFormat>,
 
-    pub voice: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub voice: Option<String>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -77,37 +92,55 @@ impl SessionUpdate {
         Self {
             event_type: "session.update",
             session: Session {
-                session_type: "realtime",
+                // session_type: Some("realtime"),
+                session_type: None,
 
-                model: model.into(),
+                // model: Some(model.into()),
+                model: None,
 
-                instructions: instructions.into(),
+                // instructions: Some(instructions.into()),
+                instructions: None,
 
                 audio: Audio {
-                    input: AudioInput {
-                        format: AudioFormat {
+                    input: Some(AudioInput {
+                        /*
+                        format: Some(AudioFormat {
                             format_type: "audio/pcm",
                             rate: 24_000,
-                        },
+                        }),
+                         */
+                        format: None,
 
+                        /*
                         turn_detection: TurnDetection {
                             detection_type: "server_vad",
                             prefix_padding_ms: 1000,
                             silence_duration_ms: 100,
                         },
-                    },
+                         */
+                        turn_detection: None,
+                    }),
 
                     output: AudioOutput {
-                        format: AudioFormat {
+                        /*
+                        format: Some(AudioFormat {
                             format_type: "audio/pcm",
                             rate: 24_000,
-                        },
+                        }),
+                         */
+                        format: None,
 
-                        voice: voice.into(),
+                        // voice: Some(voice.into()),
+                        voice: None,
+
+                        language: Some("en".to_string()),
                     },
                 },
 
-                output_modalities: vec![OutputModality::Audio],
+                // output_modalities: Some(vec![OutputModality::Audio]),
+                output_modalities: None,
+                // modalities: Some(vec![OutputModality::Audio]),
+                modalities: None,
             },
         }
     }
@@ -121,10 +154,27 @@ pub struct InputAudioAppend<'a> {
     pub audio: &'a str,
 }
 
+#[derive(Debug, Serialize)]
+pub struct SessionInputAudioAppend<'a> {
+    #[serde(rename = "type")]
+    pub event_type: &'static str,
+
+    pub audio: &'a str,
+}
+
 impl<'a> InputAudioAppend<'a> {
     pub fn new(audio: &'a str) -> Self {
         Self {
             event_type: "input_audio_buffer.append",
+            audio,
+        }
+    }
+}
+
+impl<'a> SessionInputAudioAppend<'a> {
+    pub fn new(audio: &'a str) -> Self {
+        Self {
+            event_type: "session.input_audio_buffer.append",
             audio,
         }
     }

@@ -41,16 +41,34 @@ impl OpenAiWorker {
                 loop {
                     tokio::select! {
                         Some(audio) = input_rx.recv() => {
-                            if let Err(err) = client.append_audio(&audio).await {
-                                eprintln!("append_audio: {err}");
+                            // if let Err(err) = client.append_audio(&audio).await {
+                            //     eprintln!("append_audio: {err}");
+                            // }
+                            if let Err(err) = client.session_append_audio(&audio).await {
+                                 eprintln!("append_audio: {err}");
                             }
                         }
 
                         event = client.next_event() => {
                             match event {
                                 Ok(crate::openai::events::ServerEvent::ResponseOutputAudioDelta { delta }) => {
+                                    println!("ResponseOutputAudioDelta");
                                     match crate::openai::audio::base64_to_pcm16(&delta) {
                                         Ok(chunk) => {
+                                            let _ = output_tx.push(chunk);
+                                        }
+
+                                        Err(err) => {
+                                            eprintln!("decode: {err}");
+                                        }
+                                    }
+                                }
+
+                                Ok(crate::openai::events::ServerEvent::SessionOutputAudioDelta { delta }) => {
+                                    println!("SessionOutputAudioDelta");
+                                    match crate::openai::audio::base64_to_pcm16(&delta) {
+                                        Ok(chunk) => {
+                                            println!("output_tx: {} chunks", chunk.len());
                                             let _ = output_tx.push(chunk);
                                         }
 
@@ -65,7 +83,7 @@ impl OpenAiWorker {
                                 }
 
                                 Err(err) => {
-                                    eprintln!("next_event: {err}");
+                                    eprintln!("event_error: {err}");
                                     break;
                                 }
                             }

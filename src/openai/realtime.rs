@@ -6,8 +6,9 @@ use crate::openai::{
     events::ServerEvent,
     protocol::{InputAudioAppend, InputAudioCommit, ResponseCreate, SessionUpdate},
 };
+use crate::openai::protocol::SessionInputAudioAppend;
 
-const REALTIME_URL: &str = "wss://api.openai.com/v1/realtime?model=gpt-realtime";
+const REALTIME_URL: &str = "wss://api.openai.com/v1/realtime/translations?model=gpt-realtime-translate";
 
 pub struct RealtimeClient {
     ws: WsClient,
@@ -17,7 +18,7 @@ impl RealtimeClient {
     pub async fn connect(api_key: &str, instructions: impl Into<String>) -> Result<Self> {
         let mut ws = WsClient::connect(REALTIME_URL, api_key).await?;
 
-        let session = SessionUpdate::new("gpt-realtime", instructions, "cedar");
+        let session = SessionUpdate::new("gpt-realtime-translate", instructions, "cedar");
 
         ws.send(&session).await?;
 
@@ -29,6 +30,15 @@ impl RealtimeClient {
         let audio = pcm16_to_base64(pcm16);
 
         let event = InputAudioAppend::new(&audio);
+
+        self.ws.send(&event).await
+    }
+
+    #[inline]
+    pub async fn session_append_audio(&mut self, pcm16: &[i16]) -> Result<()> {
+        let audio = pcm16_to_base64(pcm16);
+
+        let event = SessionInputAudioAppend::new(&audio);
 
         self.ws.send(&event).await
     }

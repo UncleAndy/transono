@@ -12,6 +12,9 @@ pub enum ServerEvent {
     #[serde(rename = "response.output_audio.delta")]
     ResponseOutputAudioDelta { delta: String },
 
+    #[serde(rename = "session.output_audio.delta")]
+    SessionOutputAudioDelta { delta: String },
+
     #[serde(rename = "response.output_audio.done")]
     ResponseOutputAudioDone,
 
