@@ -76,12 +76,27 @@ impl FrameProducer {
         true
     }
 
-
     #[inline(always)]
     pub fn commit(&mut self, id: FrameId) -> Result<()> {
         self.filled
             .push(id)
             .map_err(|_| anyhow::anyhow!("filled queue overflow"))
+    }
+
+    pub fn send(
+        &mut self,
+        data: &[f32],
+    ) -> bool {
+        let Some(id) = self.acquire() else {
+            return false;
+        };
+
+        assert!(self.write(id, data), "frame too large");
+
+        self.commit(id)
+            .expect("filled queue overflow");
+
+        true
     }
 }
 

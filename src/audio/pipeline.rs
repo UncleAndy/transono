@@ -59,27 +59,30 @@ impl AudioPipeline {
                     let _ = input.release(frame_id);
                     continue;
                 }
-                
+
                 output_chunks.clear();
 
-                if processor.process(&processor_pcm, &mut output_chunks).is_ok() {
-                    for chunk in &output_chunks {
-                        if let Some(id) = output.acquire() {
-                            playback.clear();
+                if let Err(err) = processor.process(
+                    &processor_pcm,
+                    &mut output_chunks,
+                ) {
+                    eprintln!("Processor: {err}");
+                    let _ = input.release(frame_id);
+                    continue;
+                }
 
-                            if let Err(err) = resampler.out_processor(
-                                chunk,
-                                &mut playback,
-                            ) {
-                                eprintln!("Resampler: {err}");
-                                continue;
-                            }
+                for chunk in &output_chunks {
+                    playback.clear();
 
-                            if output.write(id, &playback) {
-                                let _ = output.commit(id);
-                            }
-                        }
+                    if let Err(err) = resampler.out_processor(
+                        chunk,
+                        &mut playback,
+                    ) {
+                        eprintln!("Resampler: {err}");
+                        continue;
                     }
+
+                    let _ = output.send(&playback);
                 }
 
                 let _ = input.release(frame_id);
