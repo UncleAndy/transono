@@ -4,12 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-tokio = { version = "1.52", features = ["full"] }
-tokio-tungstenite = { version = "0.29", features = ["native-tls"] }
-futures-util = "0.3"
-cpal = "0.18"
-rodio = "0.22"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-base64 = "0.22" # Для упаковки PCM-байтов в JSON-текст вебсокета
-http = "1.4"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
+cpal = { version = "0.18", features = ["pipewire", "realtime"] }
+rtrb = "0.3"
+rubato = "3"
+anyhow = "1"
+thiserror = "2"
+base64 = "0.22"
+bytes = "1"
