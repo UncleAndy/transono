@@ -8,6 +8,12 @@ use crate::providers::openai::realtime::protocol;
 #[derive(Default)]
 pub struct RealtimeProtocol;
 
+impl RealtimeProtocol {
+    pub(crate) fn new() -> RealtimeProtocol {
+        Self
+    }
+}
+
 impl Protocol for RealtimeProtocol {
     type Command = ProtocolCommand<'static>;
     type Event = ProtocolEvent;
