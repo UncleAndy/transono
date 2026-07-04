@@ -3,8 +3,8 @@ where
     P: Protocol,
     T: Transport,
 {
-    protocol: P,
     transport: T,
+    protocol: P,
 }
 
 impl<P, T> Client<P, T>
@@ -17,8 +17,8 @@ where
         protocol: P,
     ) -> Self {
         Self {
-            protocol,
             transport,
+            protocol,
         }
     }
 
