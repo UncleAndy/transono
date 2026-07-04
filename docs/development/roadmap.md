@@ -11,10 +11,11 @@
 
 ## 🚧 v0.2.0
 
-- OpenAI Provider
-- Realtime protocol
-- Translation protocol
-- First real connection
+- [x] Provider architecture
+- [x] OpenAI connection
+- [ ] Session commands
+- [ ] Provider events
+- [ ] First realtime interaction
 
 ---
 
