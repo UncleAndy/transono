@@ -15,15 +15,12 @@ pub enum ProtocolEvent {
         delta: String,
     },
 
-    SessionOutputAudioDelta {
-        delta: String,
-    },
-
     ResponseOutputAudioDone,
 
     ResponseDone,
 
     Error(OpenAiError),
 
+    #[default]
     Unknown,
 }

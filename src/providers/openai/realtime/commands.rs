@@ -1,11 +1,11 @@
 pub enum ProtocolCommand<'a> {
     SessionUpdate(SessionUpdate),
 
-    InputAudioAppend {
+    InputAudioBufferAppend {
         audio: &'a str,
     },
 
-    InputAudioCommit,
+    InputAudioBufferCommit,
 
     ResponseCreate(ResponseCreate),
 

@@ -1,13 +1,9 @@
 pub enum ProtocolCommand<'a> {
     SessionUpdate(SessionUpdate),
 
-    InputAudioAppend {
+    SessionInputAudioBufferAppend {
         audio: &'a str,
     },
 
-    InputAudioCommit,
-
-    ResponseCreate(ResponseCreate),
-
-    ResponseCancel,
+    SessionFinish(Session),
 }
