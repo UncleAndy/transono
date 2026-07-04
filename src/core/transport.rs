@@ -60,3 +60,9 @@ impl From<Vec<u8>> for TransportData {
         Self::Binary(value)
     }
 }
+
+impl AsRef<[u8]> for TransportData {
+    fn as_ref(&self) -> &[u8] {
+        self.as_bytes()
+    }
+}

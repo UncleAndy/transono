@@ -41,7 +41,7 @@ where
 
         let data = self.protocol.encode(command)?;
 
-        self.transport.send(data).await
+        self.transport.send(data.as_ref()).await
     }
 
     pub async fn recv(
@@ -49,6 +49,6 @@ where
     ) -> Result<P::Event> {
         let data = self.transport.recv().await?;
 
-        self.protocol.decode(&data)
+        self.protocol.decode(data.as_bytes())
     }
 }
