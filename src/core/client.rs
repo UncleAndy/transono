@@ -41,7 +41,7 @@ where
 
         let data = self.protocol.encode(command)?;
 
-        self.transport.send(data.as_ref()).await
+        self.transport.send(data.into()).await
     }
 
     pub async fn recv(
