@@ -3,15 +3,16 @@ use futures_util::{
     StreamExt,
     stream::{SplitSink, SplitStream},
 };
-use http::Request;
 use tokio::net::TcpStream;
 use tokio_tungstenite::{
     connect_async,
     MaybeTlsStream,
     WebSocketStream,
-    tungstenite::Message,
+    tungstenite::{
+        Message,
+        client::IntoClientRequest,
+    },
 };
-
 use crate::core::{
     error::{CoreError, Result},
     transport::{Transport, TransportData},
@@ -28,9 +29,12 @@ pub struct WebSocketTransport {
 }
 
 impl WebSocketTransport {
-    pub async fn connect(
-        request: Request<()>,
-    ) -> Result<Self> {
+    pub async fn connect<R>(
+        request: R,
+    ) -> Result<Self>
+    where
+        R: IntoClientRequest + Unpin,
+    {
         let (socket, _) =
             connect_async(request)
                 .await

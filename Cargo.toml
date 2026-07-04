@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-tokio = { version = "1.52", features = ["rt-multi-thread", "macros", "signal", "sync"] }
+tokio = { version = "1.52", features = ["rt-multi-thread", "macros", "signal", "sync", "time"] }
 cpal = { version = "0.18", features = ["pipewire", "realtime"] }
 rtrb = "0.3"
 rubato = "3.0"

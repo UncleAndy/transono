@@ -1,15 +1,44 @@
+use futures_util::{SinkExt, StreamExt};
 use http::Request;
-use realtime_translator::core::websocket::WebSocketTransport;
+
+use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+
+use realtime_translator::{
+    core::{
+        transport::{Transport, TransportData},
+        websocket::WebSocketTransport,
+    },
+    testing::websocket_server::WebSocketTestServer,
+};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let request = Request::builder()
-        .uri("wss://echo.websocket.events")
-        .body(())?;
 
-    let _transport = WebSocketTransport::connect(request).await?;
+    let server = WebSocketTestServer::start(|ws| async move {
 
-    println!("Connected!");
+        let (mut tx, mut rx) = ws.split();
+
+        while let Some(msg) = rx.next().await {
+            tx.send(msg?).await?;
+        }
+
+        Ok(())
+    })
+        .await?;
+
+    let request = server.uri().into_client_request()?;
+
+    let mut transport =
+        WebSocketTransport::connect(request).await?;
+
+    transport
+        .send("Hello!".into())
+        .await?;
+
+    let response = transport.recv().await?;
+
+    println!("{response:?}");
 
     Ok(())
 }
