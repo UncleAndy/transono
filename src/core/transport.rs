@@ -1,3 +1,7 @@
+use async_trait::async_trait;
+
+use crate::core::error::Result;
+
 #[async_trait]
 pub trait Transport: Send + Sync {
 

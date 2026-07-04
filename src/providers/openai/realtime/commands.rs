@@ -1,3 +1,5 @@
+use crate::openai::protocol::SessionUpdate;
+
 pub enum ProtocolCommand<'a> {
     SessionUpdate(SessionUpdate),
 

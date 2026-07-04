@@ -1,3 +1,5 @@
+use crate::core::error::Result;
+
 pub trait Protocol: Send + Sync + 'static {
     type Command;
     type Event;

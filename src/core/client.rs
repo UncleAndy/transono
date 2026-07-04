@@ -1,3 +1,7 @@
+use crate::core::protocol::Protocol;
+use crate::core::transport::Transport;
+use crate::core::error::Result;
+
 pub struct Client<P, T>
 where
     P: Protocol,

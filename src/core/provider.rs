@@ -1,3 +1,9 @@
+use async_trait::async_trait;
+
+use crate::core::provider_event::ProviderEvent;
+use crate::core::provider_command::ProviderCommand;
+use crate::core::error::Result;
+
 #[async_trait]
 pub trait Provider {
 
@@ -7,7 +13,7 @@ pub trait Provider {
 
     async fn send(
         &mut self,
-        command: ProviderCommand<'_>,
+        command: ProviderCommand,
     ) -> Result<()>;
 
     async fn next_event(
