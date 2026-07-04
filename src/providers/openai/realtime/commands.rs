@@ -1,4 +1,4 @@
-use crate::openai::protocol::SessionUpdate;
+use crate::openai::protocol::{ResponseCreate, SessionUpdate};
 
 pub enum ProtocolCommand<'a> {
     SessionUpdate(SessionUpdate),

@@ -1,5 +1,6 @@
 use serde::Serialize;
-use crate::core::
+use crate::core::protocol::Protocol;
+use crate::core::error::Result;
 use crate::providers::openai::realtime::commands::ProtocolCommand;
 use crate::providers::openai::realtime::events::ProtocolEvent;
 
@@ -11,6 +12,14 @@ impl Protocol for RealtimeProtocol {
     type Event = ProtocolEvent;
 
     const ENDPOINT: &'static str = "/v1/realtime";
+
+    fn encode(&self, command: &Self::Command) -> Result<Vec<u8>> {
+        todo!()
+    }
+
+    fn decode(&self, data: &[u8]) -> Result<Self::Event> {
+        todo!()
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -18,7 +27,7 @@ pub struct SessionUpdate {
     #[serde(rename = "type")]
     pub event_type: &'static str,
 
-    pub session: crate::openai::protocol::Session,
+    pub session: Session,
 }
 
 #[derive(Debug, Serialize)]
