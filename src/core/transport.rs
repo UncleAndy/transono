@@ -3,7 +3,7 @@ pub trait Transport {
 
     async fn connect(
         &mut self,
-        endpoint: &str,
+        url: &str,
     ) -> Result<()>;
 
     async fn send(

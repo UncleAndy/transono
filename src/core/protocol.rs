@@ -2,15 +2,9 @@ pub trait Protocol {
     type Command;
     type Event;
 
-    fn endpoint(&self) -> &'static str;
+    const ENDPOINT: &'static str;
 
-    fn encode(
-        &self,
-        command: &Self::Command,
-    ) -> anyhow::Result<String>;
+    fn encode(&self, command: &Self::Command) -> Result<String>;
 
-    fn decode(
-        &self,
-        json: &str,
-    ) -> anyhow::Result<Self::Event>;
+    fn decode(&self, json: &str) -> Result<Self::Event>;
 }
