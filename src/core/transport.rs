@@ -4,12 +4,6 @@ use crate::core::error::Result;
 
 #[async_trait]
 pub trait Transport: Send + Sync {
-
-    async fn connect(
-        &mut self,
-        request: http::Request<()>,
-    ) -> Result<()>;
-
     async fn send(
         &mut self,
         data: TransportData,
