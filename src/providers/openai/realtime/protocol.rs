@@ -3,6 +3,7 @@ use crate::core::protocol::Protocol;
 use crate::core::error::Result;
 use crate::providers::openai::realtime::commands::ProtocolCommand;
 use crate::providers::openai::realtime::events::ProtocolEvent;
+use crate::providers::openai::realtime::protocol;
 
 #[derive(Default)]
 pub struct RealtimeProtocol;
@@ -42,7 +43,7 @@ pub struct Session {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub instructions: Option<String>,
 
-    pub audio: crate::openai::protocol::Audio,
+    pub audio: Audio,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub output_modalities: Option<Vec<OutputModality>>,
@@ -54,30 +55,27 @@ pub struct Session {
 #[derive(Debug, Serialize)]
 pub struct Audio {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub input: Option<crate::openai::protocol::AudioInput>,
+    pub input: Option<AudioInput>,
 
-    pub output: crate::openai::protocol::AudioOutput,
+    pub output: AudioOutput,
 }
 
 #[derive(Debug, Serialize)]
 pub struct AudioInput {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub format: Option<crate::openai::protocol::AudioFormat>,
+    pub format: Option<AudioFormat>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub turn_detection: Option<crate::openai::protocol::TurnDetection>,
+    pub turn_detection: Option<TurnDetection>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct AudioOutput {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub format: Option<crate::openai::protocol::AudioFormat>,
+    pub format: Option<AudioFormat>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub voice: Option<String>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub language: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -105,7 +103,7 @@ pub enum OutputModality {
     Text,
 }
 
-impl crate::openai::protocol::SessionUpdate {
+impl SessionUpdate {
     pub fn new(
         model: impl Into<String>,
         instructions: impl Into<String>,
@@ -113,55 +111,38 @@ impl crate::openai::protocol::SessionUpdate {
     ) -> Self {
         Self {
             event_type: "session.update",
-            session: crate::openai::protocol::Session {
-                // session_type: Some("realtime"),
-                session_type: None,
+            session: Session {
+                session_type: Some("realtime"),
 
-                // model: Some(model.into()),
-                model: None,
+                model: Some(model.into()),
 
-                // instructions: Some(instructions.into()),
-                instructions: None,
+                instructions: Some(instructions.into()),
 
-                audio: crate::openai::protocol::Audio {
-                    input: Some(crate::openai::protocol::AudioInput {
-                        /*
+                audio: Audio {
+                    input: Some(AudioInput {
                         format: Some(AudioFormat {
                             format_type: "audio/pcm",
                             rate: 24_000,
                         }),
-                         */
-                        format: None,
 
-                        /*
-                        turn_detection: TurnDetection {
+                        turn_detection: Some(TurnDetection {
                             detection_type: "server_vad",
                             prefix_padding_ms: 1000,
                             silence_duration_ms: 100,
-                        },
-                         */
-                        turn_detection: None,
+                        }),
                     }),
 
-                    output: crate::openai::protocol::AudioOutput {
-                        /*
+                    output: AudioOutput {
                         format: Some(AudioFormat {
                             format_type: "audio/pcm",
                             rate: 24_000,
                         }),
-                         */
-                        format: None,
 
-                        // voice: Some(voice.into()),
-                        voice: None,
-
-                        language: Some("en".to_string()),
+                        voice: Some(voice.into()),
                     },
                 },
 
-                // output_modalities: Some(vec![OutputModality::Audio]),
-                output_modalities: None,
-                // modalities: Some(vec![OutputModality::Audio]),
+                output_modalities: Some(vec![OutputModality::Audio]),
                 modalities: None,
             },
         }

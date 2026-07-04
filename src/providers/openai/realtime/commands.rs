@@ -1,4 +1,6 @@
-use crate::openai::protocol::{ResponseCreate, SessionUpdate};
+use serde::{*};
+
+use crate::providers::openai::realtime::protocol::SessionUpdate;
 
 pub enum ProtocolCommand<'a> {
     SessionUpdate(SessionUpdate),
@@ -12,4 +14,18 @@ pub enum ProtocolCommand<'a> {
     ResponseCreate(ResponseCreate),
 
     ResponseCancel,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ResponseCreate {
+    #[serde(rename = "type")]
+    pub event_type: &'static str,
+}
+
+impl ResponseCreate {
+    pub fn new() -> Self {
+        Self {
+            event_type: "response.create",
+        }
+    }
 }
