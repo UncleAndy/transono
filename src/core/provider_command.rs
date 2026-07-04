@@ -1,6 +1,6 @@
 pub enum ProviderCommand<'a> {
     UpdateSession(SessionConfig),
-    AppendAudio(&'a [i16]),
+    AppendAudio(AudioFrame<'a>),
     Commit,
     Cancel,
 }

@@ -3,7 +3,7 @@ pub enum ProviderEvent {
     Disconnected,
     SpeechStarted,
     SpeechStopped,
-    Audio(Vec<i16>),
-    Finished,
+    Audio(AudioFrame<'a>),
+    ResponseFinished,
     Error(anyhow::Error),
 }

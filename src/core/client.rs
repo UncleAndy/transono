@@ -1,24 +1,43 @@
 pub struct Client<P, T>
 where
-    P: Protocol,
     T: Transport,
+    P: Protocol,
 {
-    protocol: P,
     transport: T,
+    protocol: P,
 }
 
-impl<P, T> Client<P, T>
+impl<T, P> Client<T, P>
 where
-    P: Protocol,
     T: Transport,
+    P: Protocol,
 {
     pub fn new(
-        protocol: P,
         transport: T,
+        protocol: P,
     ) -> Self {
         Self {
-            protocol,
             transport,
+            protocol,
         }
+    }
+
+    pub async fn send_protocol(
+        &mut self,
+        command: &P::Command,
+    ) -> Result<()> {
+
+        let json = self.protocol.encode(command)?;
+
+        self.transport.send(json).await
+    }
+
+    pub async fn recv_protocol(
+        &mut self,
+    ) -> Result<P::Event> {
+
+        let json = self.transport.recv().await?;
+
+        self.protocol.decode(&json)
     }
 }

@@ -1,5 +1,5 @@
 #[async_trait]
-pub trait Transport {
+pub trait Transport: Send + Sync {
 
     async fn connect(
         &mut self,

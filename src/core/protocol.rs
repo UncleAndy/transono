@@ -1,4 +1,4 @@
-pub trait Protocol {
+pub trait Protocol: Send + Sync + 'static {
     type Command;
     type Event;
 
