@@ -1,16 +1,16 @@
 pub trait Protocol {
-    type ClientEvent;
-    type ServerEvent;
+    type Command;
+    type Event;
 
     fn endpoint(&self) -> &'static str;
 
-    fn session(&self, cfg: &SessionConfig) -> Self::ClientEvent;
-
-    fn append_audio<'a>(&self, audio: &'a str)
-                        -> Self::ClientEvent;
-
-    fn map_event(
+    fn encode(
         &self,
-        event: Self::ServerEvent,
-    ) -> Option<RealtimeEvent>;
+        command: &Self::Command,
+    ) -> anyhow::Result<String>;
+
+    fn decode(
+        &self,
+        json: &str,
+    ) -> anyhow::Result<Self::Event>;
 }
