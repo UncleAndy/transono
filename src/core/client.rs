@@ -1,4 +1,4 @@
-pub struct Client<P, T>
+pub struct Client<T, P>
 where
     T: Transport,
     P: Protocol,
