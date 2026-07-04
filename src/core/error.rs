@@ -6,10 +6,10 @@ std::result::Result<T, CoreError>;
 #[derive(Debug, Error)]
 pub enum CoreError {
 
-    #[error("transport error")]
+    #[error(transparent)]
     Transport(#[from] TransportError),
 
-    #[error("protocol error")]
+    #[error(transparent)]
     Protocol(#[from] ProtocolError),
 
     #[error(transparent)]

@@ -17,7 +17,6 @@ use crate::core::{
     transport::{Transport, TransportData},
 };
 use crate::core::error::TransportError;
-use crate::core::error::TransportError::ConnectionClosed;
 
 type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 type Writer = SplitSink<Socket, Message>;
@@ -78,7 +77,7 @@ impl Transport for WebSocketTransport {
                 .reader
                 .next()
                 .await
-                .ok_or(CoreError::Transport(ConnectionClosed))?
+                .ok_or(CoreError::Transport(TransportError::ConnectionClosed))?
                 .map_err(TransportError::from)?;
 
             match message {
@@ -103,11 +102,12 @@ impl Transport for WebSocketTransport {
                 }
 
                 Message::Frame(_) => {
+                    // Internal tungstenite frame representation.
                     continue;
                 }
 
                 Message::Close(_) => {
-                    return Err(CoreError::Transport(ConnectionClosed));
+                    return Err(CoreError::Transport(TransportError::ConnectionClosed));
                 }
             }
         }
