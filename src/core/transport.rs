@@ -7,7 +7,7 @@ pub trait Transport: Send + Sync {
 
     async fn connect(
         &mut self,
-        url: &str,
+        request: http::Request<()>,
     ) -> Result<()>;
 
     async fn send(

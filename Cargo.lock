@@ -1198,6 +1198,7 @@ dependencies = [
  "cpal",
  "futures",
  "futures-util",
+ "http",
  "rtrb",
  "rubato",
  "rustls",
