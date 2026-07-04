@@ -17,7 +17,11 @@ pub enum CoreError {
 }
 
 #[derive(Debug, Error)]
-pub enum TransportError {}
+pub enum TransportError {
+    ConnectionClosed,
+
+    Other(anyhow::Error),
+}
 
 #[derive(Debug, Error)]
 pub enum ProtocolError {}

@@ -12,10 +12,6 @@ pub trait Transport: Send + Sync {
     async fn recv(
         &mut self,
     ) -> Result<TransportData>;
-
-    async fn disconnect(
-        &mut self,
-    ) -> Result<()>;
 }
 
 #[derive(Debug, Clone)]
