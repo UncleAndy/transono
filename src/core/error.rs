@@ -18,9 +18,14 @@ pub enum CoreError {
 
 #[derive(Debug, Error)]
 pub enum TransportError {
+    #[error("connection closed")]
     ConnectionClosed,
 
-    Other(anyhow::Error),
+    #[error(transparent)]
+    WebSocket(
+        #[from]
+        tokio_tungstenite::tungstenite::Error,
+    ),
 }
 
 #[derive(Debug, Error)]

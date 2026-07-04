@@ -16,6 +16,7 @@ use crate::core::{
     error::{CoreError, Result},
     transport::{Transport, TransportData},
 };
+use crate::core::error::TransportError;
 use crate::core::error::TransportError::ConnectionClosed;
 
 type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
@@ -34,7 +35,7 @@ impl WebSocketTransport {
         let (socket, _) =
             connect_async(request)
                 .await
-                .map_err(anyhow::Error::from)?;
+                .map_err(TransportError::from)?;
 
         let (writer, reader) = socket.split();
 
@@ -64,7 +65,7 @@ impl Transport for WebSocketTransport {
         self.writer
             .send(message)
             .await
-            .map_err(anyhow::Error::from)?;
+            .map_err(TransportError::from)?;
 
         Ok(())
     }
@@ -78,7 +79,7 @@ impl Transport for WebSocketTransport {
                 .next()
                 .await
                 .ok_or(CoreError::Transport(ConnectionClosed))?
-                .map_err(anyhow::Error::from)?;
+                .map_err(TransportError::from)?;
 
             match message {
                 Message::Text(text) => {
@@ -89,9 +90,11 @@ impl Transport for WebSocketTransport {
                     return Ok(data.to_vec().into());
                 }
 
-                Message::Ping(_) => {
-                    self.writer.send(Message::Pong(bytes::Bytes::new())).await
-                        .map_err(anyhow::Error::from)?;
+                Message::Ping(data) => {
+                    self.writer.send(
+                            Message::Pong(data)
+                        ).await
+                        .map_err(TransportError::from)?;
                     continue;
                 }
 
