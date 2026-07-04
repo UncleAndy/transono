@@ -8,14 +8,19 @@ pub trait Transport: Send + Sync {
 
     async fn send(
         &mut self,
-        text: String,
+        data: TransportData,
     ) -> Result<()>;
 
     async fn recv(
         &mut self,
-    ) -> Result<String>;
+    ) -> Result<TransportData>;
 
     async fn disconnect(
         &mut self,
     ) -> Result<()>;
+}
+
+pub enum TransportData {
+    Text(String),
+    Binary(Vec<u8>),
 }

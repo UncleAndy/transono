@@ -4,7 +4,13 @@ pub trait Protocol: Send + Sync + 'static {
 
     const ENDPOINT: &'static str;
 
-    fn encode(&self, command: &Self::Command) -> Result<String>;
+    fn encode(
+        &self,
+        command: &Self::Command,
+    ) -> Result<Vec<u8>>;
 
-    fn decode(&self, json: &str) -> Result<Self::Event>;
+    fn decode(
+        &self,
+        data: &[u8],
+    ) -> Result<Self::Event>;
 }

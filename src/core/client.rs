@@ -39,17 +39,16 @@ where
         command: &P::Command,
     ) -> Result<()> {
 
-        let json = self.protocol.encode(command)?;
+        let data = self.protocol.encode(command)?;
 
-        self.transport.send(json).await
+        self.transport.send(data).await
     }
 
     pub async fn recv(
         &mut self,
     ) -> Result<P::Event> {
+        let data = self.transport.recv().await?;
 
-        let json = self.transport.recv().await?;
-
-        self.protocol.decode(&json)
+        self.protocol.decode(&data)
     }
 }
