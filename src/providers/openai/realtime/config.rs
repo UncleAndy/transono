@@ -1,6 +1,9 @@
-use http::{HeaderMap, HeaderValue, Request};
+use http::{HeaderMap, HeaderValue};
 use http::header::AUTHORIZATION;
-use crate::core::error::{CoreError, ProtocolError, Result};
+use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+use tokio_tungstenite::tungstenite::handshake::client::Request;
+
+use crate::core::error::{ProtocolError, Result};
 
 pub struct OpenAIRealtimeConfig {
     pub api_key: String,
@@ -15,21 +18,18 @@ pub struct OpenAIRealtimeConfig {
 }
 
 impl OpenAIRealtimeConfig {
-    pub fn request(&self) -> Result<Request<()>> {
-        let mut builder = Request::builder()
-            .method("GET")
-            .uri(format!(
-                "{}?model={}",
-                self.endpoint,
-                self.model
-            ));
+    pub fn request(&self) -> Result<Request> {
+        let mut request = format!(
+            "{}?model={}",
+            self.endpoint,
+            self.model,
+        )
+            .into_client_request()
+            .map_err(|e| ProtocolError::Other(e.to_string()))?;
 
         {
-            let headers = builder
-                .headers_mut()
-                .ok_or_else(|| ProtocolError::Other(
-                    "Unable to access request headers".into()
-                ))?;
+            let headers = request
+                .headers_mut();
 
             headers.insert(
                 AUTHORIZATION,
@@ -63,8 +63,6 @@ impl OpenAIRealtimeConfig {
             headers.extend(self.headers.clone());
         }
 
-        builder
-            .body(())
-            .map_err(|e| CoreError::Protocol(ProtocolError::Http(e)))
+        Ok(request)
     }
 }
