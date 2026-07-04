@@ -1,9 +1,12 @@
 use crate::core::{
     websocket::WebSocketTransport,
-    error::{ CoreError, Result },
+    error::Result,
     provider::ProviderSession,
 };
-
+use crate::core::protocol::Protocol;
+use crate::core::transport::Transport;
+use crate::providers::openai::realtime::commands::ProtocolCommand;
+use crate::providers::openai::realtime::events::ProtocolEvent;
 use super::{
     protocol::RealtimeProtocol,
     config::OpenAIRealtimeConfig,
@@ -31,5 +34,26 @@ impl RealtimeSession {
             transport,
             protocol: RealtimeProtocol::new(),
         })
+    }
+
+    pub async fn send(
+        &mut self,
+        command: ProtocolCommand,
+    ) -> Result<()> {
+
+        let data = self.protocol.encode(&command)?;
+
+        self.transport.send(data).await?;
+
+        Ok(())
+    }
+
+    pub async fn next_event(
+        &mut self,
+    ) -> Result<ProtocolEvent> {
+
+        let data = self.transport.recv().await?;
+
+        self.protocol.decode(data)
     }
 }

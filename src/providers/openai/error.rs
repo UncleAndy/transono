@@ -1,12 +1,6 @@
-use thiserror::Error;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Error)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum OpenAiError {
-
-    #[error(transparent)]
-    Other(
-        #[from]
-        anyhow::Error,
-    ),
-
+    Other(String),
 }

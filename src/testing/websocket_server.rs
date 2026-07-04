@@ -28,7 +28,7 @@ impl WebSocketTestServer {
             loop {
                 let (stream, _) = match listener.accept().await {
                     Ok(pair) => pair,
-                    Err(err) => {
+                    Err(_) => {
                         break;
                     }
                 };

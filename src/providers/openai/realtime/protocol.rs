@@ -1,9 +1,9 @@
-use serde::Serialize;
+use serde::{Serialize};
 use crate::core::protocol::Protocol;
-use crate::core::error::Result;
+use crate::core::error::{ProtocolError, Result};
+use crate::core::transport::TransportData;
 use crate::providers::openai::realtime::commands::ProtocolCommand;
 use crate::providers::openai::realtime::events::ProtocolEvent;
-use crate::providers::openai::realtime::protocol;
 
 #[derive(Default)]
 pub struct RealtimeProtocol;
@@ -15,30 +15,42 @@ impl RealtimeProtocol {
 }
 
 impl Protocol for RealtimeProtocol {
-    type Command = ProtocolCommand<'static>;
+    type Command = ProtocolCommand;
     type Event = ProtocolEvent;
 
     const ENDPOINT: &'static str = "/v1/realtime";
 
-    fn encode(&self, command: &Self::Command) -> Result<Vec<u8>> {
-        todo!()
+    fn encode(&self, command: &Self::Command) -> Result<TransportData> {
+        let json = serde_json::to_string(command)
+            .map_err(|e| ProtocolError::Json(e))?;
+        Ok(TransportData::Text(json))
     }
 
-    fn decode(&self, data: &[u8]) -> Result<Self::Event> {
-        todo!()
+    fn decode(&self, data: TransportData) -> Result<Self::Event> {
+        match data {
+            TransportData::Text(text) => {
+                Ok(serde_json::from_str(&text)
+                    .map_err(|e| ProtocolError::Json(e))?)
+            }
+
+            TransportData::Binary(_) => {
+                Err(ProtocolError::UnexpectedBinaryData.into())
+            }
+        }
     }
 }
+
 
 #[derive(Debug, Serialize)]
 pub struct SessionUpdate {
     #[serde(rename = "type")]
     pub event_type: &'static str,
 
-    pub session: Session,
+    pub session: SessionConfig,
 }
 
 #[derive(Debug, Serialize)]
-pub struct Session {
+pub struct SessionConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "type")]
     pub session_type: Option<&'static str>,
@@ -109,48 +121,3 @@ pub enum OutputModality {
     Text,
 }
 
-impl SessionUpdate {
-    pub fn new(
-        model: impl Into<String>,
-        instructions: impl Into<String>,
-        voice: impl Into<String>,
-    ) -> Self {
-        Self {
-            event_type: "session.update",
-            session: Session {
-                session_type: Some("realtime"),
-
-                model: Some(model.into()),
-
-                instructions: Some(instructions.into()),
-
-                audio: Audio {
-                    input: Some(AudioInput {
-                        format: Some(AudioFormat {
-                            format_type: "audio/pcm",
-                            rate: 24_000,
-                        }),
-
-                        turn_detection: Some(TurnDetection {
-                            detection_type: "server_vad",
-                            prefix_padding_ms: 1000,
-                            silence_duration_ms: 100,
-                        }),
-                    }),
-
-                    output: AudioOutput {
-                        format: Some(AudioFormat {
-                            format_type: "audio/pcm",
-                            rate: 24_000,
-                        }),
-
-                        voice: Some(voice.into()),
-                    },
-                },
-
-                output_modalities: Some(vec![OutputModality::Audio]),
-                modalities: None,
-            },
-        }
-    }
-}

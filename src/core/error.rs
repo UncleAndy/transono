@@ -28,7 +28,7 @@ pub enum TransportError {
     ),
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Error)]
 pub enum ProtocolError {
     #[error("Protocol error: {0}")]
     Other(String),
@@ -41,4 +41,7 @@ pub enum ProtocolError {
 
     #[error(transparent)]
     Json(#[from] serde_json::Error),
+
+    #[error("Unexpected binary data")]
+    UnexpectedBinaryData,
 }

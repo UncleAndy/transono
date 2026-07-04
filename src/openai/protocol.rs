@@ -85,9 +85,9 @@ pub enum OutputModality {
 
 impl SessionUpdate {
     pub fn new(
-        model: impl Into<String>,
-        instructions: impl Into<String>,
-        voice: impl Into<String>,
+        _model: impl Into<String>,
+        _instructions: impl Into<String>,
+        _voice: impl Into<String>,
     ) -> Self {
         Self {
             event_type: "session.update",

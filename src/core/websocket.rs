@@ -116,4 +116,34 @@ impl Transport for WebSocketTransport {
             }
         }
     }
+
+    async fn close(&mut self) -> Result<()> {
+        self.writer
+            .send(Message::Close(None))
+            .await
+            .map_err(TransportError::from)?;
+
+        while let Some(message) = self.reader.next().await {
+            match message.map_err(TransportError::from)? {
+                Message::Close(_) => {
+                    return Ok(());
+                }
+
+                Message::Ping(data) => {
+                    self.writer
+                        .send(Message::Pong(data))
+                        .await
+                        .map_err(TransportError::from)?;
+                }
+
+                Message::Pong(_) => {}
+
+                _ => {
+                    // Игнорируем остальные сообщения во время закрытия.
+                }
+            }
+        }
+
+        Ok(())
+    }
 }

@@ -1,4 +1,5 @@
 use crate::core::error::Result;
+use crate::core::transport::TransportData;
 
 pub trait Protocol: Send + Sync + 'static {
     type Command;
@@ -9,10 +10,10 @@ pub trait Protocol: Send + Sync + 'static {
     fn encode(
         &self,
         command: &Self::Command,
-    ) -> Result<Vec<u8>>;
+    ) -> Result<TransportData>;
 
     fn decode(
         &self,
-        data: &[u8],
+        data: TransportData,
     ) -> Result<Self::Event>;
 }
