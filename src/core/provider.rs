@@ -1,14 +1,15 @@
-use std::result::Result;
 use async_trait::async_trait;
 
-pub trait ProviderSession: Send {}
+use crate::core::error::Result;
+use crate::core::session::Session;
+
+pub trait ProviderSession {}
 
 #[async_trait]
 pub trait Provider {
-    type Session: ProviderSession;
-    type Error;
+    type Session: Session;
 
     async fn create_session(
         &self,
-    ) -> Result<Self::Session, Self::Error>;
+    ) -> Result<Self::Session>;
 }

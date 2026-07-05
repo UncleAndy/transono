@@ -1,6 +1,6 @@
 use anyhow::Result;
-use tokio::sync::mpsc::Receiver;
-use crate::audio::{Audio, AudioBuffer, AudioCapture, AudioDevices, AudioPlayback, FrameConsumer, FrameProducer, RubatoResampler, FRAME_CAPACITY};
+use tokio::sync::mpsc;
+use crate::audio::{Audio, AudioBuffer, AudioCapture, AudioDevices, AudioPipeline, AudioPlayback, FrameConsumer, FrameProducer, RubatoResampler, FRAME_CAPACITY};
 use crate::core::provider::Provider;
 use crate::providers::openai::realtime::{
     OpenAIRealtimeConfig,
@@ -19,7 +19,7 @@ use cpal::{
     traits::{DeviceTrait, StreamTrait},
     BufferSize, Device, SampleFormat, Stream, StreamConfig,
 };
-use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
 use crate::providers::openai::realtime::events::ProtocolEvent;
 use crate::runtime::LineState;
 
@@ -32,14 +32,14 @@ pub struct TranslationLine<P: Provider> {
     capture: AudioCapture,
     playback: AudioPlayback,
 
-    capture_rx: FrameConsumer,
-    playback_tx: FrameProducer,
+    input_pipeline: AudioPipeline,
+    output_pipeline: AudioPipeline,
 
     audio_tx: mpsc::Sender<Audio>,
     audio_rx: Option<mpsc::Receiver<Audio>>,
 
-    capture_thread: Option<std::thread::JoinHandle<()>>,
-    session_task: Option<tokio::task::JoinHandle<Result<()>>>,
+    capture_thread: Option<JoinHandle<()>>,
+    session_task: Option<JoinHandle<Result<()>>>,
 
     state: LineState,
 }
@@ -162,7 +162,7 @@ impl<P: Provider> TranslationLine<P> {
 
 fn capture_forwarder(
     mut capture: FrameConsumer,
-    tx: mpsc::Sender<Audio>,
+    tx: Sender<Audio>,
 ) {
     loop {
         if tx.is_closed() {

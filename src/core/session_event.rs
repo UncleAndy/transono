@@ -1,12 +1,19 @@
+use crate::audio::Audio;
+
 pub enum SessionEvent {
-    Audio(Vec<i16>),
+    /// Очередная порция аудио.
+    Audio(Audio),
 
-    SpeechStarted,
+    /// Провайдер начал принимать/обрабатывать новый пользовательский запрос
+    RequestStarted,
 
-    SpeechStopped,
+    /// Пользовательский запрос полностью получен (ввод завершён)
+    RequestFinished,
 
+    /// Началась генерация ответа
     ResponseStarted,
 
+    /// Ответ полностью сформирован и передан
     ResponseFinished,
 
     Error(anyhow::Error),
