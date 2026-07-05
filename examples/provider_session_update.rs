@@ -6,7 +6,7 @@ use realtime_translator::core::provider::Provider;
 use realtime_translator::providers::openai::realtime::{
     config::OpenAIRealtimeConfig,
     provider::OpenAIRealtimeProvider,
-    protocol::SessionUpdate,
+    commands::SessionUpdate,
 };
 
 

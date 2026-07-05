@@ -1,6 +1,13 @@
 use serde::{*};
 
-use crate::providers::openai::realtime::protocol::{Audio, AudioFormat, AudioInput, AudioOutput, OutputModality, SessionConfig, SessionUpdate, TurnDetection};
+use crate::providers::openai::realtime::protocol::{
+    Audio,
+    AudioFormat,
+    AudioInput,
+    AudioOutput,
+    OutputModality,
+    SessionConfig,
+    TurnDetection};
 
 #[derive(Debug, Serialize)]
 #[serde(untagged)]
@@ -14,6 +21,14 @@ pub enum ProtocolCommand {
     ResponseCreate(ResponseCreate),
 
     ResponseCancel(ResponseCancel),
+}
+
+#[derive(Debug, Serialize)]
+pub struct SessionUpdate {
+    #[serde(rename = "type")]
+    pub event_type: &'static str,
+
+    pub session: SessionConfig,
 }
 
 impl SessionUpdate {
@@ -38,11 +53,14 @@ impl SessionUpdate {
                             rate: 24_000,
                         }),
 
+                        /*
                         turn_detection: Some(TurnDetection {
                             detection_type: "server_vad",
                             prefix_padding_ms: 1000,
                             silence_duration_ms: 100,
                         }),
+                         */
+                        turn_detection: None,
                     }),
 
                     output: AudioOutput {

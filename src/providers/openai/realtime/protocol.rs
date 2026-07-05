@@ -40,15 +40,6 @@ impl Protocol for RealtimeProtocol {
     }
 }
 
-
-#[derive(Debug, Serialize)]
-pub struct SessionUpdate {
-    #[serde(rename = "type")]
-    pub event_type: &'static str,
-
-    pub session: SessionConfig,
-}
-
 #[derive(Debug, Serialize)]
 pub struct SessionConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -83,7 +74,6 @@ pub struct AudioInput {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub format: Option<AudioFormat>,
 
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub turn_detection: Option<TurnDetection>,
 }
 
