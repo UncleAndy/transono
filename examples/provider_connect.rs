@@ -7,6 +7,7 @@ use realtime_translator::providers::openai::realtime::{
     config::OpenAIRealtimeConfig,
     provider::OpenAIRealtimeProvider,
 };
+use realtime_translator::providers::openai::realtime::config::TurnMode;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -24,6 +25,12 @@ async fn main() -> Result<()> {
         project: None,
 
         headers: Default::default(),
+
+        turn_mode: TurnMode::Manual,
+
+        instructions: Some("Ты - собеседник для ведения интересных разговоров.".to_string()),
+
+        voice: Some("cedar".to_string()),
     };
 
     let provider = OpenAIRealtimeProvider::new(config);

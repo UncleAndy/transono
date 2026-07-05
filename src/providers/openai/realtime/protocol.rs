@@ -56,9 +56,6 @@ pub struct SessionConfig {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub output_modalities: Option<Vec<OutputModality>>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub modalities: Option<Vec<OutputModality>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -94,6 +91,15 @@ pub struct AudioFormat {
     pub rate: u32,
 }
 
+impl AudioFormat {
+    pub fn pcm_24khz() -> Self {
+        Self {
+            format_type: "audio/pcm",
+            rate: 24_000,
+        }
+    }
+}
+
 #[derive(Debug, Serialize)]
 pub struct TurnDetection {
     #[serde(rename = "type")]
@@ -102,6 +108,16 @@ pub struct TurnDetection {
     pub prefix_padding_ms: u32,
 
     pub silence_duration_ms: u32,
+}
+
+impl TurnDetection {
+    pub fn server_vad() -> Self {
+        Self {
+            detection_type: "server_vad",
+            prefix_padding_ms: 300,
+            silence_duration_ms: 200,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]

@@ -40,6 +40,9 @@ pub enum ProtocolError {
     InvalidHeaderValue(#[from] http::header::InvalidHeaderValue),
 
     #[error(transparent)]
+    InvalidHeaderName(#[from] http::header::InvalidHeaderName),
+
+    #[error(transparent)]
     Json(#[from] serde_json::Error),
 
     #[error("Unexpected binary data")]

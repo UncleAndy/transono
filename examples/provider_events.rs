@@ -8,7 +8,7 @@ use realtime_translator::providers::openai::realtime::{
     provider::OpenAIRealtimeProvider,
     commands::SessionUpdate,
 };
-
+use realtime_translator::providers::openai::realtime::config::TurnMode;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -25,11 +25,17 @@ async fn main() -> Result<()> {
         project: None,
 
         headers: Default::default(),
+
+        turn_mode: TurnMode::Manual,
+
+        instructions: Some("Ты - собеседник для ведения интересных разговоров.".to_string()),
+
+        voice: Some("cedar".to_string()),
     };
 
     println!("Creating provider...");
 
-    let provider = OpenAIRealtimeProvider::new(config);
+    let provider = OpenAIRealtimeProvider::new(config.clone());
 
     println!("Opening session...");
 
@@ -37,11 +43,7 @@ async fn main() -> Result<()> {
 
     println!("Sending SessionUpdate...");
 
-    let update = SessionUpdate::new(
-        "gpt-realtime-translate",
-        "You are a realtime translator.",
-        "cedar",
-    );
+    let update = SessionUpdate::new(config.session());
 
     session.send(update).await?;
 

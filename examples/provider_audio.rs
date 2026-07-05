@@ -20,6 +20,7 @@ use realtime_translator::{
     providers::openai::realtime::provider::OpenAIRealtimeProvider,
     providers::openai::realtime::events::ProtocolEvent,
 };
+use realtime_translator::providers::openai::realtime::config::TurnMode;
 
 const CHUNK_SIZE: usize = 16 * 1024;
 
@@ -31,18 +32,24 @@ async fn main() -> Result<()> {
 
     println!("Creating provider...");
 
-    let provider = OpenAIRealtimeProvider::new(
-        OpenAIRealtimeConfig {
-            api_key,
-            model: "gpt-realtime".into(),
-            endpoint: "wss://api.openai.com/v1/realtime".into(),
+    let config = OpenAIRealtimeConfig {
+        api_key,
+        model: "gpt-realtime".into(),
+        endpoint: "wss://api.openai.com/v1/realtime".into(),
 
-            organization: None,
-            project: None,
+        organization: None,
+        project: None,
 
-            headers: Default::default(),
-        }
-    );
+        headers: Default::default(),
+
+        turn_mode: TurnMode::Manual,
+
+        instructions: Some("Ты - собеседник для ведения интересных разговоров.".to_string()),
+
+        voice: Some("cedar".to_string()),
+    };
+
+    let provider = OpenAIRealtimeProvider::new(config.clone());
 
     println!("Opening session...");
 
@@ -51,11 +58,7 @@ async fn main() -> Result<()> {
     println!("Updating session...");
 
     session.send(
-        SessionUpdate::new(
-            "gpt-realtime",
-            "You are a realtime translator.",
-            "cedar",
-        )
+        SessionUpdate::new(config.session())
     ).await?;
 
     //
