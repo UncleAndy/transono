@@ -21,6 +21,7 @@ use realtime_translator::audio::{
     base64_to_pcm16,
     pcm16_to_base64,
 };
+use realtime_translator::core::session::Session;
 use realtime_translator::providers::openai::realtime::commands::{
     InputAudioBufferAppend,
 };

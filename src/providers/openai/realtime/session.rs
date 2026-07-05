@@ -20,6 +20,8 @@ use crate::providers::openai::realtime::events::ProtocolEvent;
 use super::{protocol::RealtimeProtocol, config::OpenAIRealtimeConfig, InputAudioBufferAppend};
 
 pub struct RealtimeSession {
+    closed: bool,
+
     pub codec: PcmCodec,
 
     transport: WebSocketTransport,
@@ -39,6 +41,7 @@ impl RealtimeSession {
                 .await?;
 
         Ok(Self {
+            closed: false,
             transport,
             protocol: RealtimeProtocol::new(),
             codec: PcmCodec::new(
@@ -129,6 +132,10 @@ impl Session for RealtimeSession {
         &mut self,
         audio: Audio,
     ) -> Result<()> {
+        if self.closed {
+            return Err(CoreError::Other(anyhow::Error::msg("session closed")))
+        }
+
         let encoded =
             self.codec.encode(&audio)?;
 
@@ -150,6 +157,10 @@ impl Session for RealtimeSession {
     async fn next_event(
         &mut self,
     ) -> Result<SessionEvent> {
+        if self.closed {
+            return Err(CoreError::Other(anyhow::Error::msg("session closed")))
+        }
+
         loop {
             let data = self.transport.recv().await?;
 
@@ -162,6 +173,13 @@ impl Session for RealtimeSession {
     }
 
     async fn close(&mut self) -> Result<()> {
-        todo!()
+        if self.closed {
+            return Err(CoreError::Other(anyhow::Error::msg("session closed")))
+        }
+
+        self.closed = true;
+
+        let _ = self.transport.close().await;
+        Ok(())
     }
 }
