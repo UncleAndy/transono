@@ -2,6 +2,10 @@
 
 ## Purpose
 
+Runtime coordinates components. Components perform the work.
+
+The Runtime owns the lifecycle, not the business logic.
+
 The Runtime is responsible for executing and coordinating long-lived realtime components.
 
 It owns their lifecycle, connects them together, and provides graceful startup and shutdown.
