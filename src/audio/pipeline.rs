@@ -1,6 +1,6 @@
 use crate::audio::processor::AudioProcessor;
 use anyhow::Result;
-use crate::audio::Audio;
+use crate::audio::{Audio, AudioFormat, RubatoResampler};
 
 pub struct AudioPipeline {
     processors: Vec<Box<dyn AudioProcessor>>,
@@ -42,6 +42,63 @@ impl AudioPipeline {
 
     pub fn clear(&mut self) {
         self.processors.clear()
+    }
+
+    pub fn prepare_input(
+        &mut self,
+        from: &AudioFormat,
+        to: &AudioFormat,
+    ) -> Result<()> {
+        self.clear();
+
+        todo!();
+
+        Ok(())
+    }
+
+    pub fn prepare_output(
+        &mut self,
+        from: &AudioFormat,
+        to: &AudioFormat,
+    ) -> Result<()> {
+        self.clear();
+
+        todo!();
+
+        Ok(())
+    }
+
+    pub fn prepare(
+        &mut self,
+        from: &AudioFormat,
+        to: &AudioFormat,
+    ) -> Result<()> {
+
+        self.clear();
+
+        if from.channels != to.channels {
+            self.add(ChannelConverter::new(
+                from.channels,
+                to.channels,
+            ));
+        }
+
+        if from.sample_rate != to.sample_rate {
+            self.add(RubatoResampler::new(
+                from.sample_rate,
+                to.sample_rate,
+                to.channels,
+            )?);
+        }
+
+        if from.sample_format != to.sample_format {
+            self.add(SampleConverter::new(
+                from.sample_format,
+                to.sample_format,
+            ));
+        }
+
+        Ok(())
     }
 }
 

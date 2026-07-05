@@ -46,7 +46,7 @@ impl AudioCodec for PcmCodec {
             AudioEncoding::Pcm {
                 endianness: self.endianness,
             },
-            audio.bytes().clone(),
+            audio.buffer().clone(),
         ))
     }
 

@@ -16,6 +16,13 @@ pub enum CoreError {
     Other(#[from] anyhow::Error),
 }
 
+impl From<&str> for CoreError {
+    fn from(err: &str) -> Self {
+        let msg = err.to_string();
+        CoreError::Other(anyhow::Error::msg(msg))
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum TransportError {
     #[error("connection closed")]

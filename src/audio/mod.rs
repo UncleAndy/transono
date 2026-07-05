@@ -14,6 +14,7 @@ pub mod rubato_resampler;
 pub mod convert;
 pub mod audio;
 pub mod pcm_codec;
+pub mod processors;
 
 pub use capture::*;
 pub use device::*;

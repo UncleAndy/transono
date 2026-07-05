@@ -1,39 +1,70 @@
+use std::fmt;
+use std::fmt::{Debug, Formatter};
 use bytes::Bytes;
 use cpal::SampleFormat;
-use bytemuck;
+use symphonia::core::audio::GenericAudioBuffer;
 
 /// Universal audio container.
-#[derive(Debug, Clone)]
 pub struct Audio {
     format: AudioFormat,
-    data: Bytes,
+    buffer: GenericAudioBuffer,
 }
 
 impl Audio {
     pub fn new(
         format: AudioFormat,
-        data: Bytes,
+        buffer: GenericAudioBuffer,
     ) -> Self {
+        debug_assert_eq!(
+            format.channels as usize,
+            buffer.spec().channels().count(),
+        );
+        debug_assert_eq!(
+            format.sample_rate,
+            buffer.spec().rate(),
+        );
+
         Self {
             format,
-            data,
+            buffer,
         }
-    }
-
-    pub fn view<T: bytemuck::Pod>(
-        &self,
-    ) -> Result<&[T], bytemuck::PodCastError> {
-
-        Ok(bytemuck::try_cast_slice(
-            self.bytes()
-        )?)
     }
 
     pub fn format(&self) -> &AudioFormat {
         &self.format
     }
-    pub fn bytes(&self) -> &Bytes {
-        &self.data
+    pub fn buffer(&self) -> &GenericAudioBuffer {
+        &self.buffer
+    }
+    pub fn buffer_mut(&mut self) -> &mut GenericAudioBuffer {
+        &mut self.buffer
+    }
+    pub fn replace(
+        &mut self,
+        format: AudioFormat,
+        buffer: GenericAudioBuffer,
+    ) {
+        debug_assert_eq!(
+            format.channels as usize,
+            buffer.spec().channels().count(),
+        );
+        debug_assert_eq!(
+            format.sample_rate,
+            buffer.spec().rate(),
+        );
+
+        self.format = format;
+        self.buffer = buffer;
+    }
+}
+
+impl Debug for Audio {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Audio")
+            .field("format", &self.format)
+            .field("sample_format", &self.format.sample_format)
+            .field("frames", &self.buffer.frames())
+            .finish()
     }
 }
 
