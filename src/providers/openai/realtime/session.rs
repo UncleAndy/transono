@@ -23,11 +23,14 @@ impl RealtimeSession {
     pub async fn connect(
         config: &OpenAIRealtimeConfig,
     ) -> Result<Self> {
+        println!("DBG");
+
+        let request = config.request()?;
+
+        println!("{:#?}", request);
 
         let transport =
-            WebSocketTransport::connect(
-                config.request()?,
-            )
+            WebSocketTransport::connect(request)
                 .await?;
 
         Ok(Self {

@@ -5,10 +5,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use rtrb::{Consumer, Producer, RingBuffer};
 
-use crate::audio::{
-    frame::{AudioFrame, FrameId},
-    frame_pool::FramePool,
-};
+use crate::audio::{frame::{AudioFrame, FrameId}, frame_pool::FramePool, FRAME_CAPACITY};
 
 pub struct FrameProducer {
     pool: Arc<FramePool>,
@@ -85,8 +82,13 @@ impl FrameProducer {
             return false;
         };
 
-        assert!(self.write(id, data), "frame too large");
-
+        if !self.write(id, data) {
+            panic!(
+                "frame too large: {} samples (capacity {})",
+                data.len(),
+                FRAME_CAPACITY
+            );
+        }
         self.commit(id).expect("filled queue overflow");
 
         true

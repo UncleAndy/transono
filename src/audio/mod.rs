@@ -11,3 +11,17 @@ pub mod simple_resampler;
 
 pub mod resampler;
 pub mod rubato_resampler;
+pub mod convert;
+
+pub use capture::*;
+pub use device::*;
+pub use audio_buffer::*;
+pub use frame::*;
+pub use frame_pool::*;
+pub use pipeline::*;
+pub use playback::*;
+pub use processor::*;
+pub use simple_resampler::*;
+pub use resampler::*;
+pub use rubato_resampler::*;
+pub use convert::*;

@@ -1,14 +1,16 @@
 use std::collections::HashMap;
+use std::env;
+use anyhow::anyhow;
 use http::{HeaderName, HeaderValue};
 use http::header::AUTHORIZATION;
 use serde::{Deserialize, Serialize};
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::handshake::client::Request;
 
-use crate::core::error::{ProtocolError, Result};
+use crate::core::error::{CoreError, ProtocolError, Result};
 use crate::providers::openai::realtime::protocol::{Audio, AudioFormat, AudioInput, AudioOutput, OutputModality, SessionConfig, TurnDetection};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct OpenAIRealtimeConfig {
     pub api_key: String,
     pub model: String,
@@ -26,7 +28,49 @@ pub struct OpenAIRealtimeConfig {
 }
 
 impl OpenAIRealtimeConfig {
+    pub fn from_env() -> Result<Self> {
+        let mut cfg = Self {
+            model: "gpt-realtime".to_string(),
+            endpoint: "wss://api.openai.com/v1/realtime".to_string(),
+            turn_mode: TurnMode::ServerVad,
+            ..Self::default()
+        };
+
+        cfg.api_key = match env::var("OPENAI_API_KEY") {
+            Ok(key) => key,
+            Err(_) => return Err(CoreError::Other(anyhow!("OPENAI_API_KEY environment variable required!"))),
+        };
+
+        cfg.endpoint = "wss://api.openai.com/v1/realtime".to_string();
+
+        Ok(cfg)
+    }
+
+    pub fn with_model(&mut self, model: &str) -> &mut Self {
+        self.model = model.to_string();
+        self
+    }
+
+    pub fn with_voice(&mut self, voice: &str) -> &mut Self {
+        self.voice = Some(voice.to_string());
+        self
+    }
+
+    pub fn with_turn_mode (&mut self, mode: TurnMode) -> &mut Self {
+        self.turn_mode = mode;
+        self
+    }
+
+    pub fn with_instructions(&mut self, instructions: &str) -> &mut Self {
+        self.instructions = Some(instructions.to_string());
+        self
+    }
+}
+
+impl OpenAIRealtimeConfig {
     pub(crate) fn request(&self) -> Result<Request> {
+        println!("DBG0: {:?}", &self);
+
         let mut request = format!(
             "{}?model={}",
             self.endpoint,
@@ -35,7 +79,11 @@ impl OpenAIRealtimeConfig {
             .into_client_request()
             .map_err(|e| ProtocolError::Other(e.to_string()))?;
 
+        println!("DBG0.1");
+
         {
+            println!("DBG1");
+
             let headers = request
                 .headers_mut();
 
@@ -47,6 +95,8 @@ impl OpenAIRealtimeConfig {
                     .map_err(|e| ProtocolError::InvalidHeaderValue(e))?,
             );
 
+            println!("DBG2");
+
             if let Some(org) = &self.organization {
                 headers.insert(
                     "OpenAI-Organization",
@@ -54,6 +104,8 @@ impl OpenAIRealtimeConfig {
                         .map_err(|e| ProtocolError::InvalidHeaderValue(e))?,
                 );
             }
+
+            println!("DBG3");
 
             if let Some(project) = &self.project {
                 headers.insert(
@@ -63,7 +115,10 @@ impl OpenAIRealtimeConfig {
                 );
             }
 
+            println!("DBG4");
+
             for (name, value) in &self.headers {
+                println!("DBG5: {} : {}", name, value);
                 headers.insert(
                     HeaderName::from_bytes(name.as_bytes())
                         .map_err(|e| ProtocolError::InvalidHeaderName(e))?,
@@ -101,9 +156,11 @@ impl OpenAIRealtimeConfig {
     }
 }
 
-#[derive(Debug,Clone, Serialize, Deserialize)]
+#[derive(Debug,Clone, Serialize, Deserialize, Default)]
 pub enum TurnMode {
     Manual,
+
+    #[default]
     ServerVad,
 }
 
