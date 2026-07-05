@@ -20,7 +20,6 @@ impl OpenAIRealtimeProvider {
 #[async_trait::async_trait]
 impl Provider for OpenAIRealtimeProvider {
     type Session = RealtimeSession;
-    type Error = crate::core::error::CoreError;
 
     async fn create_session(
         &self,

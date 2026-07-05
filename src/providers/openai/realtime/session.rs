@@ -1,18 +1,23 @@
-use crate::audio::{Audio, AudioCodec};
+use base64::Engine;
+use base64::prelude::BASE64_STANDARD;
+use cpal::SampleFormat;
+use futures_util::SinkExt;
+use async_trait::async_trait;
+
+use crate::audio::{Audio, AudioCodec, AudioEncoding, AudioFormat, EncodedAudio, Endianness, PcmCodec};
 use crate::core::{
     websocket::WebSocketTransport,
     error::Result,
     provider::ProviderSession,
 };
+use crate::core::error::CoreError;
 use crate::core::protocol::Protocol;
 use crate::core::session::Session;
+use crate::core::session_event::SessionEvent;
 use crate::core::transport::Transport;
 use crate::providers::openai::realtime::commands::ProtocolCommand;
 use crate::providers::openai::realtime::events::ProtocolEvent;
-use super::{
-    protocol::RealtimeProtocol,
-    config::OpenAIRealtimeConfig,
-};
+use super::{protocol::RealtimeProtocol, config::OpenAIRealtimeConfig, InputAudioBufferAppend};
 
 pub struct RealtimeSession {
     pub codec: PcmCodec,
@@ -46,35 +51,117 @@ impl RealtimeSession {
             ),
         })
     }
+
+    async fn send(
+        &mut self,
+        command: ProtocolCommand,
+    ) -> Result<()>
+    {
+        let data = self.protocol.encode(&command)?;
+
+        self.transport.send(data).await
+    }
+
+    fn map_audio(
+        &mut self,
+        delta: String,
+    ) -> Result<SessionEvent> {
+        let bytes = BASE64_STANDARD.decode(delta)
+            .map_err(|e| CoreError::Other(anyhow::Error::from(e)))?;
+
+        let encoded = EncodedAudio::new(
+            AudioEncoding::Pcm {
+                endianness: Endianness::Little,
+            },
+            bytes.into(),
+        );
+
+        let audio = self.codec.decode(&encoded)?;
+
+        Ok(SessionEvent::Audio(audio))
+    }
+
+    fn map_event(
+        &mut self,
+        event: ProtocolEvent,
+    ) -> Result<Option<SessionEvent>> {
+        match event {
+            ProtocolEvent::SessionCreated { .. } => {
+                Ok(None)
+            }
+            ProtocolEvent::SessionUpdated { .. } => {
+                Ok(None)
+            }
+            ProtocolEvent::ResponseOutputAudioDelta { delta } => {
+                Ok(Some(self.map_audio(delta)?))
+            }
+            ProtocolEvent::ResponseOutputAudioDone => {
+                Ok(None)
+            }
+            ProtocolEvent::ResponseDone => {
+                Ok(Some(SessionEvent::ResponseFinished))
+            }
+            ProtocolEvent::InputAudioBufferSpeechStarted => {
+                Ok(Some(SessionEvent::RequestStarted))
+            }
+            ProtocolEvent::InputAudioBufferSpeechStopped => {
+                Ok(Some(SessionEvent::RequestFinished))
+            }
+            ProtocolEvent::InputAudioBufferCommitted => {
+                Ok(None)
+            }
+            ProtocolEvent::ResponseCreated => {
+                Ok(Some(SessionEvent::ResponseStarted))
+            }
+            ProtocolEvent::Error { .. } => {
+                Ok(None)
+            }
+            ProtocolEvent::Unknown => {
+                Ok(None)
+            }
+        }
+    }
 }
 
+#[async_trait]
 impl Session for RealtimeSession {
     async fn send_audio(
         &mut self,
         audio: Audio,
     ) -> Result<()> {
-
         let encoded =
-            self.codec.encode(audio)?;
+            self.codec.encode(&audio)?;
 
         let base64 =
-            BASE64_STANDARD.encode(encoded.data());
+            BASE64_STANDARD.encode(encoded.bytes());
 
         self.send(
-            InputAudioBufferAppend {
-                audio: base64,
-            }
+            ProtocolCommand::InputAudioBufferAppend(
+                InputAudioBufferAppend {
+                    event_type: "input_audio_buffer.append",
+                    audio: base64,
+                }
+            )
         ).await?;
 
         Ok(())
     }
 
-    pub async fn next_event(
+    async fn next_event(
         &mut self,
-    ) -> Result<ProtocolEvent> {
+    ) -> Result<SessionEvent> {
+        loop {
+            let data = self.transport.recv().await?;
 
-        let data = self.transport.recv().await?;
+            let event = self.protocol.decode(data)?;
 
-        self.protocol.decode(data)
+            if let Some(event) = self.map_event(event)? {
+                return Ok(event);
+            }
+        }
+    }
+
+    async fn close(&mut self) -> Result<()> {
+        todo!()
     }
 }

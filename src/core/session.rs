@@ -1,7 +1,7 @@
-use anyhow::Result;
 use async_trait::async_trait;
 
 use crate::audio::Audio;
+use crate::core::error::Result;
 use crate::core::session_event::SessionEvent;
 
 #[async_trait]

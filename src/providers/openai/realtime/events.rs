@@ -18,11 +18,6 @@ pub enum ProtocolEvent {
         delta: String,
     },
 
-    #[serde(rename = "session.output_audio.delta")]
-    SessionOutputAudioDelta {
-        delta: String,
-    },
-
     #[serde(rename = "response.output_audio.done")]
     ResponseOutputAudioDone,
 
