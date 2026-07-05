@@ -39,11 +39,6 @@ impl OpenAIRealtimeConfig {
                     .map_err(|e| ProtocolError::InvalidHeaderValue(e))?,
             );
 
-            headers.insert(
-                "OpenAI-Beta",
-                HeaderValue::from_static("realtime=v1"),
-            );
-
             if let Some(org) = &self.organization {
                 headers.insert(
                     "OpenAI-Organization",

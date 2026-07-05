@@ -3,6 +3,7 @@ use serde::{*};
 use crate::providers::openai::realtime::protocol::{Audio, AudioFormat, AudioInput, AudioOutput, OutputModality, SessionConfig, SessionUpdate, TurnDetection};
 
 #[derive(Debug, Serialize)]
+#[serde(untagged)]
 pub enum ProtocolCommand {
     SessionUpdate(SessionUpdate),
 
