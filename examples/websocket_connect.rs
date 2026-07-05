@@ -1,12 +1,10 @@
 use futures_util::{SinkExt, StreamExt};
-use http::Request;
 
-use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 
 use realtime_translator::{
     core::{
-        transport::{Transport, TransportData},
+        transport::Transport,
         websocket::WebSocketTransport,
     },
     testing::websocket_server::WebSocketTestServer,

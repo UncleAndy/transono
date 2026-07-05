@@ -9,7 +9,7 @@ pub mod playback;
 pub mod processor;
 pub mod simple_resampler;
 
-pub mod resampler;
+pub mod sample_buffer;
 pub mod rubato_resampler;
 pub mod convert;
 
@@ -22,6 +22,6 @@ pub use pipeline::*;
 pub use playback::*;
 pub use processor::*;
 pub use simple_resampler::*;
-pub use resampler::*;
+pub use sample_buffer::*;
 pub use rubato_resampler::*;
 pub use convert::*;

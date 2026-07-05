@@ -6,7 +6,7 @@ use rubato::{
     Fft, FixedSync, Resampler,
 };
 
-use crate::audio::resampler::buffer::SampleBuffer;
+use crate::audio::SampleBuffer;
 
 const INPUT_RATE: usize = 48_000;
 const OUTPUT_RATE: usize = 24_000;
