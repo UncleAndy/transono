@@ -9,6 +9,15 @@ pub struct Audio {
 }
 
 impl Audio {
+    pub fn new(
+        format: AudioFormat,
+        data: Bytes,
+    ) -> Self {
+        Self {
+            format,
+            data,
+        }
+    }
     pub fn format(&self) -> &AudioFormat {
         &self.format
     }
@@ -19,8 +28,24 @@ impl Audio {
 
 #[derive(Debug, Clone)]
 pub struct EncodedAudio {
-    pub encoding: AudioEncoding,
-    pub data: Bytes,
+    encoding: AudioEncoding,
+    data: Bytes,
+}
+
+impl EncodedAudio {
+    pub(crate) fn new(encoding: AudioEncoding, data: Bytes) -> EncodedAudio {
+        Self {
+            encoding,
+            data,
+        }
+    }
+
+    pub fn encoding(&self) -> &AudioEncoding {
+        &self.encoding
+    }
+    pub fn bytes(&self) -> &Bytes {
+        &self.data
+    }
 }
 
 /// Byte order for PCM encoded audio.

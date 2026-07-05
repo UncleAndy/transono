@@ -1,9 +1,11 @@
+use crate::audio::{Audio, AudioCodec};
 use crate::core::{
     websocket::WebSocketTransport,
     error::Result,
     provider::ProviderSession,
 };
 use crate::core::protocol::Protocol;
+use crate::core::session::Session;
 use crate::core::transport::Transport;
 use crate::providers::openai::realtime::commands::ProtocolCommand;
 use crate::providers::openai::realtime::events::ProtocolEvent;
@@ -13,6 +15,8 @@ use super::{
 };
 
 pub struct RealtimeSession {
+    pub codec: PcmCodec,
+
     transport: WebSocketTransport,
     protocol: RealtimeProtocol,
 }
@@ -23,11 +27,7 @@ impl RealtimeSession {
     pub async fn connect(
         config: &OpenAIRealtimeConfig,
     ) -> Result<Self> {
-        println!("DBG");
-
         let request = config.request()?;
-
-        println!("{:#?}", request);
 
         let transport =
             WebSocketTransport::connect(request)
@@ -36,17 +36,35 @@ impl RealtimeSession {
         Ok(Self {
             transport,
             protocol: RealtimeProtocol::new(),
+            codec: PcmCodec::new(
+                AudioFormat {
+                    sample_rate: 24_000,
+                    channels: 1,
+                    sample_format: SampleFormat::I16,
+                },
+                Endianness::Little,
+            ),
         })
     }
+}
 
-    pub async fn send(
+impl Session for RealtimeSession {
+    async fn send_audio(
         &mut self,
-        command: ProtocolCommand,
+        audio: Audio,
     ) -> Result<()> {
 
-        let data = self.protocol.encode(&command)?;
+        let encoded =
+            self.codec.encode(audio)?;
 
-        self.transport.send(data).await?;
+        let base64 =
+            BASE64_STANDARD.encode(encoded.data());
+
+        self.send(
+            InputAudioBufferAppend {
+                audio: base64,
+            }
+        ).await?;
 
         Ok(())
     }

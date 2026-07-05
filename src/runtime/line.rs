@@ -1,27 +1,15 @@
 use anyhow::Result;
 use tokio::sync::mpsc;
+use cpal::Device;
+use tokio::task::JoinHandle;
+
+use crate::runtime::LineState;
 use crate::audio::{Audio, AudioBuffer, AudioCapture, AudioDevices, AudioPipeline, AudioPlayback, FrameConsumer, FrameProducer, RubatoResampler, FRAME_CAPACITY};
 use crate::core::provider::Provider;
-use crate::providers::openai::realtime::{
-    OpenAIRealtimeConfig,
-    OpenAIRealtimeProvider,
-    RealtimeSession,
-    TurnMode,
-};
 use crate::audio::{
     base64_to_pcm16,
     pcm16_to_base64,
 };
-use crate::providers::openai::realtime::commands::{
-    InputAudioBufferAppend,
-};
-use cpal::{
-    traits::{DeviceTrait, StreamTrait},
-    BufferSize, Device, SampleFormat, Stream, StreamConfig,
-};
-use tokio::task::JoinHandle;
-use crate::providers::openai::realtime::events::ProtocolEvent;
-use crate::runtime::LineState;
 
 const CAPTURE_BUFFER_SIZE: usize = 256;
 const PLAYBACK_BUFFER_SIZE: usize = 256;
