@@ -13,14 +13,24 @@
 
 - [x] Provider architecture
 - [x] OpenAI connection
-- [ ] Session commands
-- [ ] Provider events
-- [ ] First realtime interaction
+- [x] Session commands
+- [x] Provider events
+- [x] First realtime interaction
 
 ---
 
-## ⏳ v0.3.0
+## 🚧 v0.3.0
+
+- [ ] TranslationLine
+- [ ] Runtime
+- [ ] Cancellation
+- [ ] AudioPipeline
+- [ ] Public Builder API
+
+---
+
+## ⏳ v0.4.0
 
 - TranslationBridge
-- TranslationLine
-- Runtime
+- Multiple providers
+- Tool support
