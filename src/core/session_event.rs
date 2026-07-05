@@ -15,6 +15,4 @@ pub enum SessionEvent {
 
     /// Ответ полностью сформирован и передан
     ResponseFinished,
-
-    Error(anyhow::Error),
 }

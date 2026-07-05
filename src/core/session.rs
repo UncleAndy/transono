@@ -5,7 +5,7 @@ use crate::audio::Audio;
 use crate::core::session_event::SessionEvent;
 
 #[async_trait]
-pub trait Session: Send {
+pub trait Session: Send + Sync {
     async fn send_audio(
         &mut self,
         audio: Audio,

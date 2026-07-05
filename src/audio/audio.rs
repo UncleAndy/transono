@@ -4,10 +4,20 @@ use cpal::SampleFormat;
 /// Universal audio container.
 #[derive(Debug, Clone)]
 pub struct Audio {
-    pub format: AudioFormat,
-    pub data: Bytes,
+    format: AudioFormat,
+    data: Bytes,
 }
 
+impl Audio {
+    pub fn format(&self) -> &AudioFormat {
+        &self.format
+    }
+    pub fn bytes(&self) -> &Bytes {
+        &self.data
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct EncodedAudio {
     pub encoding: AudioEncoding,
     pub data: Bytes,
@@ -21,7 +31,7 @@ pub enum Endianness {
 }
 
 /// Audio sample layout.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct AudioFormat {
     /// Samples per second.
     pub sample_rate: u32,

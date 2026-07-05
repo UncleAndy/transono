@@ -35,6 +35,14 @@ impl AudioPipeline {
 
         Ok(audio)
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.processors.is_empty()
+    }
+
+    pub fn clear(&mut self) {
+        self.processors.clear()
+    }
 }
 
 impl Default for AudioPipeline {
