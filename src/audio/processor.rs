@@ -1,10 +1,19 @@
-use anyhow::Result;
+use crate::core::error::Result;
+use crate::audio::Audio;
 
 /// Любой обработчик аудиопотока.
 pub trait AudioProcessor: Send {
-    /// Отправляет очередную порцию аудио процессору.
-    fn push_audio(&mut self, input: &[i16]) -> Result<()>;
+    /// Обрабатывает порцию аудиоданных
+    fn process(&mut self, input: Audio) -> Result<Audio>;
+}
 
-    /// Возвращает очередной готовый аудиочанк.
-    fn poll_audio(&mut self) -> Result<Option<Vec<i16>>>;
+pub struct IdentityProcessor;
+
+impl AudioProcessor for IdentityProcessor {
+    fn process(
+        &mut self,
+        audio: Audio,
+    ) -> Result<Audio> {
+        Ok(audio)
+    }
 }

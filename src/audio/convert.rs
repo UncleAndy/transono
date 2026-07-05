@@ -2,6 +2,31 @@ use base64::{
     engine::general_purpose::STANDARD,
     Engine
 };
+use bytes::Bytes;
+use crate::audio::{Audio, AudioEncoding, AudioFormat};
+
+pub trait AudioCodec: Send + Sync {
+    fn encoding(&self) -> AudioEncoding;
+
+    fn encode(
+        &self,
+        audio: &Audio,
+    ) -> anyhow::Result<Bytes>;
+
+    // Отдельно передавать AudioFormat не нужно, т.к. в закодированном аудио уже
+    // есть заголовки с характеристиками
+    fn decode(
+        &self,
+        data: Bytes,
+    ) -> anyhow::Result<Audio>;
+}
+
+pub trait AudioConverter: Send + Sync {
+        fn convert(
+        &mut self,
+        audio: Audio,
+    ) -> anyhow::Result<Audio>;
+}
 
 /// PCM16 -> Base64
 #[inline]

@@ -12,6 +12,7 @@ pub mod simple_resampler;
 pub mod sample_buffer;
 pub mod rubato_resampler;
 pub mod convert;
+pub mod audio;
 
 pub use capture::*;
 pub use device::*;
@@ -25,3 +26,4 @@ pub use simple_resampler::*;
 pub use sample_buffer::*;
 pub use rubato_resampler::*;
 pub use convert::*;
+pub use audio::*;
