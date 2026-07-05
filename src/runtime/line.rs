@@ -1,17 +1,19 @@
-use anyhow::Result;
-use tokio::sync::mpsc;
-use cpal::Device;
-use tokio::task::JoinHandle;
+use tokio_util::sync::CancellationToken;
 
-use crate::runtime::LineState;
-use crate::audio::{Audio, AudioBuffer, AudioCapture, AudioDevices, AudioPipeline, AudioPlayback, FrameConsumer, FrameProducer, RubatoResampler, FRAME_CAPACITY};
+use crate::audio::{AudioCapture, AudioPipeline, AudioPlayback, AudioProcessor};
 use crate::core::provider::Provider;
+use crate::runtime::LineState;
+use crate::core::error::{CoreError, Result};
+use crate::core::session::Session;
+use crate::core::session_event::SessionEvent;
 
-const CAPTURE_BUFFER_SIZE: usize = 256;
-const PLAYBACK_BUFFER_SIZE: usize = 256;
-
-pub struct TranslationLine<P: Provider> {
+pub struct TranslationLine<P>
+where
+    P: Provider,
+{
     provider: P,
+
+    cancel: CancellationToken,
 
     capture: AudioCapture,
     playback: AudioPlayback,
@@ -19,114 +21,122 @@ pub struct TranslationLine<P: Provider> {
     input_pipeline: AudioPipeline,
     output_pipeline: AudioPipeline,
 
-    audio_tx: mpsc::Sender<Audio>,
-    audio_rx: Option<mpsc::Receiver<Audio>>,
-
-    capture_thread: Option<JoinHandle<()>>,
-    session_task: Option<JoinHandle<Result<()>>>,
+    capture_task: Option<std::thread::JoinHandle<()>>,
+    session_task: Option<tokio::task::JoinHandle<Result<()>>>,
 
     state: LineState,
 }
 
-impl<P: Provider> TranslationLine<P> {
+impl TranslationLine<P> {
     pub async fn new(
         provider: P,
-        input: Device,
-        output: Device,
+        capture: AudioCapture,
+        playback: AudioPlayback,
     ) -> Result<Self> {
-        // Канал между capture-потоком и async-задачей.
-        let (audio_tx, audio_rx) =
-            mpsc::channel::<Audio>(32);
-
-        // Lock-free буфер микрофона.
-        let (capture_tx, capture_rx) =
-            AudioBuffer::new(CAPTURE_BUFFER_SIZE)?;
-
-        // Lock-free буфер воспроизведения.
-        let (playback_tx, playback_rx) =
-            AudioBuffer::new(PLAYBACK_BUFFER_SIZE)?;
-
-        // Создаём устройства.
-        let capture =
-            AudioCapture::new(
-                input,
-                capture_tx,
-            )?;
-
-        let playback =
-            AudioPlayback::new(
-                output,
-                playback_rx,
-            )?;
-
         Ok(Self {
             provider,
+
+            cancel: CancellationToken::new(),
 
             capture,
             playback,
 
-            capture_rx,
-            playback_tx,
+            input_pipeline: AudioPipeline::new(),
+            output_pipeline: AudioPipeline::new(),
 
-            audio_tx,
-            audio_rx: Some(audio_rx),
-
-            capture_thread: None,
+            capture_task: None,
             session_task: None,
 
             state: LineState::Created,
         })
     }
-    pub async fn run(
-        &mut self,
-    ) -> Result<()> {
 
+    pub fn add_input_processor<T>(
+        &mut self,
+        processor: T,
+    ) -> Result<()>
+    where
+        T: AudioProcessor + 'static,
+    {
+        if self.state == LineState::Running {
+            return Err(CoreError::Other(anyhow::Error::msg("TranslationLine is running")));
+        }
+
+        self.input_pipeline.add(processor);
+
+        Ok(())
+    }
+
+    pub fn add_output_processor<T>(
+        &mut self,
+        processor: T,
+    ) -> Result<()>
+    where
+        T: AudioProcessor + 'static,
+    {
+        if self.state == LineState::Running {
+            return Err(CoreError::Other(anyhow::Error::msg("TranslationLine is running")));
+        }
+
+        self.output_pipeline.add(processor);
+
+        Ok(())
+    }
+
+    pub fn state(
+        &self,
+    ) -> LineState {
+
+        self.state
+    }
+
+    pub async fn stop(&mut self) -> Result<()> {
+
+        if self.state != LineState::Running {
+            return Ok(());
+        }
+
+        self.capture.stop()?;
+
+        self.cancel.cancel();
+
+        if let Some(task) = self.capture_task.take() {
+            task.join().unwrap();
+        }
+
+        if let Some(task) = self.session_task.take() {
+            task.await??;
+        }
+
+        self.state = LineState::Stopped;
+
+        Ok(())
+    }
+
+    pub async fn run(&mut self) -> Result<()> {
         if self.state == LineState::Running {
             return Ok(());
         }
 
-        // Открываем новую provider session.
-        let session =
-            self.provider.create_session().await
-                .map_err(|e| e.into())?;
+        self.cancel = CancellationToken::new();
 
-        // Забираем Receiver.
-        let audio_rx =
-            self.audio_rx
-                .take()
-                .expect("TranslationLine already running");
+        let (audio_tx, audio_rx) = tokio::sync::mpsc::channel(32);
 
-        // Клон Sender понадобится capture-потоку.
-        let capture_tx =
-            self.audio_tx.clone();
-
-        // Запускаем аудио.
-        self.capture.start()?;
-        self.playback.start()?;
-
-        // Запускаем поток чтения микрофона.
-        let capture_rx = self.capture_rx;
-
-        self.capture_thread = Some(
-            std::thread::spawn(move || {
-                capture_forwarder(
-                    capture_rx,
-                    capture_tx,
-                );
-            })
+        self.capture_task = Some(
+            spawn_capture(
+                self.capture.clone(),
+                self.input_pipeline.clone(),
+                audio_tx,
+            )?
         );
 
-        // Забираем producer.
-        let playback_tx = self.playback_tx;
-
-        // Запускаем async-задачу общения с Provider.
         self.session_task = Some(
-            tokio::spawn(
-                realtime_task(
-                    session,
-                    audio_rx,
-                    playback_tx,
-                )
+            spawn_session(
+                self.provider.create_session().await?,
+                self.playback.clone(),
+                self.output_pipeline.clone(),
+                audio_rx,
+                self.cancel.clone(),
             )
         );
 
@@ -134,115 +144,79 @@ impl<P: Provider> TranslationLine<P> {
 
         Ok(())
     }
-
-    pub async fn stop(&mut self) -> Result<()> {
-        todo!()
-    }
-
-    pub fn state(&self) -> LineState {
-        todo!()
-    }
 }
 
-fn capture_forwarder(
-    mut capture: FrameConsumer,
-    tx: Sender<Audio>,
-) {
-    loop {
-        if tx.is_closed() {
-            break;
-        }
+fn spawn_capture(
+    mut capture: AudioCapture,
+    mut pipeline: AudioPipeline,
+    audio_tx: tokio::sync::mpsc::Sender<Audio>,
+) -> Result<std::thread::JoinHandle<Result<()>>> {
 
-        if let Some(id) = capture.receive() {
+    Ok(std::thread::spawn(move || -> Result<()> {
 
-            let samples =
-                capture.read(id, |frame| {
-                    frame.samples().to_vec()
-                });
+        capture.start(|audio| {
 
-            if tx.blocking_send(samples).is_err() {
-                break;
+            if let Ok(audio) = pipeline.process(audio) {
+                let _ = audio_tx.blocking_send(audio);
             }
 
-            capture.release(id).unwrap();
-        } else {
-            std::thread::yield_now();
-        }
-    }
+        })?;
+
+        Ok(())
+    }))
 }
 
-async fn realtime_task(
-    mut session: RealtimeSession,
-    mut audio_rx: Receiver<Vec<f32>>,
-    mut playback: FrameProducer,
-) -> Result<()> {
+async fn spawn_session<S>(
+    mut session: S,
+    mut playback: AudioPlayback,
+    mut pipeline: AudioPipeline,
+    mut audio_rx: tokio::sync::mpsc::Receiver<Audio>,
+    cancel: CancellationToken,
+) -> tokio::task::JoinHandle<Result<()>>
+where
+    S: Session + 'static,
+{
+    tokio::spawn(async move {
 
-    let mut input_resampler = RubatoResampler::new()?;
-    let mut output_resampler = RubatoResampler::new()?;
+        loop {
 
-    let mut input_pcm = Vec::<i16>::new();
-    let mut output_float = Vec::<f32>::new();
+            tokio::select! {
 
-    loop {
-
-        tokio::select! {
-
-            Some(samples) = audio_rx.recv() => {
-                input_pcm.clear();
-
-                input_resampler.in_processor(
-                    &samples,
-                    &mut input_pcm,
-                )?;
-
-                if !input_pcm.is_empty() {
-                    let base64 = pcm16_to_base64(&input_pcm);
-
-                    session.send(
-                        InputAudioBufferAppend::new(base64)
-                    ).await?;
+                _ = cancel.cancelled() => {
+                    break;
                 }
-            }
 
-            event = session.next_event() => {
+                Some(audio) = audio_rx.recv() => {
 
-                match event? {
+                    session.send_audio(audio).await?;
 
-                    ProtocolEvent::ResponseOutputAudioDelta { delta } => {
-                        let pcm16 =
-                            base64_to_pcm16(&delta)?;
+                }
 
-                        output_float.clear();
+                event = session.next_event() => {
 
-                        output_resampler.out_processor(
-                            &pcm16,
-                            &mut output_float,
-                        )?;
+                    match event? {
 
-                        for chunk in output_float.chunks(FRAME_CAPACITY) {
-                            playback.send(chunk);
+                        SessionEvent::Audio(audio) => {
+
+                            let audio =
+                                pipeline.process(audio)?;
+
+                            playback.play(audio)?;
+
                         }
-                    }
 
-                    ProtocolEvent::InputAudioBufferSpeechStarted => {
-                        println!("🎤 Speech");
-                    }
+                        SessionEvent::RequestStarted => {}
 
-                    ProtocolEvent::ResponseCreated => {
-                        println!("🤖 Thinking...");
-                    }
+                        SessionEvent::RequestFinished => {}
 
-                    ProtocolEvent::ResponseDone => {
-                        println!("✅ Done");
-                    }
+                        SessionEvent::ResponseStarted => {}
 
-                    ProtocolEvent::Error { error } => {
-                        println!("OpenAI: {}", error.message);
+                        SessionEvent::ResponseFinished => {}
                     }
-
-                    _ => {}
                 }
             }
         }
-    }
+
+        Ok(())
+    })
 }

@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 tokio = { version = "1.52", features = ["rt-multi-thread", "macros", "signal", "sync", "time"] }
+tokio-util = "0.7"
 cpal = { version = "0.18", features = ["pipewire", "realtime"] }
 rtrb = "0.3"
 rubato = "3.0"
@@ -23,3 +24,4 @@ futures = "0.3.32"
 async-trait = "0.1"
 http = "1.4"
 dotenvy = "0.15"
+bytemuck = "1.25.0"

@@ -1,18 +1,29 @@
 use anyhow::{bail, Result};
+use bytes::Bytes;
 use cpal::{
     traits::{DeviceTrait, StreamTrait},
     BufferSize, Device, SampleFormat, Stream, StreamConfig,
 };
-
-use crate::audio::audio_buffer::FrameProducer;
+use tokio::sync::mpsc;
+use crate::audio::{Audio, AudioFormat};
 
 pub struct AudioCapture {
     stream: Stream,
+    format: AudioFormat,
 }
 
 impl AudioCapture {
-    pub fn new(device: Device, mut capture: FrameProducer) -> Result<Self> {
+    pub fn new(
+        device: Device,
+        sender: mpsc::Sender<Audio>,
+    ) -> Result<Self> {
         let config = select_config(&device)?;
+
+        let format = AudioFormat {
+            sample_rate: config.sample_rate,
+            channels: config.channels,
+            sample_format: SampleFormat::F32,
+        };
 
         println!(
             "Capture: rate={} channels={} buffer={:?}",
@@ -24,13 +35,13 @@ impl AudioCapture {
         let stream = device.build_input_stream::<f32, _, _>(
             config,
             move |data: &[f32], _| {
-                let mut mono = Vec::with_capacity(data.len() / 2);
 
-                for lr in data.chunks_exact(2) {
-                    mono.push((lr[0] + lr[1]) * 0.5);
-                }
+                let audio = Audio::new(
+                    format.clone(),
+                    Bytes::copy_from_slice(bytemuck::cast_slice(data)),
+                );
 
-                let _ = capture.send(&mono);
+                let _ = sender.blocking_send(audio);
             },
             move |err| {
                 eprintln!("capture: {err}");
@@ -38,7 +49,10 @@ impl AudioCapture {
             None,
         )?;
 
-        Ok(Self { stream })
+        Ok(Self {
+            stream,
+            format,
+        })
     }
 
     #[inline]
@@ -51,6 +65,11 @@ impl AudioCapture {
     pub fn stop(&self) -> Result<()> {
         self.stream.pause()?;
         Ok(())
+    }
+
+    #[inline]
+    pub fn format(&self) -> &AudioFormat {
+        &self.format
     }
 }
 

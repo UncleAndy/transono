@@ -1,5 +1,6 @@
 use bytes::Bytes;
 use cpal::SampleFormat;
+use bytemuck;
 
 /// Universal audio container.
 #[derive(Debug, Clone)]
@@ -18,6 +19,16 @@ impl Audio {
             data,
         }
     }
+
+    pub fn view<T: bytemuck::Pod>(
+        &self,
+    ) -> Result<&[T], bytemuck::PodCastError> {
+
+        Ok(bytemuck::try_cast_slice(
+            self.bytes()
+        )?)
+    }
+
     pub fn format(&self) -> &AudioFormat {
         &self.format
     }

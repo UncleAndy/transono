@@ -1,24 +1,29 @@
 use anyhow::{bail, Result};
+use bytes::Bytes;
 use cpal::{
     traits::{DeviceTrait, StreamTrait},
     BufferSize, Device, SampleFormat, Stream, StreamConfig,
 };
-
-use crate::audio::{audio_buffer::FrameConsumer, frame::FrameId};
+use tokio::sync::mpsc;
+use crate::audio::{Audio, AudioFormat};
 
 pub struct AudioPlayback {
     stream: Stream,
+    format: AudioFormat,
 }
 
 struct PlaybackState {
-    current_frame: Option<FrameId>,
+    current: Option<Audio>,
+    current_samples: Option<Bytes>,
     offset: usize,
-    mono: Vec<f32>,
 }
 
 impl AudioPlayback {
-    pub fn new(device: Device, mut playback: FrameConsumer) -> Result<Self> {
-        let config = select_config(&device)?;
+    pub fn new(
+        device: Device,
+        mut receiver: mpsc::Receiver<Audio>,
+    ) -> Result<Self> {
+        let (config, sample_format) = select_config(&device)?;
 
         println!(
             "Playback: rate={} channels={} buffer={:?}",
@@ -28,44 +33,45 @@ impl AudioPlayback {
         );
 
         let mut state = PlaybackState {
-            current_frame: None,
+            current: None,
+            current_samples: None,
             offset: 0,
-            mono: Vec::new(),
         };
 
         let stream = device.build_output_stream::<f32, _, _>(
             config,
             move |output: &mut [f32], _| {
+
                 output.fill(0.0);
 
-                let frames = output.len() / 2;
-
-                //
-                // Небольшой рабочий буфер.
-                // Пока оставляем Vec, потом уберём аллокацию.
-                //
-                if state.mono.len() != frames {
-                    state.mono.resize(frames, 0.0);
-                }
-
-                if state.current_frame.is_none() {
-                    state.current_frame = playback.receive();
+                if state.current.is_none() {
+                    state.current = receiver.try_recv().ok();
                     state.offset = 0;
                 }
 
-                if let Some(id) = state.current_frame {
-                    let finished = playback.read_frame(id, &mut state.offset, &mut state.mono);
+                let Some(audio) = &state.current else {
+                    return;
+                };
 
-                    for (stereo, sample) in output.chunks_exact_mut(2).zip(state.mono.iter()) {
-                        stereo[0] = *sample;
-                        stereo[1] = *sample;
+                let samples: &[f32] = match audio.view::<f32>() {
+                    Ok(samples) => samples,
+                    Err(err) => {
+                        eprintln!("playback: {err}");
+                        state.current = None;
+                        return;
                     }
+                };
 
-                    if finished {
-                        let _ = playback.release(id);
-                        state.current_frame = None;
-                        state.offset = 0;
-                    }
+                let remain = &samples[state.offset..];
+                let count = remain.len().min(output.len());
+
+                output[..count].copy_from_slice(&remain[..count]);
+
+                state.offset += count;
+
+                if state.offset >= samples.len() {
+                    state.current = None;
+                    state.offset = 0;
                 }
             },
             move |err| {
@@ -74,7 +80,14 @@ impl AudioPlayback {
             None,
         )?;
 
-        Ok(Self { stream })
+        Ok(Self {
+            stream,
+            format: AudioFormat {
+                sample_rate: config.sample_rate,
+                channels: config.channels,
+                sample_format,
+            }
+        })
     }
 
     #[inline]
@@ -88,18 +101,19 @@ impl AudioPlayback {
         self.stream.pause()?;
         Ok(())
     }
+
+    #[inline]
+    pub fn format(&self) -> &AudioFormat {
+        &self.format
+    }
 }
 
-fn select_config(device: &Device) -> Result<StreamConfig> {
+fn select_config(device: &Device) -> Result<(StreamConfig, SampleFormat)> {
     let cfg = device.default_output_config()?;
 
-    if cfg.sample_format() != SampleFormat::F32 {
-        bail!("Output device must support f32");
-    }
-
-    Ok(StreamConfig {
+    Ok((StreamConfig {
         channels: cfg.channels(),
         sample_rate: 48_000,
         buffer_size: BufferSize::Default,
-    })
+    }, cfg.sample_format()))
 }
