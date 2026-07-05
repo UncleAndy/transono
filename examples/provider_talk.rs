@@ -1,9 +1,26 @@
 use anyhow::Result;
 use tokio::sync::mpsc::Receiver;
-use realtime_translator::audio::{AudioBuffer, AudioCapture, AudioDevices, AudioPlayback, FrameConsumer, FrameProducer, FRAME_CAPACITY};
+use realtime_translator::audio::{
+    AudioBuffer,
+    AudioCapture,
+    AudioDevices,
+    AudioPlayback,
+    FrameConsumer,
+    FrameProducer,
+    RubatoResampler,
+    FRAME_CAPACITY,
+};
 use realtime_translator::core::provider::Provider;
-use realtime_translator::providers::openai::realtime::{OpenAIRealtimeConfig, OpenAIRealtimeProvider, RealtimeSession, TurnMode};
-use realtime_translator::audio::{base64_to_pcm16, float_to_pcm16, pcm16_to_base64, pcm16_to_float};
+use realtime_translator::providers::openai::realtime::{
+    OpenAIRealtimeConfig,
+    OpenAIRealtimeProvider,
+    RealtimeSession,
+    TurnMode,
+};
+use realtime_translator::audio::{
+    base64_to_pcm16,
+    pcm16_to_base64,
+};
 use realtime_translator::providers::openai::realtime::commands::{
     InputAudioBufferAppend,
 };
@@ -148,19 +165,31 @@ async fn realtime_task(
     mut playback: FrameProducer,
 ) -> Result<()> {
 
+    let mut input_resampler = RubatoResampler::new()?;
+    let mut output_resampler = RubatoResampler::new()?;
+
+    let mut input_pcm = Vec::<i16>::new();
+    let mut output_float = Vec::<f32>::new();
+
     loop {
 
         tokio::select! {
 
             Some(samples) = audio_rx.recv() => {
+                input_pcm.clear();
 
-                let pcm16 = float_to_pcm16(&samples);
+                input_resampler.in_processor(
+                    &samples,
+                    &mut input_pcm,
+                )?;
 
-                let base64 = pcm16_to_base64(&pcm16);
+                if !input_pcm.is_empty() {
+                    let base64 = pcm16_to_base64(&input_pcm);
 
-                session.send(
-                    InputAudioBufferAppend::new(base64)
-                ).await?;
+                    session.send(
+                        InputAudioBufferAppend::new(base64)
+                    ).await?;
+                }
             }
 
             event = session.next_event() => {
@@ -168,15 +197,17 @@ async fn realtime_task(
                 match event? {
 
                     ProtocolEvent::ResponseOutputAudioDelta { delta } => {
-
                         let pcm16 =
                             base64_to_pcm16(&delta)?;
 
-                        let float =
-                            pcm16_to_float(&pcm16);
+                        output_float.clear();
 
+                        output_resampler.out_processor(
+                            &pcm16,
+                            &mut output_float,
+                        )?;
 
-                        for chunk in float.chunks(FRAME_CAPACITY) {
+                        for chunk in output_float.chunks(FRAME_CAPACITY) {
                             playback.send(chunk);
                         }
                     }
