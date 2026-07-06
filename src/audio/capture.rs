@@ -3,11 +3,11 @@ use cpal::{
     traits::{DeviceTrait, StreamTrait},
     BufferSize, Device, SampleFormat, Stream, StreamConfig,
 };
-use symphonia::core::audio::{AudioBuffer, AudioSpec, Channels, GenericAudioBuffer};
+use symphonia::core::audio::{AudioBuffer, AudioSpec, Channels};
 use tokio::sync::mpsc;
 
 use crate::core::error::{CoreError, Result};
-use crate::audio::{Audio, AudioFormat, audio_buffer::IntoGenericAudioBuffer};
+use crate::audio::audio::{Audio, AudioFormat, IntoAudio};
 
 pub struct AudioCapture {
     stream: Stream,
@@ -90,7 +90,7 @@ impl AudioCapture {
             + symphonia::core::audio::conv::FromSample<T>
             + Send
             + 'static,
-        AudioBuffer<T>: IntoGenericAudioBuffer,
+        AudioBuffer<T>: IntoAudio,
     {
         use symphonia::core::audio::{AudioBuffer, AudioMut};
 
@@ -112,7 +112,7 @@ impl AudioCapture {
                 buffer.copy_from_slice_interleaved::<T, &[T]>(&data);
 
                 let audio =
-                    Audio::new(buffer.into_generic());
+                    Audio::new(buffer.into_audio());
 
                 let _ =
                     sender.blocking_send(audio);

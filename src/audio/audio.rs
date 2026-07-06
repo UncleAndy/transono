@@ -2,9 +2,9 @@ use std::fmt;
 use std::fmt::{Debug, Formatter};
 use bytes::Bytes;
 use cpal::SampleFormat;
-use symphonia::core::audio::conv::ConvertibleSample;
-use symphonia::core::audio::GenericAudioBuffer;
-use symphonia::core::audio::sample::Sample;
+use symphonia::core::audio::conv::{ConvertibleSample, FromSample};
+use symphonia::core::audio::{AudioBuffer, AudioMut, AudioSpec, GenericAudioBuffer};
+use symphonia::core::audio::sample::{i24, u24, Sample};
 
 /// Universal audio container.
 pub struct Audio {
@@ -41,18 +41,7 @@ impl Audio {
         S: Sample + ConvertibleSample,
         Dst: AsMut<[S]>
     {
-        todo!()
-    }
-
-    pub fn copy_from_planar<S, Src>(
-        spec: AudioSpec,
-        src: &[Src],
-    ) -> Self
-    where
-        S: Sample + ConvertibleSample,
-        Src: AsRef<[S]>
-    {
-        todo!()
+        self.buffer.copy_to_slice_planar(dst);
     }
 
     pub fn from_planar<S>(
@@ -60,9 +49,21 @@ impl Audio {
         src: &[&[S]],
     ) -> Self
     where
-        S: Sample + ConvertibleSample
+        S: AudioSample,
+        AudioBuffer<S>: IntoAudio,
     {
-        todo!()
+        let frames = src.first().map_or(0, |c| c.len());
+
+        let mut buffer = AudioBuffer::<S>::new(
+            spec,
+            frames,
+        );
+
+        buffer.render_uninit(Some(frames));
+
+        buffer.copy_from_slice_planar(src);
+
+        Self::new(buffer.into_audio())
     }
 }
 
@@ -160,3 +161,43 @@ impl AudioFormat {
         sample_format: SampleFormat::I16,
     };
 }
+
+pub(crate) trait IntoAudio {
+    fn into_audio(self) -> GenericAudioBuffer;
+}
+
+macro_rules! impl_into_generic {
+    ($ty:ty, $variant:ident) => {
+        impl IntoAudio for AudioBuffer<$ty> {
+            fn into_audio(self) -> GenericAudioBuffer {
+                GenericAudioBuffer::$variant(self)
+            }
+        }
+    };
+}
+
+impl_into_generic!(f32, F32);
+impl_into_generic!(f64, F64);
+impl_into_generic!(u8, U8);
+impl_into_generic!(u16, U16);
+impl_into_generic!(u24, U24);
+impl_into_generic!(u32, U32);
+impl_into_generic!(i8, S8);
+impl_into_generic!(i16, S16);
+impl_into_generic!(i24, S24);
+impl_into_generic!(i32, S32);
+
+pub(crate) trait AudioSample:
+Sample
++ FromSample<Self>
++ Send
++ 'static
+{}
+
+impl<T> AudioSample for T
+where
+    T: Sample
+    + FromSample<T>
+    + Send
+    + 'static,
+{}

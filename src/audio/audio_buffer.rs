@@ -138,16 +138,3 @@ impl FrameConsumer {
 pub(crate) trait IntoGenericAudioBuffer {
     fn into_generic(self) -> GenericAudioBuffer;
 }
-
-macro_rules! impl_into_generic {
-    ($ty:ty, $variant:ident) => {
-        impl IntoGenericAudioBuffer for symphonia::core::audio::AudioBuffer<$ty> {
-            fn into_generic(self) -> GenericAudioBuffer {
-                GenericAudioBuffer::$variant(self)
-            }
-        }
-    };
-}
-impl_into_generic!(f32, F32);
-impl_into_generic!(i16, S16);
-impl_into_generic!(u16, U16);
