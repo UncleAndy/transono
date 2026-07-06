@@ -2,7 +2,7 @@ use std::fmt;
 use std::fmt::{Debug, Formatter};
 use bytes::Bytes;
 use cpal::SampleFormat;
-
+use rubato::audioadapter::{Adapter, AdapterMut};
 use symphonia::core::audio::conv::{ConvertibleSample, FromSample};
 use symphonia::core::audio::{AudioBuffer, AudioMut, AudioSpec, GenericAudioBuffer};
 use symphonia::core::audio::sample::{i24, u24, Sample};
@@ -254,3 +254,78 @@ where
     + Send
     + 'static,
 {}
+
+pub struct PlanarAdapter<'a, T> {
+    channels: &'a mut [Vec<T>],
+}
+
+impl<'a> PlanarAdapter<'a, f32> {
+    pub fn from_pcm(
+        audio: &'a mut PcmAudio,
+    ) -> Self {
+
+        Self {
+            channels: &mut audio.channels,
+        }
+
+    }
+}
+
+impl<'a, T> PlanarAdapter<'a, T> {
+    pub fn new(
+        channels: &'a mut [Vec<T>],
+    ) -> Self {
+        Self { channels }
+    }
+
+    pub fn from_channels(
+        channels: &'a mut [Vec<T>],
+    ) -> Self {
+        Self { channels }
+    }
+}
+
+unsafe impl<'a, T> Adapter<'a, T> for PlanarAdapter<'a, T>
+where
+    T: Copy
+{
+    unsafe fn read_sample_unchecked(
+        &self,
+        channel: usize,
+        frame: usize,
+    ) -> T {
+        *self
+            .channels
+            .get_unchecked(channel)
+            .get_unchecked(frame)
+    }
+
+    fn channels(&self) -> usize {
+        self.channels.len()
+    }
+
+    fn frames(&self) -> usize {
+        self.channels
+            .first()
+            .map_or(0, Vec::len)
+    }
+}
+
+unsafe impl<'a, T> AdapterMut<'a, T> for PlanarAdapter<'a, T>
+where
+    T: Copy + Clone
+{
+    unsafe fn write_sample_unchecked(
+        &mut self,
+        channel: usize,
+        frame: usize,
+        value: &T,
+    ) -> bool {
+        *self
+            .channels
+            .get_unchecked_mut(channel)
+            .get_unchecked_mut(frame) = *value;
+
+        false
+    }
+}

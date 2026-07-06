@@ -8,7 +8,7 @@ tokio = { version = "1.52", features = ["rt-multi-thread", "macros", "signal", "
 tokio-util = "0.7"
 cpal = { version = "0.18", features = ["pipewire", "realtime"] }
 rtrb = "0.3"
-rubato = "3.0"
+rubato = { version = "3.0", features = ["fft_resampler"] }
 anyhow = "1.0"
 thiserror = "2.0"
 base64 = "0.22"
