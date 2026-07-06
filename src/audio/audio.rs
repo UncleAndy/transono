@@ -2,8 +2,7 @@ use std::fmt;
 use std::fmt::{Debug, Formatter};
 use bytes::Bytes;
 use cpal::SampleFormat;
-use symphonia::core::audio::{AudioBuffer, GenericAudioBuffer};
-use symphonia::core::audio::sample::{i24, u24};
+use symphonia::core::audio::GenericAudioBuffer;
 
 /// Universal audio container.
 pub struct Audio {
@@ -16,18 +15,6 @@ impl Audio {
     ) -> Self {
         Self {
             buffer,
-        }
-    }
-
-    pub fn from_f32(buffer: AudioBuffer<f32>) -> Self {
-        Self {
-            buffer: GenericAudioBuffer::F32(buffer),
-        }
-    }
-
-    pub fn from_i16(buffer: AudioBuffer<i16>) -> Self {
-        Self {
-            buffer: GenericAudioBuffer::S16(buffer),
         }
     }
 

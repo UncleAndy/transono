@@ -1,13 +1,13 @@
-use anyhow::{bail, Result};
-use bytes::Bytes;
+use anyhow::anyhow;
 use cpal::{
     traits::{DeviceTrait, StreamTrait},
     BufferSize, Device, SampleFormat, Stream, StreamConfig,
 };
-use symphonia::core::audio::{AudioSpec, GenericAudioBuffer};
-use symphonia::core::audio::conv::ConvertibleSample;
+use symphonia::core::audio::{AudioBuffer, AudioSpec, Channels, GenericAudioBuffer};
 use tokio::sync::mpsc;
-use crate::audio::{Audio, AudioFormat};
+
+use crate::core::error::{CoreError, Result};
+use crate::audio::{Audio, AudioFormat, audio_buffer::IntoGenericAudioBuffer};
 
 pub struct AudioCapture {
     stream: Stream,
@@ -19,17 +19,17 @@ impl AudioCapture {
         device: Device,
         sender: mpsc::Sender<Audio>,
     ) -> Result<Self> {
-        let config = select_config(&device)?;
+        let (config, sample_format) = select_config(&device)?;
 
         let spec = AudioSpec::new(
             config.sample_rate,
-            config.channels.cast_signed(),
+            Channels::Discrete(config.channels as u16),
         );
 
         let format = AudioFormat {
             sample_rate: config.sample_rate,
             channels: config.channels,
-            sample_format: SampleFormat::F32,
+            sample_format,
         };
 
         println!(
@@ -39,21 +39,38 @@ impl AudioCapture {
             config.buffer_size,
         );
 
-        let stream = device.build_input_stream::<f32, _, _>(
-            config,
-            move |data: &[f32], _| {
-                let audio = Audio::from_interleaved(
-                    spec.clone(),
-                    data,
-                );
+        let stream = match sample_format {
 
-                let _ = sender.blocking_send(audio);
-            },
-            move |err| {
-                eprintln!("capture: {err}");
-            },
-            None,
-        )?;
+            SampleFormat::F32 =>
+                Self::build_stream::<f32>(
+                    &device,
+                    &config,
+                    spec.clone(),
+                    sender,
+                )?,
+
+            SampleFormat::I16 =>
+                Self::build_stream::<i16>(
+                    &device,
+                    &config,
+                    spec.clone(),
+                    sender,
+                )?,
+
+            SampleFormat::U16 =>
+                Self::build_stream::<u16>(
+                    &device,
+                    &config,
+                    spec.clone(),
+                    sender,
+                )?,
+
+            _ => {
+                return Err(CoreError::Other(anyhow!(
+                    "Unsupported sample format"
+                )));
+            }
+        };
 
         Ok(Self {
             stream,
@@ -61,15 +78,65 @@ impl AudioCapture {
         })
     }
 
+    fn build_stream<T>(
+        device: &Device,
+        config: &StreamConfig,
+        spec: AudioSpec,
+        sender: mpsc::Sender<Audio>,
+    ) -> Result<Stream>
+    where
+        T: cpal::SizedSample
+            + symphonia::core::audio::conv::ConvertibleSample
+            + symphonia::core::audio::conv::FromSample<T>
+            + Send
+            + 'static,
+        AudioBuffer<T>: IntoGenericAudioBuffer,
+    {
+        use symphonia::core::audio::{AudioBuffer, AudioMut};
+
+        let stream = device.build_input_stream::<T, _, _>(
+            *config,
+            move |data: &[T], _| {
+
+                let frames =
+                    data.len() / spec.channels().count();
+
+                let mut buffer =
+                    AudioBuffer::<T>::new(
+                        spec.clone(),
+                        frames,
+                    );
+
+                buffer.render_uninit(Some(frames));
+
+                buffer.copy_from_slice_interleaved::<T, &[T]>(&data);
+
+                let audio =
+                    Audio::new(buffer.into_generic());
+
+                let _ =
+                    sender.blocking_send(audio);
+
+            },
+            move |err| {
+                eprintln!("capture: {err}");
+            },
+            None,
+        )
+            .map_err(|e| CoreError::Other(anyhow::Error::from(e)))?;
+
+        Ok(stream)
+    }
+
     #[inline]
     pub fn start(&self) -> Result<()> {
-        self.stream.play()?;
+        self.stream.play().map_err(|e| CoreError::Other(anyhow::Error::from(e)))?;
         Ok(())
     }
 
     #[inline]
     pub fn stop(&self) -> Result<()> {
-        self.stream.pause()?;
+        self.stream.pause().map_err(|e| CoreError::Other(anyhow::Error::from(e)))?;
         Ok(())
     }
 
@@ -79,16 +146,12 @@ impl AudioCapture {
     }
 }
 
-fn select_config(device: &Device) -> Result<StreamConfig> {
-    let cfg = device.default_input_config()?;
+fn select_config(device: &Device) -> Result<(StreamConfig, SampleFormat)> {
+    let cfg = device.default_input_config().map_err(|e| CoreError::Other(anyhow::Error::from(e)))?;
 
-    if cfg.sample_format() != SampleFormat::F32 {
-        bail!("Input device must support f32");
-    }
-
-    Ok(StreamConfig {
+    Ok((StreamConfig {
         channels: cfg.channels(),
         sample_rate: 48_000,
         buffer_size: BufferSize::Default,
-    })
+    }, cfg.sample_format()))
 }
