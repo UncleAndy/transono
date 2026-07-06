@@ -20,68 +20,49 @@ struct PlaybackState<T> {
 impl AudioPlayback {
     pub fn new(
         device: Device,
-        mut receiver: mpsc::Receiver<Audio>,
+        receiver: mpsc::Receiver<Audio>,
     ) -> Result<Self> {
+
         let (config, sample_format) = select_config(&device)?;
 
         println!(
             "Playback: rate={} channels={} buffer={:?}",
-            config.sample_rate.to_string(),
-            config.channels.to_string(),
+            config.sample_rate,
+            config.channels,
             config.buffer_size,
         );
 
-        let mut state = PlaybackState {
-            current: None,
-            current_samples: Vec::new(),
-            offset: 0,
+        let stream = match sample_format {
+            SampleFormat::F32 => {
+                Self::build_stream::<f32>(
+                    &device,
+                    &config,
+                    receiver,
+                )?
+            }
+
+            SampleFormat::I16 => {
+                Self::build_stream::<i16>(
+                    &device,
+                    &config,
+                    receiver,
+                )?
+            }
+
+            SampleFormat::U16 => {
+                Self::build_stream::<u16>(
+                    &device,
+                    &config,
+                    receiver,
+                )?
+            }
+
+            _ => {
+                return Err(CoreError::Other(anyhow::anyhow!(
+                "Unsupported sample format"
+            )));
+            }
         };
-
-        let stream = device.build_output_stream::<f32, _, _>(
-            config,
-            move |output: &mut [f32], _| {
-
-                output.fill(0.0);
-
-                if state.current.is_none() {
-                    state.current = receiver.try_recv().ok();
-
-                    if let Some(audio) = &state.current {
-
-                        state.current_samples.clear();
-
-                        audio
-                            .buffer()
-                            .copy_to_vec_interleaved(&mut state.current_samples);
-                    }
-
-                    state.offset = 0;
-                }
-
-                let Some(_audio) = &state.current else {
-                    return;
-                };
-
-                let remain = &state.current_samples[state.offset..];
-
-                let count = remain.len().min(output.len());
-
-                output[..count].copy_from_slice(&remain[..count]);
-
-                state.offset += count;
-
-                if state.offset >= state.current_samples.len() {
-                    state.current = None;
-                    state.current_samples.clear();
-                    state.offset = 0;
-                }
-            },
-            move |err| {
-                eprintln!("playback: {err}");
-            },
-            None,
-        )
-            .map_err(|e| CoreError::Other(anyhow::Error::from(e)))?;
 
         Ok(Self {
             stream,
@@ -89,7 +70,7 @@ impl AudioPlayback {
                 sample_rate: config.sample_rate,
                 channels: config.channels,
                 sample_format,
-            }
+            },
         })
     }
 
