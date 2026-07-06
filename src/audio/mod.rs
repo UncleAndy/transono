@@ -12,6 +12,7 @@ pub mod audio;
 pub mod sample_buffer;
 // pub mod pcm_codec;
 pub mod processors;
+pub mod planar_sample_buffer;
 
 pub use capture::*;
 pub use device::*;
@@ -24,4 +25,5 @@ pub use processor::*;
 pub use convert::*;
 pub use audio::*;
 pub use sample_buffer::*;
+pub use planar_sample_buffer::*;
 // pub use pcm_codec::*;
