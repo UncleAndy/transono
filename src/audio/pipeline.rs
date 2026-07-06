@@ -28,16 +28,17 @@ impl AudioPipeline {
 
     pub fn process(
         &mut self,
-        data: &mut PipelineState,
+        audio: Audio,
     ) -> Result<()> {
+        let mut state = PipelineState::Audio(audio);
 
         for processor in &mut self.processors {
             match processor {
                 Processor::Audio(proc) => {
-                    proc.process(data.ensure_audio()?)?;
+                    proc.process(state.ensure_audio()?)?;
                 }
                 Processor::Dsp(dsp) => {
-                    dsp.process(data.ensure_pcm()?)?;
+                    dsp.process(state.ensure_pcm()?)?;
                 }
             }
         }
@@ -92,6 +93,14 @@ impl PipelineState {
                 Ok(audio)
             }
             _ => unreachable!(),
+        }
+    }
+
+
+    fn into_audio(self) -> Result<Audio> {
+        match self {
+            PipelineState::Audio(audio) => Ok(audio),
+            PipelineState::Pcm(pcm) => Audio::from_pcm(&pcm),
         }
     }
 }
