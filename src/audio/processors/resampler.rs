@@ -10,6 +10,7 @@ use crate::audio::{DspProcessor, PcmAudio, PlanarSampleBuffer};
 use crate::core::error::{CoreError, Result};
 
 const SUB_CHUNKS: usize = 4;
+const LATENCY_MS: u32 = 20;
 
 pub struct Resampler {
     output_rate: u32,
@@ -33,7 +34,7 @@ impl Resampler {
         let channels = input_spec.channels().count();
 
         let chunk_size =
-            (input_spec.rate() / 50) as usize;
+            (input_spec.rate() / LATENCY_MS) as usize;
 
         let fft = Fft::<f32>::new(
             input_spec.rate() as usize,
@@ -178,16 +179,16 @@ impl Resampler {
         );
 
         for channel in 0..channels_count {
+            let samples = self
+                .output_buffer
+                .read_channel(channel, frames);
+
             debug_assert!(
-                self.output_buffer
-                    .read_channel(channel, frames)
-                    .is_some()
+                samples.is_some()
             );
 
             let samples = unsafe {
-                self.output_buffer
-                    .read_channel(channel, frames)
-                    .unwrap_unchecked()
+                samples.unwrap_unchecked()
             };
 
             pcm.replace_channel(channel, samples);
