@@ -79,6 +79,7 @@ impl AudioPipeline {
             self.add(RubatoResampler::new(
                 from.sample_rate,
                 to.sample_rate,
+                from.channels,
             )?);
         }
 

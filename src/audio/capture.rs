@@ -7,7 +7,7 @@ use symphonia::core::audio::{AudioBuffer, AudioSpec, Channels};
 use tokio::sync::mpsc;
 
 use crate::core::error::{CoreError, Result};
-use crate::audio::audio::{Audio, AudioFormat, IntoAudio};
+use crate::audio::audio::{Audio, AudioFormat, IntoGenericBuffer};
 
 pub struct AudioCapture {
     stream: Stream,
@@ -90,7 +90,7 @@ impl AudioCapture {
             + symphonia::core::audio::conv::FromSample<T>
             + Send
             + 'static,
-        AudioBuffer<T>: IntoAudio,
+        AudioBuffer<T>: IntoGenericBuffer,
     {
         use symphonia::core::audio::{AudioBuffer, AudioMut};
 
@@ -112,7 +112,7 @@ impl AudioCapture {
                 buffer.copy_from_slice_interleaved::<T, &[T]>(&data);
 
                 let audio =
-                    Audio::new(buffer.into_audio());
+                    Audio::new(buffer.into_generic_buffer());
 
                 let _ =
                     sender.blocking_send(audio);

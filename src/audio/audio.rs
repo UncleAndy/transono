@@ -50,7 +50,7 @@ impl Audio {
     ) -> Self
     where
         S: AudioSample,
-        AudioBuffer<S>: IntoAudio,
+        AudioBuffer<S>: IntoGenericBuffer,
     {
         let frames = src.first().map_or(0, |c| c.len());
 
@@ -63,7 +63,7 @@ impl Audio {
 
         buffer.copy_from_slice_planar(src);
 
-        Self::new(buffer.into_audio())
+        Self::new(buffer.into_generic_buffer())
     }
 }
 
@@ -162,14 +162,14 @@ impl AudioFormat {
     };
 }
 
-pub(crate) trait IntoAudio {
-    fn into_audio(self) -> GenericAudioBuffer;
+pub(crate) trait IntoGenericBuffer {
+    fn into_generic_buffer(self) -> GenericAudioBuffer;
 }
 
 macro_rules! impl_into_generic {
     ($ty:ty, $variant:ident) => {
-        impl IntoAudio for AudioBuffer<$ty> {
-            fn into_audio(self) -> GenericAudioBuffer {
+        impl IntoGenericBuffer for AudioBuffer<$ty> {
+            fn into_generic_buffer(self) -> GenericAudioBuffer {
                 GenericAudioBuffer::$variant(self)
             }
         }
