@@ -165,14 +165,10 @@ macro_rules! impl_audio_from {
 
 #[derive(Debug, Clone)]
 pub struct EncodedAudio {
-    codec: AudioCodecType,
-
     container: AudioContainer,
-
+    codec: AudioCodecType,
     encoding: BinaryEncoding,
-
     spec: AudioSpec,
-
     data: Bytes,
 }
 
@@ -213,10 +209,8 @@ pub enum Endianness {
 pub struct AudioFormat {
     /// Samples per second.
     pub sample_rate: u32,
-
     /// Number of channels.
     pub channels: u16,
-
     /// Sample representation.
     pub sample_format: SampleFormat,
 }
@@ -225,19 +219,26 @@ pub struct AudioFormat {
 pub enum AudioContainer {
     Raw,
     Wav,
+    Caf,
     Ogg,
+    Mp3,
     Mp4,
     Flac,
+    Matroska,
+    Webm,
     Custom(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AudioCodecType {
-    Raw,
+    Pcm(Endianness),
     Opus,
-    Mp3,
-    Flac,
+    Vorbis,
     Aac,
+    Flac,
+    Alac,
+    Ldac,
+    Mp3,
     Custom(String),
 }
 
@@ -245,9 +246,9 @@ pub enum AudioCodecType {
 /// Audio encoding.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BinaryEncoding {
-    Binary(Endianness),
-    Base64(Endianness),
-    Custom(Endianness, String),
+    Binary,
+    Base64,
+    Custom(String),
 }
 
 impl AudioFormat {
