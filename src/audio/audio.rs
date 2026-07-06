@@ -132,6 +132,12 @@ impl PcmAudio {
     ) -> PlanarAdapter<f32> {
         PlanarAdapter::new(&mut self.channels)
     }
+    pub fn channels(&self) -> &[Vec<f32>] {
+        &self.channels
+    }
+    pub fn channel(&self, index: usize) -> &[f32] {
+        &self.channels[index]
+    }
 }
 
 #[allow(unused)]

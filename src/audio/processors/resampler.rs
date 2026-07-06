@@ -2,6 +2,7 @@ use rubato::{
     Fft,
     FixedSync,
     audioadapter_buffers::owned::SequentialOwned};
+use rubato::audioadapter::{Adapter, AdapterMut};
 use rubato::Resampler as _;
 use symphonia::core::audio::AudioSpec;
 
@@ -18,6 +19,8 @@ pub struct Resampler {
 
     fft_input: SequentialOwned<f32>,
     fft_output: SequentialOwned<f32>,
+
+    channels_scratch: Vec<Vec<f32>>,
 }
 
 impl Resampler {
@@ -46,6 +49,9 @@ impl Resampler {
         );
 
         Ok(Self {
+            channels_scratch: (0..channels)
+                .map(|_| Vec::with_capacity(fft.output_frames_max()))
+                .collect(),
             input_buffer: PlanarSampleBuffer::new(channels),
             output_buffer: PlanarSampleBuffer::new(channels),
             fft_input,
@@ -79,13 +85,68 @@ impl Resampler {
         &mut self,
         pcm: &PcmAudio,
     ) {
-        todo!()
+        debug_assert_eq!(
+            pcm.channel_count(),
+            self.input_buffer.channels(),
+        );
+        for channel in 0..pcm.channel_count() {
+            self.input_buffer.push_channel(
+                channel,
+                pcm.channel(channel),
+            );
+        }
     }
-
     fn process_fft(
         &mut self,
     ) -> Result<()> {
-        todo!()
+        while self.input_buffer.available() >= self.fft.input_frames_next() {
+            let required = self.fft.input_frames_next();
+
+            // ---------- input ----------
+            for channel in 0..self.input_buffer.channels() {
+                let samples = self
+                    .input_buffer
+                    .read_channel(channel, required)
+                    .unwrap();
+
+                self.fft_input.copy_from_slice_to_channel(
+                    channel,
+                    0,
+                    samples,
+                );
+            }
+
+            let (input_frames, output_frames) = self
+                .fft
+                .process_into_buffer(
+                    &self.fft_input,
+                    &mut self.fft_output,
+                    None,
+                )
+                .map_err(|e| CoreError::Other(e.into()))?;
+
+            // ---------- output ----------
+            for channel in 0..self.output_buffer.channels() {
+                let scratch = &mut self.channels_scratch[channel];
+
+                scratch.resize(output_frames, 0.0);
+
+                self.fft_output.copy_from_channel_to_slice(
+                    channel,
+                    0,
+                    scratch,
+                );
+
+                self.output_buffer.push_channel(
+                    channel,
+                    scratch,
+                );
+            }
+
+            self.input_buffer.consume(input_frames);
+        }
+
+        Ok(())
     }
 
     fn pop_output(
