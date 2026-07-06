@@ -12,6 +12,8 @@ use crate::core::error::{CoreError, Result};
 const SUB_CHUNKS: usize = 4;
 
 pub struct Resampler {
+    output_rate: u32,
+
     fft: Fft<f32>,
 
     input_buffer: PlanarSampleBuffer<f32>,
@@ -49,6 +51,7 @@ impl Resampler {
         );
 
         Ok(Self {
+            output_rate,
             channels_scratch: (0..channels)
                 .map(|_| Vec::with_capacity(fft.output_frames_max()))
                 .collect(),
@@ -99,8 +102,12 @@ impl Resampler {
     fn process_fft(
         &mut self,
     ) -> Result<()> {
-        while self.input_buffer.available() >= self.fft.input_frames_next() {
+        loop {
             let required = self.fft.input_frames_next();
+
+            if self.input_buffer.available() < required {
+                break;
+            }
 
             // ---------- input ----------
             for channel in 0..self.input_buffer.channels() {
@@ -153,7 +160,32 @@ impl Resampler {
         &mut self,
         pcm: &mut PcmAudio,
     ) {
-        todo!()
+        let frames = self.output_buffer.available();
+
+        if frames == 0 {
+            return;
+        }
+
+        debug_assert_eq!(
+            pcm.channel_count(),
+            self.output_buffer.channels(),
+        );
+
+        for channel in 0..pcm.channel_count() {
+            let samples = self
+                .output_buffer
+                .read_channel(channel, frames)
+                .expect("output buffer must contain all channels");
+
+            pcm.replace_channel(channel, samples);
+        }
+
+        self.output_buffer.consume(frames);
+        
+        pcm.spec = AudioSpec::new(
+            self.output_rate,
+            pcm.spec.channels().clone(),
+        );
     }
 }
 

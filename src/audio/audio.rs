@@ -138,6 +138,16 @@ impl PcmAudio {
     pub fn channel(&self, index: usize) -> &[f32] {
         &self.channels[index]
     }
+    pub fn replace_channel(
+        &mut self,
+        channel: usize,
+        samples: &[f32],
+    ) {
+        let dst = &mut self.channels[channel];
+
+        dst.clear();
+        dst.extend_from_slice(samples);
+    }
 }
 
 #[allow(unused)]
