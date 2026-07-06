@@ -77,6 +77,7 @@ impl Debug for Audio {
 /// Внутреннее представление аудио для DSP
 pub(crate) struct PcmAudio {
     pub sample_rate: u32,
+    pub frames: usize,
     pub channels: Vec<Vec<f32>>, // Один Vec на канал.
 }
 

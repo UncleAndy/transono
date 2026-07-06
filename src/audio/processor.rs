@@ -1,14 +1,19 @@
 use crate::core::error::Result;
 use crate::audio::{Audio, PcmAudio};
 
+pub enum Processor {
+    Audio(Box<dyn AudioProcessor>),
+    Dsp(Box<dyn DspProcessor>),
+}
+
 /// Любой обработчик аудиопотока.
 pub trait AudioProcessor: Send {
     /// Обрабатывает порцию аудиоданных
     fn process(
         &mut self,
-        input: Audio
+        input: &mut Audio
     )
-    -> Result<Audio>;
+    -> Result<()>;
 }
 
 pub struct IdentityProcessor;
@@ -16,9 +21,9 @@ pub struct IdentityProcessor;
 impl AudioProcessor for IdentityProcessor {
     fn process(
         &mut self,
-        audio: Audio,
-    ) -> Result<Audio> {
-        Ok(audio)
+        audio: &mut Audio,
+    ) -> Result<()> {
+        Ok(())
     }
 }
 
@@ -27,7 +32,6 @@ pub trait DspProcessor: Send {
     /// Обрабатывает порцию аудиоданных
     fn process(
         &mut self,
-        input: PcmAudio
-    )
-        -> Result<PcmAudio>;
+        input: &mut PcmAudio
+    ) -> Result<()>;
 }

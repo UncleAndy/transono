@@ -1,10 +1,13 @@
-use crate::audio::processor::AudioProcessor;
-use anyhow::Result;
-use crate::audio::{Audio, AudioFormat, RubatoResampler};
-use crate::audio::ChannelConverter;
+use crate::audio::{Audio, PcmAudio, Processor};
+use crate::core::error::{CoreError, Result};
 
 pub struct AudioPipeline {
-    processors: Vec<Box<dyn AudioProcessor>>,
+    processors: Vec<Processor>,
+}
+
+enum PipelineState {
+    Audio(Audio),
+    Pcm(PcmAudio),
 }
 
 impl AudioPipeline {
@@ -16,25 +19,38 @@ impl AudioPipeline {
 
     pub fn add<P>(
         &mut self,
-        processor: P,
+        processor: Processor,
     ) -> &mut Self
     where
-        P: AudioProcessor + 'static,
+        P: 'static,
     {
-        self.processors.push(Box::new(processor));
+        self.processors.push(processor);
         self
     }
 
     pub fn process(
         &mut self,
-        mut audio: Audio,
-    ) -> Result<Audio> {
+        data: &mut PipelineState,
+    ) -> Result<()> {
 
         for processor in &mut self.processors {
-            audio = processor.process(audio)?;
-        }
+            let _ = match processor {
+                Processor::Audio(proc) => {
+                    match data {
+                        PipelineState::Audio(audio) => proc.process(audio),
+                        PipelineState::Pcm(_) => { return Err(CoreError::Other(anyhow::Error::msg("can not use Pcm for Audio processor"))) },
+                    }
+                }
+                Processor::Dsp(proc) => {
+                    match data {
+                        PipelineState::Pcm(audio) => proc.process(audio),
+                        PipelineState::Audio(_) => { return Err(CoreError::Other(anyhow::Error::msg("can not use Audio for Dsp processor"))) },
+                    }
+                }
+            };
+        };
 
-        Ok(audio)
+        Ok(())
     }
 
     pub fn is_empty(&self) -> bool {
@@ -43,48 +59,6 @@ impl AudioPipeline {
 
     pub fn clear(&mut self) {
         self.processors.clear()
-    }
-
-    pub fn prepare_input(
-        &mut self,
-        from: &AudioFormat,
-        to: &AudioFormat,
-    ) -> Result<()> {
-        self.prepare(from, to)
-    }
-
-    pub fn prepare_output(
-        &mut self,
-        from: &AudioFormat,
-        to: &AudioFormat,
-    ) -> Result<()> {
-        self.prepare(from, to)
-    }
-
-    pub fn prepare(
-        &mut self,
-        from: &AudioFormat,
-        to: &AudioFormat,
-    ) -> Result<()> {
-
-        self.clear();
-
-        if from.channels != to.channels {
-            self.add(ChannelConverter::new(
-                from.channels,
-                to.channels,
-            ));
-        }
-
-        if from.sample_rate != to.sample_rate {
-            self.add(RubatoResampler::new(
-                from.sample_rate,
-                to.sample_rate,
-                from.channels,
-            )?);
-        }
-
-        Ok(())
     }
 }
 
