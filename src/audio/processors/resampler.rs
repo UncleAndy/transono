@@ -88,11 +88,13 @@ impl Resampler {
         &mut self,
         pcm: &PcmAudio,
     ) {
+        let channels_count = pcm.channel_count();
+
         debug_assert_eq!(
-            pcm.channel_count(),
+            channels_count,
             self.input_buffer.channels(),
         );
-        for channel in 0..pcm.channel_count() {
+        for channel in 0..channels_count {
             self.input_buffer.push_channel(
                 channel,
                 pcm.channel(channel),
@@ -102,6 +104,8 @@ impl Resampler {
     fn process_fft(
         &mut self,
     ) -> Result<()> {
+        let channels_count = self.input_buffer.channels();
+
         loop {
             let required = self.fft.input_frames_next();
 
@@ -110,7 +114,7 @@ impl Resampler {
             }
 
             // ---------- input ----------
-            for channel in 0..self.input_buffer.channels() {
+            for channel in 0..channels_count {
                 let samples = self
                     .input_buffer
                     .read_channel(channel, required)
@@ -133,7 +137,7 @@ impl Resampler {
                 .map_err(|e| CoreError::Other(e.into()))?;
 
             // ---------- output ----------
-            for channel in 0..self.output_buffer.channels() {
+            for channel in 0..channels_count {
                 let scratch = &mut self.channels_scratch[channel];
 
                 scratch.resize(output_frames, 0.0);
@@ -166,26 +170,37 @@ impl Resampler {
             return;
         }
 
+        let channels_count = pcm.channel_count();
+
         debug_assert_eq!(
-            pcm.channel_count(),
+            channels_count,
             self.output_buffer.channels(),
         );
 
-        for channel in 0..pcm.channel_count() {
-            let samples = self
-                .output_buffer
-                .read_channel(channel, frames)
-                .expect("output buffer must contain all channels");
+        for channel in 0..channels_count {
+            debug_assert!(
+                self.output_buffer
+                    .read_channel(channel, frames)
+                    .is_some()
+            );
+
+            let samples = unsafe {
+                self.output_buffer
+                    .read_channel(channel, frames)
+                    .unwrap_unchecked()
+            };
 
             pcm.replace_channel(channel, samples);
         }
 
         self.output_buffer.consume(frames);
-        
-        pcm.spec = AudioSpec::new(
-            self.output_rate,
-            pcm.spec.channels().clone(),
-        );
+
+        if pcm.spec.rate() != self.output_rate {
+            pcm.spec = AudioSpec::new(
+                self.output_rate,
+                pcm.spec.channels().clone(),
+            );
+        }
     }
 }
 
