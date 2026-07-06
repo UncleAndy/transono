@@ -259,28 +259,16 @@ pub struct PlanarAdapter<'a, T> {
     channels: &'a mut [Vec<T>],
 }
 
-impl<'a> PlanarAdapter<'a, f32> {
-    pub fn from_pcm(
-        audio: &'a mut PcmAudio,
-    ) -> Self {
-
-        Self {
-            channels: &mut audio.channels,
-        }
-
-    }
-}
-
 impl<'a, T> PlanarAdapter<'a, T> {
     pub fn new(
         channels: &'a mut [Vec<T>],
     ) -> Self {
-        Self { channels }
-    }
+        debug_assert!(
+            channels
+                .windows(2)
+                .all(|w| w[0].len() == w[1].len())
+        );
 
-    pub fn from_channels(
-        channels: &'a mut [Vec<T>],
-    ) -> Self {
         Self { channels }
     }
 }
@@ -289,15 +277,15 @@ unsafe impl<'a, T> Adapter<'a, T> for PlanarAdapter<'a, T>
 where
     T: Copy
 {
+    #[inline(always)]
     unsafe fn read_sample_unchecked(
         &self,
         channel: usize,
         frame: usize,
     ) -> T {
-        *self
-            .channels
-            .get_unchecked(channel)
-            .get_unchecked(frame)
+        let channel = self.channels.get_unchecked(channel);
+
+        *channel.as_ptr().add(frame)
     }
 
     fn channels(&self) -> usize {
@@ -315,6 +303,7 @@ unsafe impl<'a, T> AdapterMut<'a, T> for PlanarAdapter<'a, T>
 where
     T: Copy + Clone
 {
+    #[inline(always)]
     unsafe fn write_sample_unchecked(
         &mut self,
         channel: usize,
