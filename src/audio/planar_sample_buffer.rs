@@ -88,6 +88,8 @@ impl<T: Copy> PlanarSampleBuffer<T> {
 
     #[inline(always)]
     pub fn resize(&mut self, channels: usize) {
+        self.clear();
+
         match channels.cmp(&self.channels.len()) {
             std::cmp::Ordering::Greater => {
                 self.channels
