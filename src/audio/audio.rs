@@ -2,9 +2,12 @@ use std::fmt;
 use std::fmt::{Debug, Formatter};
 use bytes::Bytes;
 use cpal::SampleFormat;
+
 use symphonia::core::audio::conv::{ConvertibleSample, FromSample};
 use symphonia::core::audio::{AudioBuffer, AudioMut, AudioSpec, GenericAudioBuffer};
 use symphonia::core::audio::sample::{i24, u24, Sample};
+
+use crate::core::error::Result;
 
 /// Universal audio container.
 pub struct Audio {
@@ -44,7 +47,7 @@ impl Audio {
     }
 
     pub fn from_planar<S>(
-        spec: AudioSpec,
+        spec: &AudioSpec,
         src: &[&[S]],
     ) -> Self
     where
@@ -54,7 +57,7 @@ impl Audio {
         let frames = src.first().map_or(0, |c| c.len());
 
         let mut buffer = AudioBuffer::<S>::new(
-            spec,
+            spec.clone(),
             frames,
         );
 
@@ -63,6 +66,51 @@ impl Audio {
         buffer.copy_from_slice_planar(src);
 
         Self::new(buffer.into_generic_buffer())
+    }
+
+    pub fn to_pcm(
+        &self,
+    ) -> Result<PcmAudio> {
+        let buffer = self.buffer();
+
+        let spec = buffer.spec().clone();
+
+        let mut channels = vec![
+            vec![0.0f32; buffer.frames()];
+            spec.channels().count()
+        ];
+
+        let mut slices: Vec<&mut [f32]> = channels
+            .iter_mut()
+            .map(Vec::as_mut_slice)
+            .collect();
+
+        buffer.copy_to_slice_planar(&mut slices);
+
+        Ok(PcmAudio {
+            spec,
+            channels,
+        })
+    }
+
+    pub fn from_pcm(
+        pcm: &PcmAudio,
+    ) -> Result<Self> {
+
+        let refs: Vec<&[f32]> = pcm
+            .channels
+            .iter()
+            .map(Vec::as_slice)
+            .collect();
+
+        Ok(Self::from_planar::<f32>(
+            &pcm.spec,
+            &refs,
+        ))
+    }
+
+    pub fn into_buffer(self) -> GenericAudioBuffer {
+        self.buffer
     }
 }
 
@@ -74,11 +122,23 @@ impl Debug for Audio {
     }
 }
 
-/// Внутреннее представление аудио для DSP
+/// Internal DSP representation.
+///
+/// The library supports arbitrary sample formats through `Audio`,
+/// but all built-in DSP processors currently operate on `f32`.
 pub(crate) struct PcmAudio {
-    pub sample_rate: u32,
-    pub frames: usize,
+    pub spec: AudioSpec,
     pub channels: Vec<Vec<f32>>, // Один Vec на канал.
+}
+
+impl PcmAudio {
+    pub fn frames(&self) -> usize {
+        self.channels.first().map_or(0, Vec::len)
+    }
+
+    pub fn channel_count(&self) -> usize {
+        self.channels.len()
+    }
 }
 
 #[allow(unused)]

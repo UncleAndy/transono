@@ -1,5 +1,5 @@
 use crate::audio::{Audio, PcmAudio, Processor};
-use crate::core::error::{CoreError, Result};
+use crate::core::error::{Result};
 
 pub struct AudioPipeline {
     processors: Vec<Processor>,
@@ -17,12 +17,10 @@ impl AudioPipeline {
         }
     }
 
-    pub fn add<P>(
+    pub fn add(
         &mut self,
         processor: Processor,
     ) -> &mut Self
-    where
-        P: 'static,
     {
         self.processors.push(processor);
         self
@@ -36,16 +34,10 @@ impl AudioPipeline {
         for processor in &mut self.processors {
             let _ = match processor {
                 Processor::Audio(proc) => {
-                    match data {
-                        PipelineState::Audio(audio) => proc.process(audio),
-                        PipelineState::Pcm(_) => { return Err(CoreError::Other(anyhow::Error::msg("can not use Pcm for Audio processor"))) },
-                    }
+                    proc.process(data.ensure_audio()?)
                 }
-                Processor::Dsp(proc) => {
-                    match data {
-                        PipelineState::Pcm(audio) => proc.process(audio),
-                        PipelineState::Audio(_) => { return Err(CoreError::Other(anyhow::Error::msg("can not use Audio for Dsp processor"))) },
-                    }
+                Processor::Dsp(dsp) => {
+                    dsp.process(data.ensure_pcm()?)
                 }
             };
         };
@@ -65,5 +57,41 @@ impl AudioPipeline {
 impl Default for AudioPipeline {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl PipelineState {
+    fn ensure_pcm(
+        &mut self,
+    ) -> Result<&mut PcmAudio> {
+        if let PipelineState::Audio(audio) = self {
+            let pcm = audio.to_pcm()?;
+
+            *self = PipelineState::Pcm(pcm);
+        }
+
+        match self {
+            PipelineState::Pcm(pcm) => Ok(pcm),
+            _ => unreachable!(),
+        }
+    }
+
+    fn ensure_audio(
+        &mut self,
+    ) -> Result<&mut Audio> {
+
+        if let PipelineState::Pcm(pcm) = self {
+
+            let audio = Audio::from_pcm(&pcm)?;
+
+            *self = PipelineState::Audio(audio);
+        }
+
+        match self {
+            PipelineState::Audio(audio) => {
+                Ok(audio)
+            }
+            _ => unreachable!(),
+        }
     }
 }
