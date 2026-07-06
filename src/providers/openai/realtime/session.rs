@@ -4,7 +4,7 @@ use cpal::SampleFormat;
 use futures_util::SinkExt;
 use async_trait::async_trait;
 
-use crate::audio::{Audio, AudioCodec, BinaryEncoding, AudioFormat, EncodedAudio, Endianness, PcmCodec};
+use crate::audio::{Audio, AudioEncoder, BinaryEncoding, AudioFormat, EncodedAudio, Endianness, PcmCodec};
 use crate::core::{
     websocket::WebSocketTransport,
     error::Result,

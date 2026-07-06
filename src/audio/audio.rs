@@ -166,7 +166,7 @@ macro_rules! impl_audio_from {
 #[derive(Debug, Clone)]
 pub struct EncodedAudio {
     container: AudioContainer,
-    codec: AudioCodecType,
+    codec: AudioCodec,
     encoding: BinaryEncoding,
     spec: AudioSpec,
     data: Bytes,
@@ -175,7 +175,7 @@ pub struct EncodedAudio {
 impl EncodedAudio {
     pub(crate) fn new(
         container: AudioContainer,
-        codec: AudioCodecType,
+        codec: AudioCodec,
         encoding: BinaryEncoding,
         spec: AudioSpec,
         data: Bytes
@@ -230,7 +230,7 @@ pub enum AudioContainer {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum AudioCodecType {
+pub enum AudioCodec {
     Pcm(Endianness),
     Opus,
     Vorbis,
