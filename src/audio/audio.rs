@@ -2,37 +2,35 @@ use std::fmt;
 use std::fmt::{Debug, Formatter};
 use bytes::Bytes;
 use cpal::SampleFormat;
-use symphonia::core::audio::GenericAudioBuffer;
+use symphonia::core::audio::{AudioBuffer, GenericAudioBuffer};
+use symphonia::core::audio::sample::{i24, u24};
 
 /// Universal audio container.
 pub struct Audio {
-    format: AudioFormat,
     buffer: GenericAudioBuffer,
 }
 
 impl Audio {
     pub fn new(
-        format: AudioFormat,
         buffer: GenericAudioBuffer,
     ) -> Self {
-        debug_assert_eq!(
-            format.channels as usize,
-            buffer.spec().channels().count(),
-        );
-        debug_assert_eq!(
-            format.sample_rate,
-            buffer.spec().rate(),
-        );
-
         Self {
-            format,
             buffer,
         }
     }
 
-    pub fn format(&self) -> &AudioFormat {
-        &self.format
+    pub fn from_f32(buffer: AudioBuffer<f32>) -> Self {
+        Self {
+            buffer: GenericAudioBuffer::F32(buffer),
+        }
     }
+
+    pub fn from_i16(buffer: AudioBuffer<i16>) -> Self {
+        Self {
+            buffer: GenericAudioBuffer::S16(buffer),
+        }
+    }
+
     pub fn buffer(&self) -> &GenericAudioBuffer {
         &self.buffer
     }
@@ -41,19 +39,8 @@ impl Audio {
     }
     pub fn replace(
         &mut self,
-        format: AudioFormat,
         buffer: GenericAudioBuffer,
     ) {
-        debug_assert_eq!(
-            format.channels as usize,
-            buffer.spec().channels().count(),
-        );
-        debug_assert_eq!(
-            format.sample_rate,
-            buffer.spec().rate(),
-        );
-
-        self.format = format;
         self.buffer = buffer;
     }
 }
@@ -61,11 +48,22 @@ impl Audio {
 impl Debug for Audio {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.debug_struct("Audio")
-            .field("format", &self.format)
-            .field("sample_format", &self.format.sample_format)
             .field("frames", &self.buffer.frames())
             .finish()
     }
+}
+
+#[allow(unused)]
+macro_rules! impl_audio_from {
+    ($sample:ty, $variant:ident) => {
+        impl From<AudioBuffer<$sample>> for Audio {
+            fn from(buffer: AudioBuffer<$sample>) -> Self {
+                Self {
+                    buffer: GenericAudioBuffer::$variant(buffer),
+                }
+            }
+        }
+    };
 }
 
 #[derive(Debug, Clone)]

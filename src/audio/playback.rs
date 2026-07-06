@@ -1,20 +1,19 @@
-use anyhow::{bail, Result};
-use bytes::Bytes;
 use cpal::{
     traits::{DeviceTrait, StreamTrait},
     BufferSize, Device, SampleFormat, Stream, StreamConfig,
 };
 use tokio::sync::mpsc;
 use crate::audio::{Audio, AudioFormat};
+use crate::core::error::{CoreError, Result};
 
 pub struct AudioPlayback {
     stream: Stream,
     format: AudioFormat,
 }
 
-struct PlaybackState {
+struct PlaybackState<T> {
     current: Option<Audio>,
-    current_samples: Option<Bytes>,
+    current_samples: Vec<T>,
     offset: usize,
 }
 
@@ -34,7 +33,7 @@ impl AudioPlayback {
 
         let mut state = PlaybackState {
             current: None,
-            current_samples: None,
+            current_samples: Vec::new(),
             offset: 0,
         };
 
@@ -46,31 +45,34 @@ impl AudioPlayback {
 
                 if state.current.is_none() {
                     state.current = receiver.try_recv().ok();
+
+                    if let Some(audio) = &state.current {
+
+                        state.current_samples.clear();
+
+                        audio
+                            .buffer()
+                            .copy_to_vec_interleaved(&mut state.current_samples);
+                    }
+
                     state.offset = 0;
                 }
 
-                let Some(audio) = &state.current else {
+                let Some(_audio) = &state.current else {
                     return;
                 };
 
-                let samples: &[f32] = match audio.view::<f32>() {
-                    Ok(samples) => samples,
-                    Err(err) => {
-                        eprintln!("playback: {err}");
-                        state.current = None;
-                        return;
-                    }
-                };
+                let remain = &state.current_samples[state.offset..];
 
-                let remain = &samples[state.offset..];
                 let count = remain.len().min(output.len());
 
                 output[..count].copy_from_slice(&remain[..count]);
 
                 state.offset += count;
 
-                if state.offset >= samples.len() {
+                if state.offset >= state.current_samples.len() {
                     state.current = None;
+                    state.current_samples.clear();
                     state.offset = 0;
                 }
             },
@@ -78,7 +80,8 @@ impl AudioPlayback {
                 eprintln!("playback: {err}");
             },
             None,
-        )?;
+        )
+            .map_err(|e| CoreError::Other(anyhow::Error::from(e)))?;
 
         Ok(Self {
             stream,
@@ -90,15 +93,83 @@ impl AudioPlayback {
         })
     }
 
+    fn build_stream<T>(
+        device: &Device,
+        config: &StreamConfig,
+        mut receiver: mpsc::Receiver<Audio>,
+    ) -> Result<Stream>
+    where
+        T: cpal::SizedSample
+            + symphonia::core::audio::conv::ConvertibleSample
+            + Send
+            + 'static,
+    {
+        let mut state = PlaybackState {
+            current: None,
+            current_samples: Vec::<T>::new(),
+            offset: 0,
+        };
+
+        let stream = device.build_output_stream::<T, _, _>(
+            *config,
+            move |output: &mut [T], _| {
+
+                output.fill(T::EQUILIBRIUM);
+
+                if state.current.is_none() {
+
+                    state.current = receiver.try_recv().ok();
+
+                    if let Some(audio) = &state.current {
+
+                        state.current_samples.clear();
+
+                        audio
+                            .buffer()
+                            .copy_to_vec_interleaved(&mut state.current_samples);
+
+                    }
+
+                    state.offset = 0;
+                }
+
+                let remain =
+                    &state.current_samples[state.offset..];
+
+                let count =
+                    remain.len().min(output.len());
+
+                output[..count]
+                    .copy_from_slice(&remain[..count]);
+
+                state.offset += count;
+
+                if state.offset >= state.current_samples.len() {
+                    state.current = None;
+                    state.current_samples.clear();
+                    state.offset = 0;
+                }
+
+            },
+            move |err| {
+                eprintln!("playback: {err}");
+            },
+            None,
+        )
+            .map_err(|e| CoreError::Other(anyhow::Error::from(e)))?;
+
+        Ok(stream)
+    }
+
     #[inline]
     pub fn start(&self) -> Result<()> {
-        self.stream.play()?;
+        self.stream.play().map_err(|e| CoreError::Other(anyhow::Error::from(e)))?;
         Ok(())
     }
 
     #[inline]
     pub fn stop(&self) -> Result<()> {
-        self.stream.pause()?;
+        self.stream.pause().map_err(|e| CoreError::Other(anyhow::Error::from(e)))?;
         Ok(())
     }
 
@@ -109,7 +180,8 @@ impl AudioPlayback {
 }
 
 fn select_config(device: &Device) -> Result<(StreamConfig, SampleFormat)> {
-    let cfg = device.default_output_config()?;
+    let cfg = device.default_output_config()
+        .map_err(|e| CoreError::Other(anyhow::Error::from(e)))?;
 
     Ok((StreamConfig {
         channels: cfg.channels(),

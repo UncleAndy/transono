@@ -4,6 +4,8 @@ use cpal::{
     traits::{DeviceTrait, StreamTrait},
     BufferSize, Device, SampleFormat, Stream, StreamConfig,
 };
+use symphonia::core::audio::{AudioSpec, GenericAudioBuffer};
+use symphonia::core::audio::conv::ConvertibleSample;
 use tokio::sync::mpsc;
 use crate::audio::{Audio, AudioFormat};
 
@@ -18,6 +20,11 @@ impl AudioCapture {
         sender: mpsc::Sender<Audio>,
     ) -> Result<Self> {
         let config = select_config(&device)?;
+
+        let spec = AudioSpec::new(
+            config.sample_rate,
+            config.channels.cast_signed(),
+        );
 
         let format = AudioFormat {
             sample_rate: config.sample_rate,
@@ -35,10 +42,9 @@ impl AudioCapture {
         let stream = device.build_input_stream::<f32, _, _>(
             config,
             move |data: &[f32], _| {
-
-                let audio = Audio::new(
-                    format.clone(),
-                    Bytes::copy_from_slice(bytemuck::cast_slice(data)),
+                let audio = Audio::from_interleaved(
+                    spec.clone(),
+                    data,
                 );
 
                 let _ = sender.blocking_send(audio);
