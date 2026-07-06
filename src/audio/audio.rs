@@ -2,7 +2,9 @@ use std::fmt;
 use std::fmt::{Debug, Formatter};
 use bytes::Bytes;
 use cpal::SampleFormat;
+use symphonia::core::audio::conv::ConvertibleSample;
 use symphonia::core::audio::GenericAudioBuffer;
+use symphonia::core::audio::sample::Sample;
 
 /// Universal audio container.
 pub struct Audio {
@@ -29,6 +31,38 @@ impl Audio {
         buffer: GenericAudioBuffer,
     ) {
         self.buffer = buffer;
+    }
+
+    pub fn copy_to_planar<S, Dst>(
+        &self,
+        dst: &mut [&mut [S]],
+    )
+    where
+        S: Sample + ConvertibleSample,
+        Dst: AsMut<[S]>
+    {
+        todo!()
+    }
+
+    pub fn copy_from_planar<S, Src>(
+        spec: AudioSpec,
+        src: &[Src],
+    ) -> Self
+    where
+        S: Sample + ConvertibleSample,
+        Src: AsRef<[S]>
+    {
+        todo!()
+    }
+
+    pub fn from_planar<S>(
+        spec: AudioSpec,
+        src: &[&[S]],
+    ) -> Self
+    where
+        S: Sample + ConvertibleSample
+    {
+        todo!()
     }
 }
 

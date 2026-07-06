@@ -49,11 +49,7 @@ impl AudioPipeline {
         from: &AudioFormat,
         to: &AudioFormat,
     ) -> Result<()> {
-        self.clear();
-
-        todo!();
-
-        Ok(())
+        self.prepare(from, to)
     }
 
     pub fn prepare_output(
@@ -61,11 +57,7 @@ impl AudioPipeline {
         from: &AudioFormat,
         to: &AudioFormat,
     ) -> Result<()> {
-        self.clear();
-
-        todo!();
-
-        Ok(())
+        self.prepare(from, to)
     }
 
     pub fn prepare(
@@ -87,15 +79,7 @@ impl AudioPipeline {
             self.add(RubatoResampler::new(
                 from.sample_rate,
                 to.sample_rate,
-                to.channels,
             )?);
-        }
-
-        if from.sample_format != to.sample_format {
-            self.add(SampleConverter::new(
-                from.sample_format,
-                to.sample_format,
-            ));
         }
 
         Ok(())
