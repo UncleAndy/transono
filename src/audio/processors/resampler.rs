@@ -1,9 +1,9 @@
+use rubato::Resampler as _;
 use rubato::{
     Fft,
     FixedSync,
     audioadapter_buffers::owned::SequentialOwned};
 use rubato::audioadapter::{Adapter, AdapterMut};
-use rubato::Resampler as _;
 use symphonia::core::audio::AudioSpec;
 
 use crate::audio::{DspProcessor, PcmAudio, PlanarSampleBuffer};
