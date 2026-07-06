@@ -1,6 +1,7 @@
 use crate::audio::processor::AudioProcessor;
 use anyhow::Result;
 use crate::audio::{Audio, AudioFormat, RubatoResampler};
+use crate::audio::ChannelConverter;
 
 pub struct AudioPipeline {
     processors: Vec<Box<dyn AudioProcessor>>,

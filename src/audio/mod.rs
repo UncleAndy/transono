@@ -9,7 +9,7 @@ pub mod playback;
 pub mod processor;
 pub mod convert;
 pub mod audio;
-pub mod pcm_codec;
+// pub mod pcm_codec;
 pub mod processors;
 
 pub use capture::*;
@@ -22,4 +22,4 @@ pub use playback::*;
 pub use processor::*;
 pub use convert::*;
 pub use audio::*;
-pub use pcm_codec::*;
+// pub use pcm_codec::*;

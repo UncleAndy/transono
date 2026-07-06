@@ -33,13 +33,12 @@ impl Audio {
         self.buffer = buffer;
     }
 
-    pub fn copy_to_planar<S, Dst>(
+    pub fn copy_to_planar<S>(
         &self,
         dst: &mut [&mut [S]],
     )
     where
         S: Sample + ConvertibleSample,
-        Dst: AsMut<[S]>
     {
         self.buffer.copy_to_slice_planar(dst);
     }
@@ -73,6 +72,12 @@ impl Debug for Audio {
             .field("frames", &self.buffer.frames())
             .finish()
     }
+}
+
+/// Внутреннее представление аудио для DSP
+pub(crate) struct PcmAudio {
+    pub sample_rate: u32,
+    pub channels: Vec<Vec<f32>>, // Один Vec на канал.
 }
 
 #[allow(unused)]
