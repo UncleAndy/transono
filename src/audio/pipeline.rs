@@ -1,5 +1,5 @@
 use crate::audio::{Audio, PcmAudio, Processor};
-use crate::core::error::{Result};
+use crate::core::error::Result;
 
 pub struct AudioPipeline {
     processors: Vec<Processor>,
@@ -32,15 +32,15 @@ impl AudioPipeline {
     ) -> Result<()> {
 
         for processor in &mut self.processors {
-            let _ = match processor {
+            match processor {
                 Processor::Audio(proc) => {
-                    proc.process(data.ensure_audio()?)
+                    proc.process(data.ensure_audio()?)?;
                 }
                 Processor::Dsp(dsp) => {
-                    dsp.process(data.ensure_pcm()?)
+                    dsp.process(data.ensure_pcm()?)?;
                 }
-            };
-        };
+            }
+        }
 
         Ok(())
     }
