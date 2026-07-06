@@ -126,6 +126,12 @@ impl PcmAudio {
     pub fn channel_count(&self) -> usize {
         self.channels.len()
     }
+
+    pub fn adapter(
+        &mut self,
+    ) -> PlanarAdapter<f32> {
+        PlanarAdapter::new(&mut self.channels)
+    }
 }
 
 #[allow(unused)]
@@ -310,10 +316,9 @@ where
         frame: usize,
         value: &T,
     ) -> bool {
-        *self
-            .channels
-            .get_unchecked_mut(channel)
-            .get_unchecked_mut(frame) = *value;
+        let channel = self.channels.get_unchecked_mut(channel);
+
+        *channel.as_mut_ptr().add(frame) = *value;
 
         false
     }
