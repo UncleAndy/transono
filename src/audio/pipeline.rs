@@ -29,7 +29,7 @@ impl AudioPipeline {
     pub fn process(
         &mut self,
         audio: Audio,
-    ) -> Result<()> {
+    ) -> Result<Audio> {
         let mut state = PipelineState::Audio(audio);
 
         for processor in &mut self.processors {
@@ -43,7 +43,7 @@ impl AudioPipeline {
             }
         }
 
-        Ok(())
+        state.into_audio()
     }
 
     pub fn is_empty(&self) -> bool {

@@ -29,12 +29,6 @@ impl Audio {
     pub fn buffer_mut(&mut self) -> &mut GenericAudioBuffer {
         &mut self.buffer
     }
-    pub fn replace(
-        &mut self,
-        buffer: GenericAudioBuffer,
-    ) {
-        self.buffer = buffer;
-    }
 
     pub fn copy_to_planar<S>(
         &self,
@@ -47,7 +41,7 @@ impl Audio {
     }
 
     pub fn from_planar<S>(
-        spec: &AudioSpec,
+        spec: AudioSpec,
         src: &[&[S]],
     ) -> Self
     where
@@ -56,10 +50,7 @@ impl Audio {
     {
         let frames = src.first().map_or(0, |c| c.len());
 
-        let mut buffer = AudioBuffer::<S>::new(
-            spec.clone(),
-            frames,
-        );
+        let mut buffer = AudioBuffer::<S>::new(spec, frames);
 
         buffer.render_uninit(Some(frames));
 
@@ -104,13 +95,9 @@ impl Audio {
             .collect();
 
         Ok(Self::from_planar::<f32>(
-            &pcm.spec,
+            pcm.spec.clone(),
             &refs,
         ))
-    }
-
-    pub fn into_buffer(self) -> GenericAudioBuffer {
-        self.buffer
     }
 }
 
