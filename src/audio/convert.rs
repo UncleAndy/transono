@@ -1,10 +1,10 @@
 use bytes::Bytes;
 
-use crate::audio::{Audio, AudioEncoding, AudioFormat, EncodedAudio};
+use crate::audio::{Audio, BinaryEncoding, AudioFormat, EncodedAudio};
 use crate::core::error::Result;
 
 pub trait AudioCodec: Send + Sync {
-    fn encoding(&self) -> AudioEncoding;
+    fn encoding(&self) -> BinaryEncoding;
 
     fn encode(
         &self,

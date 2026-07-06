@@ -4,7 +4,7 @@ use cpal::SampleFormat;
 use futures_util::SinkExt;
 use async_trait::async_trait;
 
-use crate::audio::{Audio, AudioCodec, AudioEncoding, AudioFormat, EncodedAudio, Endianness, PcmCodec};
+use crate::audio::{Audio, AudioCodec, BinaryEncoding, AudioFormat, EncodedAudio, Endianness, PcmCodec};
 use crate::core::{
     websocket::WebSocketTransport,
     error::Result,
@@ -73,7 +73,7 @@ impl RealtimeSession {
             .map_err(|e| CoreError::Other(anyhow::Error::from(e)))?;
 
         let encoded = EncodedAudio::new(
-            AudioEncoding::Pcm {
+            BinaryEncoding::Pcm {
                 endianness: Endianness::Little,
             },
             bytes.into(),

@@ -165,19 +165,35 @@ macro_rules! impl_audio_from {
 
 #[derive(Debug, Clone)]
 pub struct EncodedAudio {
-    encoding: AudioEncoding,
+    codec: AudioCodecType,
+
+    container: AudioContainer,
+
+    encoding: BinaryEncoding,
+
+    spec: AudioSpec,
+
     data: Bytes,
 }
 
 impl EncodedAudio {
-    pub(crate) fn new(encoding: AudioEncoding, data: Bytes) -> EncodedAudio {
+    pub(crate) fn new(
+        container: AudioContainer,
+        codec: AudioCodecType,
+        encoding: BinaryEncoding,
+        spec: AudioSpec,
+        data: Bytes
+    ) -> EncodedAudio {
         Self {
+            codec,
+            container,
             encoding,
+            spec,
             data,
         }
     }
 
-    pub fn encoding(&self) -> &AudioEncoding {
+    pub fn encoding(&self) -> &BinaryEncoding {
         &self.encoding
     }
     pub fn bytes(&self) -> &Bytes {
@@ -205,28 +221,33 @@ pub struct AudioFormat {
     pub sample_format: SampleFormat,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AudioContainer {
+    Raw,
+    Wav,
+    Ogg,
+    Mp4,
+    Flac,
+    Custom(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AudioCodecType {
+    Raw,
+    Opus,
+    Mp3,
+    Flac,
+    Aac,
+    Custom(String),
+}
+
+
 /// Audio encoding.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum AudioEncoding {
-    /// Raw PCM stream.
-    Pcm {
-        endianness: Endianness,
-    },
-
-    /// Opus encoded audio.
-    Opus,
-
-    /// MP3 encoded audio.
-    Mp3,
-
-    /// FLAC encoded audio.
-    Flac,
-
-    /// AAC encoded audio.
-    Aac,
-
-    /// Unknown/custom encoding.
-    Custom(String),
+pub enum BinaryEncoding {
+    Binary(Endianness),
+    Base64(Endianness),
+    Custom(Endianness, String),
 }
 
 impl AudioFormat {
