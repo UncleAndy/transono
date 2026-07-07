@@ -49,18 +49,18 @@ impl AudioEncoder for PcmBase64Encoder {
             &mut self.scratch,
         )?;
 
-        output.clear();
-
-        output.resize(
+        let encoded_len =
             base64_simd::STANDARD
-                .encoded_length(self.scratch.len()),
-            0,
-        );
+                .encoded_length(self.scratch.len());
+        output.clear();
+        output.resize(encoded_len, 0);
 
-        let _ = base64_simd::STANDARD.encode(
+        let encoded = base64_simd::STANDARD.encode(
             &self.scratch,
             base64_simd::Out::from_slice(output),
         );
+
+        debug_assert_eq!(encoded.len(), output.len());
 
         Ok(())
     }
@@ -113,6 +113,8 @@ impl AudioDecoder for PcmBase64Decoder {
                 base64_simd::Out::from_slice(&mut self.scratch),
             )
             .map_err(|e| CoreError::Other(e.into()))?;
+
+        debug_assert_eq!(decoded.len(), input.len());
 
         self.binary.decode_bytes(decoded)
     }
