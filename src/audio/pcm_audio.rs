@@ -12,6 +12,18 @@ pub(crate) struct PcmAudio {
 }
 
 impl PcmAudio {
+    pub fn new(spec: AudioSpec, frames: usize) -> Self {
+        let mut channels = Vec::new();
+        for _ in 0..frames {
+            channels.push(Vec::with_capacity(frames))
+        }
+
+        Self {
+            spec,
+            channels,
+        }
+    }
+
     pub fn frames(&self) -> usize {
         self.channels.first().map_or(0, Vec::len)
     }
@@ -27,6 +39,9 @@ impl PcmAudio {
     }
     pub fn channels(&self) -> &[Vec<f32>] {
         &self.channels
+    }
+    pub fn channels_mut(&mut self) -> &mut [Vec<f32>] {
+        self.channels.as_mut_slice()
     }
     pub fn channel(&self, index: usize) -> &[f32] {
         &self.channels[index]
