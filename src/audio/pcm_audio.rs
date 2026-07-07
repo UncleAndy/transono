@@ -55,6 +55,11 @@ impl PcmAudio {
         channel: usize,
         samples: &[f32],
     ) {
+        debug_assert_eq!(
+            samples.len(),
+            self.frames(),
+        );
+
         let dst = &mut self.channels[channel];
 
         dst.clear();
@@ -67,10 +72,7 @@ impl PcmAudio {
         samples: &[f32],
         layout: Channels,
     ) {
-        debug_assert!(
-            self.channels.is_empty()
-                || samples.len() == self.frames()
-        );
+        self.assert_frames(samples);
 
         self.channels.push(samples.to_vec());
 
@@ -97,10 +99,7 @@ impl PcmAudio {
         samples: &[f32],
         layout: Channels,
     ) {
-        debug_assert!(
-            self.channels.is_empty()
-                || samples.len() == self.frames()
-        );
+        self.assert_frames(samples);
 
         self.channels.insert(
             channel,
@@ -151,6 +150,16 @@ impl PcmAudio {
         self.spec = AudioSpec::new(
             self.spec.rate(),
             layout,
+        );
+    }
+
+    fn assert_frames(
+        &self,
+        samples: &[f32],
+    ) {
+        debug_assert!(
+            self.channels.is_empty()
+                || samples.len() == self.frames()
         );
     }
 }
