@@ -7,7 +7,7 @@ pub trait ProviderSession {}
 
 #[async_trait]
 pub trait Provider {
-    type Session: Session;
+    type Session: Session + Send + 'static;
 
     async fn create_session(
         &self,

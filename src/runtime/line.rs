@@ -1,6 +1,8 @@
+use anyhow::anyhow;
+use cpal::Device;
 use tokio_util::sync::CancellationToken;
 
-use crate::audio::{AudioCapture, AudioPipeline, AudioPlayback, AudioProcessor};
+use crate::audio::{Audio, AudioCapture, AudioPipeline, AudioPlayback, AudioProcessor, Processor};
 use crate::core::provider::Provider;
 use crate::runtime::LineState;
 use crate::core::error::{CoreError, Result};
@@ -17,22 +19,31 @@ where
 
     capture: AudioCapture,
     playback: AudioPlayback,
+    playback_tx: tokio::sync::mpsc::Sender<Audio>,
 
     input_pipeline: AudioPipeline,
-    output_pipeline: AudioPipeline,
+    output_pipeline: Option<AudioPipeline>,
 
-    capture_task: Option<std::thread::JoinHandle<()>>,
     session_task: Option<tokio::task::JoinHandle<Result<()>>>,
 
     state: LineState,
 }
 
-impl TranslationLine<P> {
+impl<P: Provider> TranslationLine<P> {
     pub async fn new(
         provider: P,
         capture: AudioCapture,
-        playback: AudioPlayback,
+        playback_device: Device,
     ) -> Result<Self> {
+        let (playback_tx, playback_rx) =
+            tokio::sync::mpsc::channel(32);
+
+        let playback =
+            AudioPlayback::new(
+                playback_device,
+                playback_rx,
+            )?;
+
         Ok(Self {
             provider,
 
@@ -40,23 +51,21 @@ impl TranslationLine<P> {
 
             capture,
             playback,
+            playback_tx,
 
             input_pipeline: AudioPipeline::new(),
-            output_pipeline: AudioPipeline::new(),
+            output_pipeline: Some(AudioPipeline::new()),
 
-            capture_task: None,
             session_task: None,
 
             state: LineState::Created,
         })
     }
 
-    pub fn add_input_processor<T>(
+    pub fn add_input_processor(
         &mut self,
-        processor: T,
+        processor: Processor,
     ) -> Result<()>
-    where
-        T: AudioProcessor + 'static,
     {
         if self.state == LineState::Running {
             return Err(CoreError::Other(anyhow::Error::msg("TranslationLine is running")));
@@ -67,12 +76,10 @@ impl TranslationLine<P> {
         Ok(())
     }
 
-    pub fn add_output_processor<T>(
+    pub fn add_output_processor(
         &mut self,
-        processor: T,
+        processor: Processor,
     ) -> Result<()>
-    where
-        T: AudioProcessor + 'static,
     {
         if self.state == LineState::Running {
             return Err(CoreError::Other(anyhow::Error::msg("TranslationLine is running")));
@@ -100,12 +107,14 @@ impl TranslationLine<P> {
 
         self.cancel.cancel();
 
-        if let Some(task) = self.capture_task.take() {
-            task.join().unwrap();
-        }
-
         if let Some(task) = self.session_task.take() {
-            task.await??;
+            task.await
+                .map_err(|_| {
+                    CoreError::Other(anyhow!("capture thread panicked"))
+                })?
+                .map_err(|_| {
+                    CoreError::Other(anyhow!("capture thread panicked"))
+                })?
         }
 
         self.state = LineState::Stopped;
@@ -122,19 +131,19 @@ impl TranslationLine<P> {
 
         let (audio_tx, audio_rx) = tokio::sync::mpsc::channel(32);
 
-        self.capture_task = Some(
-            spawn_capture(
-                self.capture.clone(),
-                self.input_pipeline.clone(),
-                audio_tx,
-            )?
-        );
+        self.capture.start()?;
+        self.playback.start()?;
+
+        let output_pipeline = self
+            .output_pipeline
+            .take()
+            .expect("output pipeline missing");
 
         self.session_task = Some(
             spawn_session(
                 self.provider.create_session().await?,
-                self.playback.clone(),
-                self.output_pipeline.clone(),
+                self.playback_tx.clone(),
+                output_pipeline,
                 audio_rx,
                 self.cancel.clone(),
             )
@@ -146,29 +155,9 @@ impl TranslationLine<P> {
     }
 }
 
-fn spawn_capture(
-    mut capture: AudioCapture,
-    mut pipeline: AudioPipeline,
-    audio_tx: tokio::sync::mpsc::Sender<Audio>,
-) -> Result<std::thread::JoinHandle<Result<()>>> {
-
-    Ok(std::thread::spawn(move || -> Result<()> {
-
-        capture.start(|audio| {
-
-            if let Ok(audio) = pipeline.process(audio) {
-                let _ = audio_tx.blocking_send(audio);
-            }
-
-        })?;
-
-        Ok(())
-    }))
-}
-
-async fn spawn_session<S>(
+fn spawn_session<S>(
     mut session: S,
-    mut playback: AudioPlayback,
+    playback_tx: tokio::sync::mpsc::Sender<Audio>,
     mut pipeline: AudioPipeline,
     mut audio_rx: tokio::sync::mpsc::Receiver<Audio>,
     cancel: CancellationToken,
@@ -201,7 +190,10 @@ where
                             let audio =
                                 pipeline.process(audio)?;
 
-                            playback.play(audio)?;
+                            playback_tx
+                                .send(audio)
+                                .await
+                                .map_err(|_| CoreError::Other(anyhow!("playback channel closed")))?;
 
                         }
 
@@ -216,6 +208,8 @@ where
                 }
             }
         }
+
+        session.close().await?;
 
         Ok(())
     })

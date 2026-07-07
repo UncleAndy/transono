@@ -17,8 +17,7 @@ pub struct AudioCapture {
 impl AudioCapture {
     pub fn new(
         device: Device,
-        sender: mpsc::Sender<Audio>,
-    ) -> Result<Self> {
+    ) -> Result<(Self, mpsc::Receiver<Audio>)> {
         let (config, sample_format) = select_config(&device)?;
 
         let spec = AudioSpec::new(
@@ -39,6 +38,8 @@ impl AudioCapture {
             config.buffer_size,
         );
 
+        let (tx, rx) = mpsc::channel(32);
+
         let stream = match sample_format {
 
             SampleFormat::F32 =>
@@ -46,7 +47,7 @@ impl AudioCapture {
                     &device,
                     &config,
                     spec.clone(),
-                    sender,
+                    tx,
                 )?,
 
             SampleFormat::I16 =>
@@ -54,7 +55,7 @@ impl AudioCapture {
                     &device,
                     &config,
                     spec.clone(),
-                    sender,
+                    tx,
                 )?,
 
             SampleFormat::U16 =>
@@ -62,7 +63,7 @@ impl AudioCapture {
                     &device,
                     &config,
                     spec.clone(),
-                    sender,
+                    tx,
                 )?,
 
             _ => {
@@ -72,10 +73,10 @@ impl AudioCapture {
             }
         };
 
-        Ok(Self {
+        Ok((Self {
             stream,
             format,
-        })
+        }, rx))
     }
 
     fn build_stream<T>(

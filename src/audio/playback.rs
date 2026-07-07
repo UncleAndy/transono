@@ -20,9 +20,7 @@ struct PlaybackState<T> {
 impl AudioPlayback {
     pub fn new(
         device: Device,
-        receiver: mpsc::Receiver<Audio>,
-    ) -> Result<Self> {
-
+    ) -> Result<(Self, mpsc::Sender<Audio>)> {
         let (config, sample_format) = select_config(&device)?;
 
         println!(
@@ -32,12 +30,14 @@ impl AudioPlayback {
             config.buffer_size,
         );
 
+        let (tx, rx) = mpsc::channel(32);
+
         let stream = match sample_format {
             SampleFormat::F32 => {
                 Self::build_stream::<f32>(
                     &device,
                     &config,
-                    receiver,
+                    rx,
                 )?
             }
 
@@ -45,7 +45,7 @@ impl AudioPlayback {
                 Self::build_stream::<i16>(
                     &device,
                     &config,
-                    receiver,
+                    rx,
                 )?
             }
 
@@ -53,7 +53,7 @@ impl AudioPlayback {
                 Self::build_stream::<u16>(
                     &device,
                     &config,
-                    receiver,
+                    rx,
                 )?
             }
 
@@ -64,14 +64,14 @@ impl AudioPlayback {
             }
         };
 
-        Ok(Self {
+        Ok((Self {
             stream,
             format: AudioFormat {
                 sample_rate: config.sample_rate,
                 channels: config.channels,
                 sample_format,
             },
-        })
+        }, tx))
     }
 
     fn build_stream<T>(
