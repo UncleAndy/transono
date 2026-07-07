@@ -10,7 +10,7 @@ pub trait AudioEncoder {
         audio: &PcmAudio,
     ) -> Result<EncodedAudio>;
     fn encode_bytes(
-        &self,
+        &mut self,
         pcm: &PcmAudio,
         output: &mut Vec<u8>,
     ) -> Result<()>;
@@ -23,7 +23,7 @@ pub trait AudioDecoder {
         encoded: &EncodedAudio,
     ) -> Result<PcmAudio>;
     fn decode_bytes(
-        &self,
+        &mut self,
         bytes: &[u8],
     ) -> Result<PcmAudio>;
 }

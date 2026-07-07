@@ -33,7 +33,7 @@ impl AudioEncoder for PcmBinaryEncoder {
     }
 
     fn encode_bytes(
-        &self,
+        &mut self,
         pcm: &PcmAudio,
         output: &mut Vec<u8>,
     ) -> Result<()> {
@@ -97,7 +97,7 @@ impl AudioDecoder for PcmBinaryDecoder {
     }
 
     fn decode_bytes(
-        &self,
+        &mut self,
         bytes: &[u8],
     ) -> Result<PcmAudio> {
 
