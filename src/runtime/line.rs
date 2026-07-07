@@ -30,12 +30,16 @@ where
     playback: Option<AudioPlayback>,
     playback_device: Device,
 
-    input_pipeline: Option<AudioPipeline>,
-    output_pipeline: Option<AudioPipeline>,
+    pipelines: Option<Pipelines>,
 
-    session_task: Option<tokio::task::JoinHandle<Result<(AudioPipeline, AudioPipeline)>>>,
+    session_task: Option<tokio::task::JoinHandle<Result<Pipelines>>>,
 
     state: LineState,
+}
+
+struct Pipelines {
+    input: AudioPipeline,
+    output: AudioPipeline,
 }
 
 impl<P: Provider> TranslationLine<P> {
@@ -55,8 +59,10 @@ impl<P: Provider> TranslationLine<P> {
             playback: None,
             playback_device,
 
-            input_pipeline: Some(AudioPipeline::new()),
-            output_pipeline: Some(AudioPipeline::new()),
+            pipelines: Some(Pipelines {
+                input: AudioPipeline::new(),
+                output: AudioPipeline::new(),
+            }),
 
             session_task: None,
 
@@ -73,8 +79,8 @@ impl<P: Provider> TranslationLine<P> {
             return Err(CoreError::Other(anyhow::Error::msg("TranslationLine is running")));
         }
 
-        if let Some(pipeline) = self.input_pipeline.as_mut() {
-            pipeline.add(processor);
+        if let Some(pipelines) = self.pipelines.as_mut() {
+            pipelines.input.add(processor);
         }
 
         Ok(())
@@ -89,8 +95,8 @@ impl<P: Provider> TranslationLine<P> {
             return Err(CoreError::Other(anyhow::Error::msg("TranslationLine is running")));
         }
 
-        if let Some(pipeline) = self.output_pipeline.as_mut() {
-            pipeline.add(processor);
+        if let Some(pipelines) = self.pipelines.as_mut() {
+            pipelines.output.add(processor);
         }
 
         Ok(())
@@ -120,7 +126,7 @@ impl<P: Provider> TranslationLine<P> {
         }
 
         if let Some(task) = self.session_task.take() {
-            let (input, output) = task.await
+            let pipelines = task.await
                 .map_err(|_| {
                     CoreError::Other(anyhow!("capture thread panicked"))
                 })?
@@ -128,8 +134,7 @@ impl<P: Provider> TranslationLine<P> {
                     CoreError::Other(anyhow!("capture thread panicked"))
                 })?;
 
-            self.input_pipeline = Some(input);
-            self.output_pipeline = Some(output);
+            self.pipelines = Some(pipelines);
         }
 
         self.state = LineState::Stopped;
@@ -154,23 +159,17 @@ impl<P: Provider> TranslationLine<P> {
         capture.start()?;
         self.capture = Some(capture);
 
-        let input_pipeline = self
-            .input_pipeline
+        let pipelines = self
+            .pipelines
             .take()
-            .expect("input pipeline missing");
-
-        let output_pipeline = self
-            .output_pipeline
-            .take()
-            .expect("output pipeline missing");
+            .expect("pipelines missing");
 
         self.session_task = Some(
             spawn_session(
                 self.provider.create_session().await?,
                 capture_rx,
                 playback_tx,
-                input_pipeline,
-                output_pipeline,
+                pipelines,
                 self.cancel.clone(),
             )
         );
@@ -185,10 +184,9 @@ fn spawn_session<S>(
     mut session: S,
     mut capture_rx: mpsc::Receiver<Audio>,
     playback_tx: mpsc::Sender<Audio>,
-    mut input_pipeline: AudioPipeline,
-    mut output_pipeline: AudioPipeline,
+    mut pipelines: Pipelines,
     cancel: CancellationToken,
-) -> tokio::task::JoinHandle<Result<(AudioPipeline, AudioPipeline)>>
+) -> tokio::task::JoinHandle<Result<Pipelines>>
 where
     S: Session + 'static,
 {
@@ -203,8 +201,7 @@ where
                 }
 
                 Some(audio) = capture_rx.recv() => {
-                    let audio =
-                                input_pipeline.process(audio)?;
+                    let audio = pipelines.input.process(audio)?;
 
                     session.send_audio(audio).await?;
                 }
@@ -212,8 +209,7 @@ where
                 event = session.next_event() => {
                     match event? {
                         SessionEvent::Audio(audio) => {
-                            let audio =
-                                output_pipeline.process(audio)?;
+                            let audio = pipelines.output.process(audio)?;
 
                             playback_tx
                                 .send(audio)
@@ -236,6 +232,6 @@ where
 
         session.close().await?;
 
-        Ok((input_pipeline, output_pipeline))
+        Ok(pipelines)
     })
 }
