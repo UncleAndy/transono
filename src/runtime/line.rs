@@ -24,7 +24,10 @@ where
 
     cancel: CancellationToken,
 
+    capture: Option<AudioCapture>,
     capture_device: Device,
+
+    playback: Option<AudioPlayback>,
     playback_device: Device,
 
     input_pipeline: Option<AudioPipeline>,
@@ -41,13 +44,15 @@ impl<P: Provider> TranslationLine<P> {
         capture_device: Device,
         playback_device: Device,
     ) -> Result<Self> {
-
         Ok(Self {
             provider,
 
             cancel: CancellationToken::new(),
 
+            capture: None,
             capture_device,
+
+            playback: None,
             playback_device,
 
             input_pipeline: Some(AudioPipeline::new()),
@@ -106,6 +111,14 @@ impl<P: Provider> TranslationLine<P> {
 
         self.cancel.cancel();
 
+        if let Some(playback) = self.playback.take() {
+            playback.stop()?;
+        }
+
+        if let Some(capture) = self.capture.take() {
+            capture.stop()?;
+        }
+
         if let Some(task) = self.session_task.take() {
             task.await
                 .map_err(|_| {
@@ -126,21 +139,22 @@ impl<P: Provider> TranslationLine<P> {
             return Ok(());
         }
 
+        self.cancel = CancellationToken::new();
+
         let (playback, playback_tx) =
             AudioPlayback::new(self.playback_device.clone())?;
+        playback.start()?;
+        self.playback = Some(playback);
 
         let (capture, capture_rx) =
             AudioCapture::new(self.capture_device.clone())?;
-
-        self.cancel = CancellationToken::new();
-
         capture.start()?;
-        playback.start()?;
+        self.capture = Some(capture);
 
         let input_pipeline = self
             .input_pipeline
             .take()
-            .expect("output pipeline missing");
+            .expect("input pipeline missing");
 
         let output_pipeline = self
             .output_pipeline
