@@ -26,18 +26,12 @@ impl AudioEncoder for PcmBase64Encoder {
         pcm: &PcmAudio,
     ) -> Result<EncodedAudio> {
 
-        let mut binary = Vec::new();
+        let mut encoded = Vec::new();
 
-        self.binary.encode_bytes(
+        self.encode_bytes(
             pcm,
-            &mut binary,
+            &mut encoded,
         )?;
-
-        let encoded: Vec<u8> =
-            Vec::from_base64_encode(
-                &base64_simd::STANDARD,
-                &binary,
-            );
 
         Ok(EncodedAudio::new(
             self.format().clone(),
@@ -45,8 +39,24 @@ impl AudioEncoder for PcmBase64Encoder {
         ))
     }
 
-    fn encode_bytes(&self, pcm: &PcmAudio, output: &mut Vec<u8>) -> Result<()> {
-        todo!()
+    fn encode_bytes(
+        &self,
+        pcm: &PcmAudio,
+        output: &mut Vec<u8>,
+    ) -> Result<()> {
+        let mut binary = Vec::new();
+
+        self.binary.encode_bytes(
+            pcm,
+            &mut binary,
+        )?;
+
+        *output = Vec::from_base64_encode(
+            &base64_simd::STANDARD,
+            &binary,
+        );
+
+        Ok(())
     }
 }
 
@@ -72,17 +82,23 @@ impl AudioDecoder for PcmBase64Decoder {
         encoded: &EncodedAudio,
     ) -> Result<PcmAudio> {
 
-        let binary: Vec<u8> =
+        self.decode_bytes(
+            encoded.bytes(),
+        )
+    }
+    
+    fn decode_bytes(
+        &self,
+        bytes: &[u8],
+    ) -> Result<PcmAudio> {
+
+        let binary =
             Vec::from_base64_decode(
                 &base64_simd::STANDARD,
-                encoded.bytes(),
+                bytes,
             )
                 .map_err(|e| CoreError::Other(anyhow::Error::from(e)))?;
 
         self.binary.decode_bytes(&binary)
-    }
-
-    fn decode_bytes(&self, bytes: &[u8]) -> Result<PcmAudio> {
-        todo!()
     }
 }

@@ -42,7 +42,7 @@ impl AudioEncoder for PcmBinaryEncoder {
         let frames = pcm.frames();
         let channels = pcm.channel_count();
 
-        output.reserve(frames * channels * 2);
+        output.resize(frames * channels * 2,0);
 
         match self.format.codec() {
             AudioCodec::Pcm(Endianness::Little) => {

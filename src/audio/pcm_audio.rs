@@ -14,8 +14,8 @@ pub(crate) struct PcmAudio {
 impl PcmAudio {
     pub fn new(spec: AudioSpec, frames: usize) -> Self {
         let mut channels = Vec::new();
-        for _ in 0..frames {
-            channels.push(Vec::with_capacity(frames))
+        for _ in 0..spec.channels().count() {
+            channels.push(vec![0.0; frames])
         }
 
         Self {
