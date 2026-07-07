@@ -1,4 +1,4 @@
-use symphonia::core::audio::AudioSpec;
+use symphonia::core::audio::{AudioSpec, Channels};
 
 use crate::audio::PlanarAdapter;
 
@@ -37,15 +37,19 @@ impl PcmAudio {
     ) -> PlanarAdapter<f32> {
         PlanarAdapter::new(&mut self.channels)
     }
+
     pub fn channels(&self) -> &[Vec<f32>] {
         &self.channels
     }
+
     pub fn channels_mut(&mut self) -> &mut [Vec<f32>] {
         self.channels.as_mut_slice()
     }
+
     pub fn channel(&self, index: usize) -> &[f32] {
         &self.channels[index]
     }
+
     pub fn replace_channel(
         &mut self,
         channel: usize,
@@ -55,6 +59,99 @@ impl PcmAudio {
 
         dst.clear();
         dst.extend_from_slice(samples);
+    }
+
+    /// Добавляет новый канал.
+    pub fn add_channel(
+        &mut self,
+        samples: &[f32],
+        layout: Channels,
+    ) {
+        debug_assert!(
+            self.channels.is_empty()
+                || samples.len() == self.frames()
+        );
+
+        self.channels.push(samples.to_vec());
+
+        self.set_channels(layout);
+    }
+
+    /// Удаляет канал.
+    pub fn remove_channel(
+        &mut self,
+        channel: usize,
+        layout: Channels,
+    ) -> Vec<f32> {
+        let removed = self.channels.remove(channel);
+
+        self.set_channels(layout);
+
+        removed
+    }
+
+    /// Вставляет канал в указанную позицию.
+    pub fn insert_channel(
+        &mut self,
+        channel: usize,
+        samples: &[f32],
+        layout: Channels,
+    ) {
+        debug_assert!(
+            self.channels.is_empty()
+                || samples.len() == self.frames()
+        );
+
+        self.channels.insert(
+            channel,
+            samples.to_vec(),
+        );
+
+        self.set_channels(layout);
+    }
+
+    /// Заменяет все каналы.
+    pub fn replace_channels(
+        &mut self,
+        channels: Vec<Vec<f32>>,
+        layout: Channels,
+    ) {
+        debug_assert!(
+            channels.is_empty()
+                || channels
+                .iter()
+                .all(|c| c.len() == channels[0].len())
+        );
+
+        self.channels = channels;
+
+        self.set_channels(layout);
+    }
+
+    pub fn reserve_channels(
+        &mut self,
+        additional: usize,
+    ) {
+        self.channels.reserve(additional);
+    }
+
+    /// Удаляет все каналы.
+    pub fn clear_channels(
+        &mut self,
+    ) {
+        self.channels.clear();
+
+        self.set_channels(Channels::None);
+    }
+
+    fn set_channels(
+        &mut self,
+        layout: Channels,
+    ) {
+        self.spec = AudioSpec::new(
+            self.spec.rate(),
+            layout,
+        );
     }
 }
 

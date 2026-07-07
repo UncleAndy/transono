@@ -16,7 +16,10 @@ pub enum CoreError {
     Other(#[from] anyhow::Error),
 
     #[error("Unsupported audio format")]
-    UnsupportedAudioFormat(EncodedAudioFormat)
+    UnsupportedAudioFormat(EncodedAudioFormat),
+
+    #[error("Unsupported channel layout")]
+    UnsupportedChannelLayout(),
 }
 
 impl From<&str> for CoreError {

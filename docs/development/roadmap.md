@@ -21,11 +21,11 @@
 
 ## 🚧 v0.3.0
 
-- [ ] TranslationLine
-- [ ] Runtime
-- [ ] Cancellation
-- [ ] AudioPipeline
-- [ ] Public Builder API
+- [x] TranslationLine
+- [x] Runtime
+- [x] Cancellation
+- [x] AudioPipeline
+- [x] End-to-end realtime audio
 
 ---
 
@@ -33,4 +33,7 @@
 
 - TranslationBridge
 - Multiple providers
+- Provider failover
 - Tool support
+- Voice Activity Detection
+- Configuration profiles

@@ -1,9 +1,9 @@
 use anyhow::Result;
 use cpal::traits::DeviceTrait;
+use symphonia::core::audio::{AudioSpec, Channels, Position};
 use tokio::signal;
-use realtime_translator::audio::{
-    AudioDevices,
-};
+use realtime_translator::audio::{AudioDevices, Processor};
+use realtime_translator::audio::processors::resampler::Resampler;
 use realtime_translator::providers::openai::realtime::{
     OpenAIRealtimeConfig,
     OpenAIRealtimeProvider,
@@ -20,6 +20,7 @@ async fn main() -> Result<()> {
         .expect("failed to install rustls provider");
 
     let devices = AudioDevices::new();
+
     let capture = devices.default_input()?;
     let playback = devices.default_output()?;
 
@@ -48,10 +49,37 @@ async fn main() -> Result<()> {
     let mut line =
         TranslationLine::new(
             provider,
-            capture,
-            playback,
+            capture.clone(),
+            playback.clone(),
         )
             .await?;
+
+    let input_sample_rate = capture.default_input_config()?.sample_rate();
+    let output_sample_rate = playback.default_output_config()?.sample_rate();
+
+    line.add_input_processor(
+        Processor::Dsp(Box::new(
+            Resampler::new(
+                AudioSpec::new(
+                    input_sample_rate,
+                    Channels::Positioned(Position::FRONT_CENTER)
+                ),
+                remote.spec().rate()
+            )?
+        ))
+    )?;
+
+    line.add_output_processor(
+        Processor::Dsp(Box::new(
+            Resampler::new(
+                AudioSpec::new(
+                    remote.spec().rate(),
+                    Channels::Positioned(Position::FRONT_CENTER)
+                ),
+                output_sample_rate,
+            )?
+        ))
+    )?;
 
     line.run().await?;
 
