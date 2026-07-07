@@ -15,6 +15,8 @@ pub mod planar_sample_buffer;
 pub mod encoded_audio;
 pub mod planar_adapter;
 pub mod pcm_audio;
+pub mod encoders;
+pub mod audio_encoder;
 
 pub use capture::*;
 pub use device::*;
@@ -31,4 +33,4 @@ pub use planar_sample_buffer::*;
 pub use encoded_audio::*;
 pub use planar_adapter::*;
 pub use pcm_audio::*;
-
+pub use audio_encoder::*;
