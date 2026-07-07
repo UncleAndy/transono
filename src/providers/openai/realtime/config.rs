@@ -4,9 +4,10 @@ use anyhow::anyhow;
 use http::{HeaderName, HeaderValue};
 use http::header::AUTHORIZATION;
 use serde::{Deserialize, Serialize};
+use symphonia::core::audio::{AudioSpec, Channels, Position};
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::handshake::client::Request;
-
+use crate::audio::{AudioCodec, AudioContainer, BinaryEncoding, EncodedAudioFormat, Endianness};
 use crate::core::error::{CoreError, ProtocolError, Result};
 use crate::providers::openai::realtime::protocol::{Audio, AudioFormat, AudioInput, AudioOutput, OutputModality, SessionConfig, TurnDetection};
 
@@ -153,6 +154,17 @@ impl OpenAIRealtimeConfig {
                 OutputModality::Audio,
             ]),
         }
+    }
+    pub fn audio_format(&self) -> EncodedAudioFormat {
+        EncodedAudioFormat::new(
+            AudioContainer::Raw,
+            AudioCodec::Pcm(Endianness::Little),
+            BinaryEncoding::Base64,
+            AudioSpec::new(
+                24_000,
+                Channels::Positioned(Position::FRONT_CENTER),
+            ),
+        )
     }
 }
 

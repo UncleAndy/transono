@@ -38,8 +38,8 @@ impl EncodedAudio {
 
 #[derive(Debug, Clone)]
 pub struct EncodedAudioFormat {
-    container: AudioContainer,
-    codec: AudioCodec,
+    pub(crate) container: AudioContainer,
+    pub(crate) codec: AudioCodec,
     encoding: BinaryEncoding,
     spec: AudioSpec,
 }

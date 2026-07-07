@@ -1,10 +1,12 @@
-use base64::Engine;
-use base64::prelude::BASE64_STANDARD;
-use cpal::SampleFormat;
-use futures_util::SinkExt;
 use async_trait::async_trait;
 
-use crate::audio::{Audio, AudioEncoder, BinaryEncoding, AudioFormat, EncodedAudio, Endianness, PcmCodec};
+use crate::audio::{
+    Audio,
+    AudioEncoder,
+    EncodedAudio,
+    AudioDecoder,
+    AudioCodecs,
+};
 use crate::core::{
     websocket::WebSocketTransport,
     error::Result,
@@ -15,14 +17,19 @@ use crate::core::protocol::Protocol;
 use crate::core::session::Session;
 use crate::core::session_event::SessionEvent;
 use crate::core::transport::Transport;
-use crate::providers::openai::realtime::commands::ProtocolCommand;
-use crate::providers::openai::realtime::events::ProtocolEvent;
-use super::{protocol::RealtimeProtocol, config::OpenAIRealtimeConfig, InputAudioBufferAppend};
+use crate::providers::openai::realtime::{
+    protocol::RealtimeProtocol,
+    config::OpenAIRealtimeConfig,
+    InputAudioBufferAppend,
+    commands::ProtocolCommand,
+    events::ProtocolEvent,
+};
 
 pub struct RealtimeSession {
     closed: bool,
 
-    pub codec: PcmCodec,
+    encoder: Box<dyn AudioEncoder>,
+    decoder: Box<dyn AudioDecoder>,
 
     transport: WebSocketTransport,
     protocol: RealtimeProtocol,
@@ -40,18 +47,14 @@ impl RealtimeSession {
             WebSocketTransport::connect(request)
                 .await?;
 
+        let format = config.audio_format();
+
         Ok(Self {
             closed: false,
             transport,
             protocol: RealtimeProtocol::new(),
-            codec: PcmCodec::new(
-                AudioFormat {
-                    sample_rate: 24_000,
-                    channels: 1,
-                    sample_format: SampleFormat::I16,
-                },
-                Endianness::Little,
-            ),
+            encoder: AudioCodecs::encoder(&format)?,
+            decoder: AudioCodecs::decoder(&format)?,
         })
     }
 
@@ -69,17 +72,16 @@ impl RealtimeSession {
         &mut self,
         delta: String,
     ) -> Result<SessionEvent> {
-        let bytes = BASE64_STANDARD.decode(delta)
-            .map_err(|e| CoreError::Other(anyhow::Error::from(e)))?;
-
         let encoded = EncodedAudio::new(
-            BinaryEncoding::Pcm {
-                endianness: Endianness::Little,
-            },
-            bytes.into(),
+            self.decoder.format().clone(),
+            delta.into_bytes().into(),
         );
 
-        let audio = self.codec.decode(&encoded)?;
+        let pcm =
+            self.decoder.decode(&encoded)?;
+
+        let audio =
+            Audio::from_pcm(&pcm)?;
 
         Ok(SessionEvent::Audio(audio))
     }
@@ -136,17 +138,18 @@ impl Session for RealtimeSession {
             return Err(CoreError::Other(anyhow::Error::msg("session closed")))
         }
 
-        let encoded =
-            self.codec.encode(&audio)?;
+        let pcm = audio.to_pcm()?;
 
-        let base64 =
-            BASE64_STANDARD.encode(encoded.bytes());
+        let encoded = self.encoder.encode(&pcm)?;
 
         self.send(
             ProtocolCommand::InputAudioBufferAppend(
                 InputAudioBufferAppend {
                     event_type: "input_audio_buffer.append",
-                    audio: base64,
+                    audio: String::from_utf8(
+                        encoded.bytes().to_vec(),
+                    )
+                        .map_err(|e| CoreError::Other(anyhow::Error::from(e)))?,
                 }
             )
         ).await?;

@@ -3,7 +3,7 @@ use crate::audio::{AudioCodec, AudioContainer, BinaryEncoding, EncodedAudio, Enc
 use crate::audio::encoders::{PcmBase64Decoder, PcmBase64Encoder, PcmBinaryDecoder};
 use crate::audio::encoders::PcmBinaryEncoder;
 
-pub trait AudioEncoder {
+pub trait AudioEncoder: Send {
     fn format(&self) -> &EncodedAudioFormat;
     fn encode(
         &mut self,
@@ -16,7 +16,7 @@ pub trait AudioEncoder {
     ) -> Result<()>;
 }
 
-pub trait AudioDecoder {
+pub trait AudioDecoder: Send {
     fn format(&self) -> &EncodedAudioFormat;
     fn decode(
         &mut self,
@@ -33,7 +33,7 @@ pub struct AudioCodecs;
 impl AudioCodecs {
     pub fn encoder(
         format: &EncodedAudioFormat,
-    ) -> Result<Box<dyn AudioEncoder>> {
+    ) -> Result<Box<dyn AudioEncoder + Send>> {
         match (
             format.container(),
             format.codec(),
@@ -67,7 +67,7 @@ impl AudioCodecs {
 
     pub fn decoder(
         format: &EncodedAudioFormat,
-    ) -> Result<Box<dyn AudioDecoder>> {
+    ) -> Result<Box<dyn AudioDecoder + Send>> {
         match (
             format.container(),
             format.codec(),
