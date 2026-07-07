@@ -128,10 +128,10 @@ impl<P: Provider> TranslationLine<P> {
         if let Some(task) = self.session_task.take() {
             let pipelines = task.await
                 .map_err(|_| {
-                    CoreError::Other(anyhow!("capture thread panicked"))
+                    CoreError::Other(anyhow!("session task panicked"))
                 })?
                 .map_err(|_| {
-                    CoreError::Other(anyhow!("capture thread panicked"))
+                    CoreError::Other(anyhow!("session task panicked"))
                 })?;
 
             self.pipelines = Some(pipelines);
