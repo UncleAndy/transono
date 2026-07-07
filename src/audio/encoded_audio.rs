@@ -58,6 +58,19 @@ impl EncodedAudioFormat {
             spec,
         }
     }
+
+    pub(crate) fn container(&self) -> AudioContainer {
+        self.container.clone()
+    }
+    pub(crate) fn codec(&self) -> AudioCodec {
+        self.codec.clone()
+    }
+    pub(crate) fn encoding(&self) -> BinaryEncoding {
+        self.encoding.clone()
+    }
+    pub(crate) fn spec(&self) -> AudioSpec {
+        self.spec.clone()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

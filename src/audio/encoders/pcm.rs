@@ -1,11 +1,11 @@
 use crate::core::error::Result;
 use crate::audio::{AudioDecoder, AudioEncoder, EncodedAudio, EncodedAudioFormat, PcmAudio};
 
-pub struct PcmBase64Encoder {
+pub struct PcmBinaryEncoder {
     format: EncodedAudioFormat
 }
 
-impl PcmBase64Encoder {
+impl PcmBinaryEncoder {
     pub(crate) fn new(format: &EncodedAudioFormat) -> Self {
         Self {
             format: format.clone()
@@ -13,7 +13,7 @@ impl PcmBase64Encoder {
     }
 }
 
-impl AudioEncoder for PcmBase64Encoder {
+impl AudioEncoder for PcmBinaryEncoder {
     fn format(&self) -> &EncodedAudioFormat {
         &self.format
     }
@@ -23,11 +23,11 @@ impl AudioEncoder for PcmBase64Encoder {
     }
 }
 
-pub struct PcmBase64Decoder {
+pub struct PcmBinaryDecoder {
     format: EncodedAudioFormat
 }
 
-impl PcmBase64Decoder {
+impl PcmBinaryDecoder {
     pub(crate) fn new(format: &EncodedAudioFormat) -> Self {
         Self {
             format: format.clone()
@@ -35,7 +35,7 @@ impl PcmBase64Decoder {
     }
 }
 
-impl AudioDecoder for PcmBase64Decoder {
+impl AudioDecoder for PcmBinaryDecoder {
     fn format(&self) -> &EncodedAudioFormat {
         &self.format
     }

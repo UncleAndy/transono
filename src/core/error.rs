@@ -1,4 +1,5 @@
 use thiserror::Error;
+use crate::audio::EncodedAudioFormat;
 
 pub type Result<T> = std::result::Result<T, CoreError>;
 
@@ -13,6 +14,9 @@ pub enum CoreError {
 
     #[error(transparent)]
     Other(#[from] anyhow::Error),
+
+    #[error("Unsupported audio format")]
+    UnsupportedAudioFormat(EncodedAudioFormat)
 }
 
 impl From<&str> for CoreError {
