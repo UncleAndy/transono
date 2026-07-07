@@ -60,7 +60,7 @@ impl AudioEncoder for PcmBase64Encoder {
             base64_simd::Out::from_slice(output),
         );
 
-        debug_assert_eq!(encoded.len(), output.len());
+        debug_assert_eq!(encoded.len(), encoded_len);
 
         Ok(())
     }
