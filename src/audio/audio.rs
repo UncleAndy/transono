@@ -1,12 +1,11 @@
 use std::fmt;
 use std::fmt::{Debug, Formatter};
-use bytes::Bytes;
 use cpal::SampleFormat;
-use rubato::audioadapter::{Adapter, AdapterMut};
 use symphonia::core::audio::conv::{ConvertibleSample, FromSample};
 use symphonia::core::audio::{AudioBuffer, AudioMut, AudioSpec, GenericAudioBuffer};
 use symphonia::core::audio::sample::{i24, u24, Sample};
 
+use crate::audio::{PcmAudio};
 use crate::core::error::Result;
 
 /// Universal audio container.
@@ -109,48 +108,6 @@ impl Debug for Audio {
     }
 }
 
-/// Internal DSP representation.
-///
-/// The library supports arbitrary sample formats through `Audio`,
-/// but all built-in DSP processors currently operate on `f32`.
-pub(crate) struct PcmAudio {
-    pub spec: AudioSpec,
-    pub channels: Vec<Vec<f32>>, // Один Vec на канал.
-}
-
-impl PcmAudio {
-    pub fn frames(&self) -> usize {
-        self.channels.first().map_or(0, Vec::len)
-    }
-
-    pub fn channel_count(&self) -> usize {
-        self.channels.len()
-    }
-
-    pub fn adapter(
-        &mut self,
-    ) -> PlanarAdapter<f32> {
-        PlanarAdapter::new(&mut self.channels)
-    }
-    pub fn channels(&self) -> &[Vec<f32>] {
-        &self.channels
-    }
-    pub fn channel(&self, index: usize) -> &[f32] {
-        &self.channels[index]
-    }
-    pub fn replace_channel(
-        &mut self,
-        channel: usize,
-        samples: &[f32],
-    ) {
-        let dst = &mut self.channels[channel];
-
-        dst.clear();
-        dst.extend_from_slice(samples);
-    }
-}
-
-#[allow(unused)]
 macro_rules! impl_audio_from {
     ($sample:ty, $variant:ident) => {
         impl From<AudioBuffer<$sample>> for Audio {
@@ -163,46 +120,16 @@ macro_rules! impl_audio_from {
     };
 }
 
-#[derive(Debug, Clone)]
-pub struct EncodedAudio {
-    container: AudioContainer,
-    codec: AudioCodec,
-    encoding: BinaryEncoding,
-    spec: AudioSpec,
-    data: Bytes,
-}
-
-impl EncodedAudio {
-    pub(crate) fn new(
-        container: AudioContainer,
-        codec: AudioCodec,
-        encoding: BinaryEncoding,
-        spec: AudioSpec,
-        data: Bytes
-    ) -> EncodedAudio {
-        Self {
-            codec,
-            container,
-            encoding,
-            spec,
-            data,
-        }
-    }
-
-    pub fn encoding(&self) -> &BinaryEncoding {
-        &self.encoding
-    }
-    pub fn bytes(&self) -> &Bytes {
-        &self.data
-    }
-}
-
-/// Byte order for PCM encoded audio.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Endianness {
-    Little,
-    Big,
-}
+impl_audio_from!(f32, F32);
+impl_audio_from!(f64, F64);
+impl_audio_from!(u8, U8);
+impl_audio_from!(u16, U16);
+impl_audio_from!(u24, U24);
+impl_audio_from!(u32, U32);
+impl_audio_from!(i8, S8);
+impl_audio_from!(i16, S16);
+impl_audio_from!(i24, S24);
+impl_audio_from!(i32, S32);
 
 /// Audio sample layout.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -213,50 +140,6 @@ pub struct AudioFormat {
     pub channels: u16,
     /// Sample representation.
     pub sample_format: SampleFormat,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum AudioContainer {
-    Raw,
-    Wav,
-    Caf,
-    Ogg,
-    Mp3,
-    Mp4,
-    Flac,
-    Matroska,
-    Webm,
-    Custom(String),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum AudioCodec {
-    Pcm(Endianness),
-    Opus,
-    Vorbis,
-    Aac,
-    Flac,
-    Alac,
-    Ldac,
-    Mp3,
-    Custom(String),
-}
-
-
-/// Audio encoding.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum BinaryEncoding {
-    Binary,
-    Base64,
-    Custom(String),
-}
-
-impl AudioFormat {
-    pub const OPENAI_REALTIME: Self = Self {
-        sample_rate: 24_000,
-        channels: 1,
-        sample_format: SampleFormat::I16,
-    };
 }
 
 pub(crate) trait IntoGenericBuffer {
@@ -298,66 +181,3 @@ where
     + Send
     + 'static,
 {}
-
-pub struct PlanarAdapter<'a, T> {
-    channels: &'a mut [Vec<T>],
-}
-
-impl<'a, T> PlanarAdapter<'a, T> {
-    pub fn new(
-        channels: &'a mut [Vec<T>],
-    ) -> Self {
-        debug_assert!(
-            channels
-                .windows(2)
-                .all(|w| w[0].len() == w[1].len())
-        );
-
-        Self { channels }
-    }
-}
-
-unsafe impl<'a, T> Adapter<'a, T> for PlanarAdapter<'a, T>
-where
-    T: Copy
-{
-    #[inline(always)]
-    unsafe fn read_sample_unchecked(
-        &self,
-        channel: usize,
-        frame: usize,
-    ) -> T {
-        let channel = self.channels.get_unchecked(channel);
-
-        *channel.as_ptr().add(frame)
-    }
-
-    fn channels(&self) -> usize {
-        self.channels.len()
-    }
-
-    fn frames(&self) -> usize {
-        self.channels
-            .first()
-            .map_or(0, Vec::len)
-    }
-}
-
-unsafe impl<'a, T> AdapterMut<'a, T> for PlanarAdapter<'a, T>
-where
-    T: Copy + Clone
-{
-    #[inline(always)]
-    unsafe fn write_sample_unchecked(
-        &mut self,
-        channel: usize,
-        frame: usize,
-        value: &T,
-    ) -> bool {
-        let channel = self.channels.get_unchecked_mut(channel);
-
-        *channel.as_mut_ptr().add(frame) = *value;
-
-        false
-    }
-}
