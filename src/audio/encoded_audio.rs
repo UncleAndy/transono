@@ -1,6 +1,8 @@
 use bytes::Bytes;
 use symphonia::core::audio::AudioSpec;
+
 use crate::audio::{Endianness};
+use crate::core::error::{CoreError, Result};
 
 #[derive(Debug, Clone)]
 pub struct EncodedAudio {
@@ -33,6 +35,27 @@ impl EncodedAudio {
     }
     pub fn bytes(&self) -> &Bytes {
         &self.data
+    }
+    pub fn as_str(&self) -> Result<&str> {
+        match self.encoding() {
+            BinaryEncoding::Base64 => {
+                std::str::from_utf8(self.data.as_ref())
+                    .map_err(|e| CoreError::Other(anyhow::Error::from(e)))
+            }
+
+            _ => Err(CoreError::Other(anyhow::anyhow!(
+            "EncodedAudio is not text"
+        ))),
+        }
+    }
+    pub fn into_string(self) -> Result<String> {
+        match self.encoding() {
+            BinaryEncoding::Base64 => {
+                String::from_utf8(self.data.to_vec())
+                    .map_err(|e| CoreError::Other(anyhow::Error::from(e)))
+            }
+            _ => Err(CoreError::Other(anyhow::anyhow!("EncodedAudio is not text"))),
+        }
     }
 }
 
