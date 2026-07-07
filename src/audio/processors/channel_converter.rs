@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use symphonia::core::audio::Channels;
 
 use crate::audio::{DspProcessor, PcmAudio};
@@ -5,12 +6,13 @@ use crate::core::error::{CoreError, Result};
 
 pub struct ChannelConverter {
     output_channels: Channels,
-
     scratch: Vec<f32>,
 }
 
 impl ChannelConverter {
-    pub fn new(output_channels: Channels) -> Self {
+    pub fn new(
+        output_channels: Channels,
+    ) -> Self {
         Self {
             output_channels,
             scratch: Vec::new(),
@@ -21,7 +23,7 @@ impl ChannelConverter {
         &mut self,
         pcm: &mut PcmAudio,
     ) {
-        let frames = pcm.frame_count();
+        let frames = pcm.frames();
 
         self.scratch.clear();
         self.scratch.resize(frames, 0.0);
@@ -30,15 +32,14 @@ impl ChannelConverter {
         let right = pcm.channel(1);
 
         for i in 0..frames {
-            self.scratch[i] = (left[i] + right[i]) * 0.5;
+            self.scratch[i] =
+                (left[i] + right[i]) * 0.5;
         }
 
-        pcm.replace_channel(
-            0,
-            &self.scratch,
+        pcm.replace_channels(
+            vec![std::mem::take(&mut self.scratch)],
+            self.output_channels.clone(),
         );
-
-        pcm.remove_channel(1);
     }
 
     fn mono_to_stereo(
@@ -52,6 +53,7 @@ impl ChannelConverter {
 
         pcm.add_channel(
             &self.scratch,
+            self.output_channels.clone(),
         );
     }
 }
@@ -62,13 +64,14 @@ impl DspProcessor for ChannelConverter {
         pcm: &mut PcmAudio,
     ) -> Result<()> {
 
-        let input = pcm.channel_count();
-        let output = self.output_channels.count();
-
-        match (input, output) {
-
+        match (
+            pcm.channel_count(),
+            self.output_channels.count(),
+        ) {
             (1, 1) | (2, 2) => {
-                // ничего делать не нужно
+                pcm.set_channel_layout(
+                    self.output_channels.clone(),
+                );
             }
 
             (2, 1) => {
@@ -79,18 +82,16 @@ impl DspProcessor for ChannelConverter {
                 self.mono_to_stereo(pcm);
             }
 
-            _ => {
-                return Err(
-                    CoreError::Other(anyhow::anyhow!(
-                        "Unsupported channel conversion: {} -> {}",
-                        input,
-                        output,
-                    ))
-                );
+            (from, to) => {
+                return Err(CoreError::Other(
+                    anyhow!(
+                        "unsupported channel conversion: {} -> {}",
+                        from,
+                        to,
+                    ),
+                ));
             }
         }
-
-        pcm.spec.channels = self.output_channels.clone();
 
         Ok(())
     }

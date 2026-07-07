@@ -12,7 +12,7 @@ pub(crate) struct PcmAudio {
 }
 
 impl PcmAudio {
-    pub fn new(spec: AudioSpec, frames: usize) -> Self {
+    pub(crate) fn new(spec: AudioSpec, frames: usize) -> Self {
         let mut channels = Vec::new();
         for _ in 0..spec.channels().count() {
             channels.push(vec![0.0; frames])
@@ -24,33 +24,33 @@ impl PcmAudio {
         }
     }
 
-    pub fn frames(&self) -> usize {
+    pub(crate) fn frames(&self) -> usize {
         self.channels.first().map_or(0, Vec::len)
     }
 
-    pub fn channel_count(&self) -> usize {
+    pub(crate) fn channel_count(&self) -> usize {
         self.channels.len()
     }
 
-    pub fn adapter(
+    pub(crate) fn adapter(
         &mut self,
     ) -> PlanarAdapter<f32> {
         PlanarAdapter::new(&mut self.channels)
     }
 
-    pub fn channels(&self) -> &[Vec<f32>] {
+    pub(crate) fn channels(&self) -> &[Vec<f32>] {
         &self.channels
     }
 
-    pub fn channels_mut(&mut self) -> &mut [Vec<f32>] {
+    pub(crate) fn channels_mut(&mut self) -> &mut [Vec<f32>] {
         self.channels.as_mut_slice()
     }
 
-    pub fn channel(&self, index: usize) -> &[f32] {
+    pub(crate) fn channel(&self, index: usize) -> &[f32] {
         &self.channels[index]
     }
 
-    pub fn replace_channel(
+    pub(crate) fn replace_channel(
         &mut self,
         channel: usize,
         samples: &[f32],
@@ -67,7 +67,7 @@ impl PcmAudio {
     }
 
     /// Добавляет новый канал.
-    pub fn add_channel(
+    pub(crate) fn add_channel(
         &mut self,
         samples: &[f32],
         layout: Channels,
@@ -80,7 +80,7 @@ impl PcmAudio {
     }
 
     /// Удаляет канал.
-    pub fn remove_channel(
+    pub(crate) fn remove_channel(
         &mut self,
         channel: usize,
         layout: Channels,
@@ -93,7 +93,7 @@ impl PcmAudio {
     }
 
     /// Вставляет канал в указанную позицию.
-    pub fn insert_channel(
+    pub(crate) fn insert_channel(
         &mut self,
         channel: usize,
         samples: &[f32],
@@ -110,7 +110,7 @@ impl PcmAudio {
     }
 
     /// Заменяет все каналы.
-    pub fn replace_channels(
+    pub(crate) fn replace_channels(
         &mut self,
         channels: Vec<Vec<f32>>,
         layout: Channels,
@@ -127,7 +127,7 @@ impl PcmAudio {
         self.set_channels(layout);
     }
 
-    pub fn reserve_channels(
+    pub(crate) fn reserve_channels(
         &mut self,
         additional: usize,
     ) {
@@ -135,12 +135,19 @@ impl PcmAudio {
     }
 
     /// Удаляет все каналы.
-    pub fn clear_channels(
+    pub(crate) fn clear_channels(
         &mut self,
     ) {
         self.channels.clear();
 
         self.set_channels(Channels::None);
+    }
+
+    pub(crate) fn set_channel_layout(
+        &mut self,
+        layout: Channels,
+    ) {
+        self.set_channels(layout)
     }
 
     fn set_channels(
