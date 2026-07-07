@@ -114,7 +114,7 @@ impl AudioDecoder for PcmBase64Decoder {
             )
             .map_err(|e| CoreError::Other(e.into()))?;
 
-        debug_assert_eq!(decoded.len(), input.len());
+        debug_assert_eq!(decoded.len(), decoded_len);
 
         self.binary.decode_bytes(decoded)
     }
