@@ -6,7 +6,7 @@ use crate::audio::encoders::PcmBinaryEncoder;
 pub trait AudioEncoder {
     fn format(&self) -> &EncodedAudioFormat;
     fn encode(
-        &self,
+        &mut self,
         audio: &PcmAudio,
     ) -> Result<EncodedAudio>;
     fn encode_bytes(
@@ -19,7 +19,7 @@ pub trait AudioEncoder {
 pub trait AudioDecoder {
     fn format(&self) -> &EncodedAudioFormat;
     fn decode(
-        &self,
+        &mut self,
         encoded: &EncodedAudio,
     ) -> Result<PcmAudio>;
     fn decode_bytes(

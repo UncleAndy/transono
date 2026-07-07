@@ -19,7 +19,7 @@ impl AudioEncoder for PcmBinaryEncoder {
     }
 
     fn encode(
-        &self,
+        &mut self,
         audio: &PcmAudio,
     ) -> Result<EncodedAudio> {
         let mut data = Vec::new();
@@ -42,38 +42,30 @@ impl AudioEncoder for PcmBinaryEncoder {
         let frames = pcm.frames();
         let channels = pcm.channel_count();
 
-        output.resize(frames * channels * 2,0);
+        output.resize(frames * channels * size_of::<i16>(), 0);
 
-        match self.format.codec() {
-            AudioCodec::Pcm(Endianness::Little) => {
-                for channel in pcm.channels() {
-                    for sample in channel {
-                        let sample =
-                            (sample.clamp(-1.0, 1.0)
-                                * i16::MAX as f32) as i16;
+        let mut pos = 0;
+        let little_endian = matches!(
+            self.format.codec(),
+            AudioCodec::Pcm(Endianness::Little)
+        );
 
-                        output.extend_from_slice(
-                            &sample.to_le_bytes(),
-                        );
-                    }
-                }
+        for channel in pcm.channels() {
+            for &sample in channel {
+                let sample =
+                    (sample.clamp(-1.0, 1.0) * i16::MAX as f32) as i16;
+
+                let bytes = if little_endian {
+                    sample.to_le_bytes()
+                } else {
+                    sample.to_be_bytes()
+                };
+
+                output[pos] = bytes[0];
+                output[pos + 1] = bytes[1];
+
+                pos += 2;
             }
-
-            AudioCodec::Pcm(Endianness::Big) => {
-                for channel in pcm.channels() {
-                    for sample in channel {
-                        let sample =
-                            (sample.clamp(-1.0, 1.0)
-                                * i16::MAX as f32) as i16;
-
-                        output.extend_from_slice(
-                            &sample.to_be_bytes(),
-                        );
-                    }
-                }
-            }
-
-            _ => unreachable!(),
         }
 
         Ok(())
@@ -98,7 +90,7 @@ impl AudioDecoder for PcmBinaryDecoder {
     }
 
     fn decode(
-        &self,
+        &mut self,
         encoded: &EncodedAudio,
     ) -> Result<PcmAudio> {
         self.decode_bytes(encoded.bytes())
