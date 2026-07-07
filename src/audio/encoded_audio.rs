@@ -91,7 +91,7 @@ impl EncodedAudioFormat {
     pub(crate) fn encoding(&self) -> BinaryEncoding {
         self.encoding.clone()
     }
-    pub(crate) fn spec(&self) -> AudioSpec {
+    pub fn spec(&self) -> AudioSpec {
         self.spec.clone()
     }
 }

@@ -70,8 +70,6 @@ impl OpenAIRealtimeConfig {
 
 impl OpenAIRealtimeConfig {
     pub(crate) fn request(&self) -> Result<Request> {
-        println!("DBG0: {:?}", &self);
-
         let mut request = format!(
             "{}?model={}",
             self.endpoint,
@@ -80,10 +78,7 @@ impl OpenAIRealtimeConfig {
             .into_client_request()
             .map_err(|e| ProtocolError::Other(e.to_string()))?;
 
-        println!("DBG0.1");
-
         {
-            println!("DBG1");
 
             let headers = request
                 .headers_mut();
@@ -96,8 +91,6 @@ impl OpenAIRealtimeConfig {
                     .map_err(|e| ProtocolError::InvalidHeaderValue(e))?,
             );
 
-            println!("DBG2");
-
             if let Some(org) = &self.organization {
                 headers.insert(
                     "OpenAI-Organization",
@@ -105,8 +98,6 @@ impl OpenAIRealtimeConfig {
                         .map_err(|e| ProtocolError::InvalidHeaderValue(e))?,
                 );
             }
-
-            println!("DBG3");
 
             if let Some(project) = &self.project {
                 headers.insert(
@@ -116,10 +107,7 @@ impl OpenAIRealtimeConfig {
                 );
             }
 
-            println!("DBG4");
-
             for (name, value) in &self.headers {
-                println!("DBG5: {} : {}", name, value);
                 headers.insert(
                     HeaderName::from_bytes(name.as_bytes())
                         .map_err(|e| ProtocolError::InvalidHeaderName(e))?,
