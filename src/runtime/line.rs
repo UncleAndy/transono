@@ -33,7 +33,7 @@ where
     input_pipeline: Option<AudioPipeline>,
     output_pipeline: Option<AudioPipeline>,
 
-    session_task: Option<tokio::task::JoinHandle<Result<()>>>,
+    session_task: Option<tokio::task::JoinHandle<Result<(AudioPipeline, AudioPipeline)>>>,
 
     state: LineState,
 }
@@ -120,13 +120,16 @@ impl<P: Provider> TranslationLine<P> {
         }
 
         if let Some(task) = self.session_task.take() {
-            task.await
+            let (input, output) = task.await
                 .map_err(|_| {
                     CoreError::Other(anyhow!("capture thread panicked"))
                 })?
                 .map_err(|_| {
                     CoreError::Other(anyhow!("capture thread panicked"))
-                })?
+                })?;
+
+            self.input_pipeline = Some(input);
+            self.output_pipeline = Some(output);
         }
 
         self.state = LineState::Stopped;
@@ -185,7 +188,7 @@ fn spawn_session<S>(
     mut input_pipeline: AudioPipeline,
     mut output_pipeline: AudioPipeline,
     cancel: CancellationToken,
-) -> tokio::task::JoinHandle<Result<()>>
+) -> tokio::task::JoinHandle<Result<(AudioPipeline, AudioPipeline)>>
 where
     S: Session + 'static,
 {
@@ -233,6 +236,6 @@ where
 
         session.close().await?;
 
-        Ok(())
+        Ok((input_pipeline, output_pipeline))
     })
 }
