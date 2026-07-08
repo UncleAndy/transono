@@ -1,26 +1,29 @@
+use anyhow::anyhow;
 use cpal::{
     traits::{DeviceTrait, StreamTrait},
     BufferSize, Device, SampleFormat, Stream, StreamConfig,
 };
 use tokio::sync::mpsc;
-use crate::audio::{Audio, AudioFormat};
+use tokio::sync::mpsc::Sender;
+use crate::audio::{Audio, AudioFormat, AudioOutput};
 use crate::core::error::{CoreError, Result};
 
-pub struct AudioPlayback {
+pub struct AudioOutputCpal {
     stream: Stream,
     format: AudioFormat,
+    sender: Option<Sender<Audio>>
 }
 
-struct PlaybackState<T> {
+struct OutputStateCpal<T> {
     current: Option<Audio>,
     current_samples: Vec<T>,
     offset: usize,
 }
 
-impl AudioPlayback {
+impl AudioOutputCpal {
     pub fn new(
         device: Device,
-    ) -> Result<(Self, mpsc::Sender<Audio>)> {
+    ) -> Result<Self> {
         let (config, sample_format) = select_config(&device)?;
 
         let (tx, rx) = mpsc::channel(32);
@@ -57,14 +60,15 @@ impl AudioPlayback {
             }
         };
 
-        Ok((Self {
+        Ok(Self {
             stream,
             format: AudioFormat {
                 sample_rate: config.sample_rate,
                 channels: config.channels,
                 sample_format,
             },
-        }, tx))
+            sender: Some(tx),
+        })
     }
 
     fn build_stream<T>(
@@ -74,11 +78,11 @@ impl AudioPlayback {
     ) -> Result<Stream>
     where
         T: cpal::SizedSample
-            + symphonia::core::audio::conv::ConvertibleSample
-            + Send
-            + 'static,
+        + symphonia::core::audio::conv::ConvertibleSample
+        + Send
+        + 'static,
     {
-        let mut state = PlaybackState {
+        let mut state = OutputStateCpal {
             current: None,
             current_samples: Vec::<T>::new(),
             offset: 0,
@@ -94,7 +98,6 @@ impl AudioPlayback {
                 while output_offset < output.len() {
                     // Если текущий пакет закончился — взять следующий.
                     if state.current.is_none() {
-
                         state.current = receiver.try_recv().ok();
 
                         let Some(audio) = &state.current else {
@@ -146,21 +149,31 @@ impl AudioPlayback {
 
         Ok(stream)
     }
+}
+
+impl AudioOutput for AudioOutputCpal {
+    fn take_sender(&mut self) -> Result<Sender<Audio>> {
+        let Some(sender) = self.sender.clone() else {
+            return Err(CoreError::Other(anyhow!("sender absent")))
+        };
+
+        Ok(sender)
+    }
 
     #[inline]
-    pub fn start(&self) -> Result<()> {
+    fn start(&self) -> Result<()> {
         self.stream.play().map_err(|e| CoreError::Other(anyhow::Error::from(e)))?;
         Ok(())
     }
 
     #[inline]
-    pub fn stop(&self) -> Result<()> {
+    fn stop(&self) -> Result<()> {
         self.stream.pause().map_err(|e| CoreError::Other(anyhow::Error::from(e)))?;
         Ok(())
     }
 
     #[inline]
-    pub fn format(&self) -> &AudioFormat {
+    fn format(&self) -> &AudioFormat {
         &self.format
     }
 }
@@ -171,7 +184,7 @@ fn select_config(device: &Device) -> Result<(StreamConfig, SampleFormat)> {
 
     Ok((StreamConfig {
         channels: cfg.channels(),
-        sample_rate: 48_000,
+        sample_rate: cfg.sample_rate(),
         buffer_size: BufferSize::Default,
     }, cfg.sample_format()))
 }

@@ -5,19 +5,21 @@ use cpal::{
 };
 use symphonia::core::audio::{AudioBuffer, AudioSpec, Channels};
 use tokio::sync::mpsc;
-
+use tokio::sync::mpsc::Receiver;
 use crate::core::error::{CoreError, Result};
 use crate::audio::audio::{Audio, AudioFormat, IntoGenericBuffer};
+use crate::audio::AudioInput;
 
-pub struct AudioCapture {
+pub struct AudioInputCpal {
     stream: Stream,
     format: AudioFormat,
+    receiver: Option<Receiver<Audio>>,
 }
 
-impl AudioCapture {
+impl AudioInputCpal {
     pub fn new(
         device: Device,
-    ) -> Result<(Self, mpsc::Receiver<Audio>)> {
+    ) -> Result<Self> {
         let (config, sample_format) = select_config(&device)?;
 
         let spec = AudioSpec::new(
@@ -66,10 +68,11 @@ impl AudioCapture {
             }
         };
 
-        Ok((Self {
+        Ok(Self {
             stream,
             format,
-        }, rx))
+            receiver: Some(rx),
+        })
     }
 
     fn build_stream<T>(
@@ -80,10 +83,10 @@ impl AudioCapture {
     ) -> Result<Stream>
     where
         T: cpal::SizedSample
-            + symphonia::core::audio::conv::ConvertibleSample
-            + symphonia::core::audio::conv::FromSample<T>
-            + Send
-            + 'static,
+        + symphonia::core::audio::conv::ConvertibleSample
+        + symphonia::core::audio::conv::FromSample<T>
+        + Send
+        + 'static,
         AudioBuffer<T>: IntoGenericBuffer,
     {
         use symphonia::core::audio::{AudioBuffer, AudioMut};
@@ -121,21 +124,32 @@ impl AudioCapture {
 
         Ok(stream)
     }
+}
+
+impl AudioInput for AudioInputCpal {
+    #[inline]
+    fn take_receiver(&mut self) -> Result<Receiver<Audio>> {
+        let Some(receiver) = self.receiver.take() else {
+            return Err(CoreError::Other(anyhow!("receiver already taken")))
+        };
+
+        Ok(receiver)
+    }
 
     #[inline]
-    pub fn start(&self) -> Result<()> {
+    fn start(&self) -> Result<()> {
         self.stream.play().map_err(|e| CoreError::Other(anyhow::Error::from(e)))?;
         Ok(())
     }
 
     #[inline]
-    pub fn stop(&self) -> Result<()> {
+    fn stop(&self) -> Result<()> {
         self.stream.pause().map_err(|e| CoreError::Other(anyhow::Error::from(e)))?;
         Ok(())
     }
 
     #[inline]
-    pub fn format(&self) -> &AudioFormat {
+    fn format(&self) -> &AudioFormat {
         &self.format
     }
 }

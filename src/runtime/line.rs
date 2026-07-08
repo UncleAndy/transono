@@ -1,15 +1,8 @@
 use anyhow::anyhow;
-use cpal::Device;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-use crate::audio::{
-    Audio,
-    AudioCapture,
-    AudioPipeline,
-    AudioPlayback,
-    Processor,
-};
+use crate::audio::{Audio, AudioPipeline, Processor, AudioInput, AudioOutput};
 use crate::core::provider::Provider;
 use crate::runtime::LineState;
 use crate::core::error::{CoreError, Result};
@@ -24,11 +17,8 @@ where
 
     cancel: CancellationToken,
 
-    capture: Option<AudioCapture>,
-    capture_device: Device,
-
-    playback: Option<AudioPlayback>,
-    playback_device: Device,
+    audio_input: Option<Box<dyn AudioInput>>,
+    audio_output: Option<Box<dyn AudioOutput>>,
 
     pipelines: Option<Pipelines>,
 
@@ -45,19 +35,16 @@ struct Pipelines {
 impl<P: Provider> TranslationLine<P> {
     pub async fn new(
         provider: P,
-        capture_device: Device,
-        playback_device: Device,
+        audio_input: Box<dyn AudioInput>,
+        audio_output: Box<dyn AudioOutput>,
     ) -> Result<Self> {
         Ok(Self {
             provider,
 
             cancel: CancellationToken::new(),
 
-            capture: None,
-            capture_device,
-
-            playback: None,
-            playback_device,
+            audio_input: Some(audio_input),
+            audio_output: Some(audio_output),
 
             pipelines: Some(Pipelines {
                 input: AudioPipeline::new(),
@@ -105,23 +92,21 @@ impl<P: Provider> TranslationLine<P> {
     pub fn state(
         &self,
     ) -> LineState {
-
         self.state
     }
 
     pub async fn stop(&mut self) -> Result<()> {
-
         if self.state != LineState::Running {
             return Ok(());
         }
 
         self.cancel.cancel();
 
-        if let Some(playback) = self.playback.take() {
+        if let Some(playback) = self.audio_output.take() {
             playback.stop()?;
         }
 
-        if let Some(capture) = self.capture.take() {
+        if let Some(capture) = self.audio_input.take() {
             capture.stop()?;
         }
 
@@ -149,15 +134,19 @@ impl<P: Provider> TranslationLine<P> {
 
         self.cancel = CancellationToken::new();
 
-        let (playback, playback_tx) =
-            AudioPlayback::new(self.playback_device.clone())?;
+        let Some(mut playback) = self.audio_output.take() else {
+            return Err(CoreError::Other(anyhow!("audio output not found")));
+        };
+        let output_tx = playback.take_sender()?;
         playback.start()?;
-        self.playback = Some(playback);
+        self.audio_output = Some(playback);
 
-        let (capture, capture_rx) =
-            AudioCapture::new(self.capture_device.clone())?;
-        capture.start()?;
-        self.capture = Some(capture);
+        let Some(mut input) = self.audio_input.take() else {
+            return Err(CoreError::Other(anyhow!("audio input not found")));
+        };
+        let input_rx = input.take_receiver()?;
+        input.start()?;
+        self.audio_input = Some(input);
 
         let pipelines = self
             .pipelines
@@ -167,8 +156,8 @@ impl<P: Provider> TranslationLine<P> {
         self.session_task = Some(
             spawn_session(
                 self.provider.create_session().await?,
-                capture_rx,
-                playback_tx,
+                input_rx,
+                output_tx,
                 pipelines,
                 self.cancel.clone(),
             )
@@ -191,11 +180,8 @@ where
     S: Session + 'static,
 {
     tokio::spawn(async move {
-
         loop {
-
             tokio::select! {
-
                 _ = cancel.cancelled() => {
                     break;
                 }

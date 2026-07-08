@@ -2,7 +2,7 @@ use anyhow::Result;
 use cpal::traits::DeviceTrait;
 use symphonia::core::audio::{AudioSpec, Channels, Position};
 use tokio::signal;
-use realtime_translator::audio::{AudioDevices, Processor};
+use realtime_translator::audio::{AudioDevicesCpal, AudioInputCpal, AudioOutputCpal, Processor};
 use realtime_translator::audio::processors::channel_converter::ChannelConverter;
 use realtime_translator::audio::processors::resampler::Resampler;
 use realtime_translator::providers::openai::realtime::{
@@ -20,7 +20,7 @@ async fn main() -> Result<()> {
         .install_default()
         .expect("failed to install rustls provider");
 
-    let devices = AudioDevices::new();
+    let devices = AudioDevicesCpal::new();
 
     let capture = devices.default_input()?;
     let playback = devices.default_output()?;
@@ -62,12 +62,15 @@ async fn main() -> Result<()> {
     println!("Remote : {} Hz", remote_spec.rate());
     println!("Playback: {} Hz", output_sample_rate);
 
+    let input = AudioInputCpal::new(capture)?;
+    let output = AudioOutputCpal::new(playback)?;
+
     // TranslationLine
     let mut line =
         TranslationLine::new(
             provider,
-            capture.clone(),
-            playback.clone(),
+            Box::new(input),
+            Box::new(output),
         ).await?;
 
     // Input DSP
