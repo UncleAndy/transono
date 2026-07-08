@@ -1,3 +1,5 @@
+use audio_samples::ConvertTo;
+use i24::{I24, U24};
 use bytes::Bytes;
 use symphonia::core::audio::AudioSpec;
 
@@ -162,96 +164,174 @@ impl PcmFormat {
             Self::I32(_) => 4,
             Self::F32(_) => 4,
             Self::F64(_) => 8,
-            _ => { todo!() }
+            Self::I8 => 1,
+            Self::I64(_) => 8,
+            Self::U16(_) => 2,
+            Self::U24(_) => 3,
+            Self::U32(_) => 4,
+            Self::U64(_) => 8,
+            Self::DsdU8 => 1,
+            Self::DsdU16(_) => 2,
+            Self::DsdU32(_) => 4,
         }
     }
 
-    pub fn encode_sample(
-        &self,
-        sample: f32,
-        output: &mut [u8],
-    ) {
+    #[inline]
+    pub fn encode_sample(&self, sample: f32, out: &mut [u8]) {
         match self {
-            Self::U8 => {
-                output[0] = ((sample.clamp(-1.0, 1.0) + 1.0) * 127.5) as u8;
+            //
+            // Signed integers
+            //
+            Self::I8 => {
+                out[0] = ((sample.clamp(-1.0, 1.0) * 127.0).round() as i8) as u8;
             }
 
             Self::I16(Endianness::Little) => {
-                output[..2].copy_from_slice(
-                    &((sample.clamp(-1.0, 1.0) * i16::MAX as f32) as i16)
-                        .to_le_bytes(),
-                );
+                let value: i16 = sample.convert_to();
+                out[..2].copy_from_slice(&value.to_le_bytes());
             }
 
             Self::I16(Endianness::Big) => {
-                output[..2].copy_from_slice(
-                    &((sample.clamp(-1.0, 1.0) * i16::MAX as f32) as i16)
-                        .to_be_bytes(),
+                let value: i16 = sample.convert_to();
+                out[..2].copy_from_slice(&value.to_be_bytes());
+            }
+
+            Self::I24(endian) => {
+                let value: i32 = sample.convert_to();
+                write_i24(
+                    I24::wrapping_from_i32(value),
+                    out,
+                    *endian,
                 );
-            }
-
-            Self::I24(Endianness::Little) => {
-                let value =
-                    (sample.clamp(-1.0, 1.0) * 8_388_607.0) as i32;
-
-                let bytes = value.to_le_bytes();
-
-                output[0] = bytes[0];
-                output[1] = bytes[1];
-                output[2] = bytes[2];
-            }
-
-            Self::I24(Endianness::Big) => {
-                let value =
-                    (sample.clamp(-1.0, 1.0) * 8_388_607.0) as i32;
-
-                let bytes = value.to_be_bytes();
-
-                output[0] = bytes[1];
-                output[1] = bytes[2];
-                output[2] = bytes[3];
             }
 
             Self::I32(Endianness::Little) => {
-                output[..4].copy_from_slice(
-                    &((sample.clamp(-1.0, 1.0) * i32::MAX as f32) as i32)
-                        .to_le_bytes(),
-                );
+                let value: i32 = sample.convert_to();
+                out[..4].copy_from_slice(&value.to_le_bytes());
             }
 
             Self::I32(Endianness::Big) => {
-                output[..4].copy_from_slice(
-                    &((sample.clamp(-1.0, 1.0) * i32::MAX as f32) as i32)
-                        .to_be_bytes(),
+                let value: i32 = sample.convert_to();
+                out[..4].copy_from_slice(&value.to_be_bytes());
+            }
+
+            Self::I64(Endianness::Little) => {
+                let value =
+                    (sample.clamp(-1.0, 1.0) * i64::MAX as f32)
+                        .round() as i64;
+
+                out[..8].copy_from_slice(&value.to_le_bytes());
+            }
+
+            Self::I64(Endianness::Big) => {
+                let value =
+                    (sample.clamp(-1.0, 1.0) * i64::MAX as f32)
+                        .round() as i64;
+
+                out[..8].copy_from_slice(&value.to_be_bytes());
+            }
+
+            //
+            // Unsigned integers
+            //
+            Self::U8 => {
+                let value: u8 = sample.convert_to();
+                out[0] = value;
+            }
+
+            Self::U16(Endianness::Little) => {
+                let value =
+                    (((sample.clamp(-1.0, 1.0) + 1.0) * 0.5)
+                        * u16::MAX as f32)
+                        .round() as u16;
+
+                out[..2].copy_from_slice(&value.to_le_bytes());
+            }
+
+            Self::U16(Endianness::Big) => {
+                let value =
+                    (((sample.clamp(-1.0, 1.0) + 1.0) * 0.5)
+                        * u16::MAX as f32)
+                        .round() as u16;
+
+                out[..2].copy_from_slice(&value.to_be_bytes());
+            }
+
+            Self::U24(endian) => {
+                let value =
+                    (((sample.clamp(-1.0, 1.0) + 1.0) * 0.5)
+                        * ((1u32 << 24) - 1) as f32)
+                        .round() as u32;
+
+                write_u24(
+                    U24::wrapping_from_u32(value),
+                    out,
+                    *endian,
                 );
             }
 
+            Self::U32(Endianness::Little) => {
+                let value =
+                    (((sample.clamp(-1.0, 1.0) + 1.0) * 0.5)
+                        * u32::MAX as f32)
+                        .round() as u32;
+
+                out[..4].copy_from_slice(&value.to_le_bytes());
+            }
+
+            Self::U32(Endianness::Big) => {
+                let value =
+                    (((sample.clamp(-1.0, 1.0) + 1.0) * 0.5)
+                        * u32::MAX as f32)
+                        .round() as u32;
+
+                out[..4].copy_from_slice(&value.to_be_bytes());
+            }
+
+            Self::U64(Endianness::Little) => {
+                let value =
+                    (((sample.clamp(-1.0, 1.0) as f64 + 1.0) * 0.5)
+                        * u64::MAX as f64)
+                        .round() as u64;
+
+                out[..8].copy_from_slice(&value.to_le_bytes());
+            }
+
+            Self::U64(Endianness::Big) => {
+                let value =
+                    (((sample.clamp(-1.0, 1.0) as f64 + 1.0) * 0.5)
+                        * u64::MAX as f64)
+                        .round() as u64;
+
+                out[..8].copy_from_slice(&value.to_be_bytes());
+            }
+
+            //
+            // Floating point
+            //
             Self::F32(Endianness::Little) => {
-                output[..4].copy_from_slice(
-                    &sample.to_le_bytes(),
-                );
+                out[..4].copy_from_slice(&sample.to_le_bytes());
             }
 
             Self::F32(Endianness::Big) => {
-                output[..4].copy_from_slice(
-                    &sample.to_be_bytes(),
-                );
+                out[..4].copy_from_slice(&sample.to_be_bytes());
             }
 
             Self::F64(Endianness::Little) => {
-                output[..8].copy_from_slice(
-                    &(sample as f64).to_le_bytes(),
-                );
+                out[..8].copy_from_slice(&(sample as f64).to_le_bytes());
             }
 
             Self::F64(Endianness::Big) => {
-                output[..8].copy_from_slice(
-                    &(sample as f64).to_be_bytes(),
-                );
+                out[..8].copy_from_slice(&(sample as f64).to_be_bytes());
             }
 
-            _ => {
-                todo!()
+            //
+            // DSD
+            //
+            Self::DsdU8
+            | Self::DsdU16(_)
+            | Self::DsdU32(_) => {
+                unimplemented!("DSD PCM conversion is not supported");
             }
         }
     }
@@ -261,64 +341,177 @@ impl PcmFormat {
         input: &[u8],
     ) -> f32 {
         match self {
-            Self::U8 => {
-                (input[0] as f32 / 127.5) - 1.0
+            //
+            // Signed integers
+            //
+            Self::I8 => {
+                (input[0] as i8) as f32 / 127.0
             }
 
             Self::I16(Endianness::Little) => {
-                i16::from_le_bytes([
+                let value = i16::from_le_bytes([
                     input[0],
                     input[1],
-                ]) as f32 / i16::MAX as f32
+                ]);
+
+                value.convert_to()
             }
 
             Self::I16(Endianness::Big) => {
-                i16::from_be_bytes([
+                let value = i16::from_be_bytes([
                     input[0],
                     input[1],
-                ]) as f32 / i16::MAX as f32
+                ]);
+
+                value.convert_to()
             }
 
-            Self::I24(Endianness::Little) => {
+            Self::I24(endian) => {
+                let value = read_i24(input, *endian);
+                value.to_i32().convert_to()
+            }
+
+            Self::I32(Endianness::Little) => {
                 let value = i32::from_le_bytes([
                     input[0],
                     input[1],
                     input[2],
-                    if input[2] & 0x80 != 0 { 0xff } else { 0x00 },
-                ]);
-
-                value as f32 / 8_388_607.0
-            }
-
-            Self::I24(Endianness::Big) => {
-                let value = i32::from_be_bytes([
-                    if input[0] & 0x80 != 0 { 0xff } else { 0x00 },
-                    input[0],
-                    input[1],
-                    input[2],
-                ]);
-
-                value as f32 / 8_388_607.0
-            }
-
-            Self::I32(Endianness::Little) => {
-                i32::from_le_bytes([
-                    input[0],
-                    input[1],
-                    input[2],
                     input[3],
-                ]) as f32 / i32::MAX as f32
+                ]);
+
+                value.convert_to()
             }
 
             Self::I32(Endianness::Big) => {
-                i32::from_be_bytes([
+                let value = i32::from_be_bytes([
                     input[0],
                     input[1],
                     input[2],
                     input[3],
-                ]) as f32 / i32::MAX as f32
+                ]);
+
+                value.convert_to()
             }
 
+            Self::I64(Endianness::Little) => {
+                let value = i64::from_le_bytes([
+                    input[0],
+                    input[1],
+                    input[2],
+                    input[3],
+                    input[4],
+                    input[5],
+                    input[6],
+                    input[7],
+                ]);
+
+                (value as f64 / i64::MAX as f64) as f32
+            }
+
+            Self::I64(Endianness::Big) => {
+                let value = i64::from_be_bytes([
+                    input[0],
+                    input[1],
+                    input[2],
+                    input[3],
+                    input[4],
+                    input[5],
+                    input[6],
+                    input[7],
+                ]);
+
+                (value as f64 / i64::MAX as f64) as f32
+            }
+
+            //
+            // Unsigned integers
+            //
+            Self::U8 => {
+                input[0].convert_to()
+            }
+
+            Self::U16(Endianness::Little) => {
+                let value = u16::from_le_bytes([
+                    input[0],
+                    input[1],
+                ]);
+
+                value as f32 / u16::MAX as f32 * 2.0 - 1.0
+            }
+
+            Self::U16(Endianness::Big) => {
+                let value = u16::from_be_bytes([
+                    input[0],
+                    input[1],
+                ]);
+
+                value as f32 / u16::MAX as f32 * 2.0 - 1.0
+            }
+
+            Self::U24(endian) => {
+                let value = read_u24(input, *endian);
+
+                value.to_u32() as f32
+                    / ((1u32 << 24) - 1) as f32
+                    * 2.0
+                    - 1.0
+            }
+
+            Self::U32(Endianness::Little) => {
+                let value = u32::from_le_bytes([
+                    input[0],
+                    input[1],
+                    input[2],
+                    input[3],
+                ]);
+
+                value as f32 / u32::MAX as f32 * 2.0 - 1.0
+            }
+
+            Self::U32(Endianness::Big) => {
+                let value = u32::from_be_bytes([
+                    input[0],
+                    input[1],
+                    input[2],
+                    input[3],
+                ]);
+
+                value as f32 / u32::MAX as f32 * 2.0 - 1.0
+            }
+
+            Self::U64(Endianness::Little) => {
+                let value = u64::from_le_bytes([
+                    input[0],
+                    input[1],
+                    input[2],
+                    input[3],
+                    input[4],
+                    input[5],
+                    input[6],
+                    input[7],
+                ]);
+
+                (value as f64 / u64::MAX as f64 * 2.0 - 1.0) as f32
+            }
+
+            Self::U64(Endianness::Big) => {
+                let value = u64::from_be_bytes([
+                    input[0],
+                    input[1],
+                    input[2],
+                    input[3],
+                    input[4],
+                    input[5],
+                    input[6],
+                    input[7],
+                ]);
+
+                (value as f64 / u64::MAX as f64 * 2.0 - 1.0) as f32
+            }
+
+            //
+            // Floating point
+            //
             Self::F32(Endianness::Little) => {
                 f32::from_le_bytes([
                     input[0],
@@ -363,7 +556,88 @@ impl PcmFormat {
                 ]) as f32
             }
 
-            _ => { todo!() }
+            //
+            // DSD
+            //
+            Self::DsdU8
+            | Self::DsdU16(_)
+            | Self::DsdU32(_) => {
+                unimplemented!("DSD PCM conversion is not supported");
+            }
         }
     }
+}
+
+
+#[allow(unused)]
+#[inline]
+fn read_i24(input: &[u8], endian: Endianness) -> I24 {
+    match endian {
+        Endianness::Little => {
+            I24::from_le_bytes([
+                input[0],
+                input[1],
+                input[2],
+            ])
+        }
+        Endianness::Big => {
+            I24::from_be_bytes([
+                input[0],
+                input[1],
+                input[2],
+            ])
+        }
+    }
+}
+
+#[inline]
+fn write_i24(
+    value: I24,
+    output: &mut [u8],
+    endian: Endianness,
+) {
+    let bytes = match endian {
+        Endianness::Little => value.to_le_bytes(),
+        Endianness::Big => value.to_be_bytes(),
+    };
+
+    output[..3].copy_from_slice(&bytes);
+}
+
+#[allow(unused)]
+#[inline]
+fn read_u24(
+    input: &[u8],
+    endian: Endianness,
+) -> U24 {
+    match endian {
+        Endianness::Little => {
+            U24::from_le_bytes([
+                input[0],
+                input[1],
+                input[2],
+            ])
+        }
+        Endianness::Big => {
+            U24::from_be_bytes([
+                input[0],
+                input[1],
+                input[2],
+            ])
+        }
+    }
+}
+
+#[inline]
+fn write_u24(
+    value: U24,
+    output: &mut [u8],
+    endian: Endianness,
+) {
+    let bytes = match endian {
+        Endianness::Little => value.to_le_bytes(),
+        Endianness::Big => value.to_be_bytes(),
+    };
+
+    output[..3].copy_from_slice(&bytes);
 }

@@ -28,3 +28,5 @@ bytemuck = "1.25.0"
 symphonia = "0.6.0"
 base64-simd = "=0.8.0"
 hound = "3.5.1"
+audio_samples = { version="2.0.0", features = ["full"] }
+i24 = "2.3.4"
