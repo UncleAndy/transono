@@ -176,6 +176,10 @@ impl PcmFormat {
         }
     }
 
+    // audio_samples преобразует f32 <-> i32.
+    // Для хранения в I24 необходимо уменьшить разрядность до 24 бит,
+    // а при чтении восстановить её обратно.
+
     #[inline]
     pub fn encode_sample(&self, sample: f32, out: &mut [u8]) {
         match self {
