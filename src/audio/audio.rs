@@ -1,5 +1,6 @@
 use std::fmt;
 use std::fmt::{Debug, Formatter};
+use std::time::Instant;
 use cpal::SampleFormat;
 use symphonia::core::audio::conv::{ConvertibleSample, FromSample};
 use symphonia::core::audio::{AudioBuffer, AudioMut, AudioSpec, GenericAudioBuffer};
@@ -80,6 +81,9 @@ impl Audio {
         Ok(PcmAudio {
             spec,
             channels,
+            sequence: 0,
+            capture_timestamp: Instant::now(),
+            processing_timestamp: Instant::now(),
         })
     }
 

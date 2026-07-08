@@ -1,3 +1,4 @@
+use std::time::Instant;
 use symphonia::core::audio::{AudioSpec, Channels};
 
 use crate::audio::PlanarAdapter;
@@ -9,6 +10,10 @@ use crate::audio::PlanarAdapter;
 pub struct PcmAudio {
     pub spec: AudioSpec,
     pub channels: Vec<Vec<f32>>, // Один Vec на канал.
+
+    pub(crate) sequence: u64,
+    pub(crate) capture_timestamp: Instant,
+    pub(crate) processing_timestamp: Instant,
 }
 
 impl PcmAudio {
@@ -21,6 +26,9 @@ impl PcmAudio {
         Self {
             spec,
             channels,
+            sequence: 0,
+            capture_timestamp: Instant::now(),
+            processing_timestamp: Instant::now(),
         }
     }
 
