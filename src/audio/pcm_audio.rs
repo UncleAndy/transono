@@ -150,6 +150,14 @@ impl PcmAudio {
         self.set_channels(layout)
     }
 
+    pub(crate) fn replace_channel_vec(
+        &mut self,
+        channel: usize,
+        samples: Vec<f32>,
+    ) {
+        self.channels[channel] = samples;
+    }
+
     fn set_channels(
         &mut self,
         layout: Channels,

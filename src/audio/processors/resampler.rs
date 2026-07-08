@@ -171,30 +171,30 @@ impl Resampler {
             return;
         }
 
-        let channels_count = pcm.channel_count();
+        let channels = pcm.channel_count();
 
         debug_assert_eq!(
-            channels_count,
-            self.output_buffer.channels(),
-        );
+        channels,
+        self.output_buffer.channels(),
+    );
 
-        for channel in 0..channels_count {
+        let mut output = Vec::with_capacity(channels);
+
+        for channel in 0..channels {
             let samples = self
                 .output_buffer
-                .read_channel(channel, frames);
+                .read_channel(channel, frames)
+                .unwrap();
 
-            debug_assert!(
-                samples.is_some()
-            );
-
-            let samples = unsafe {
-                samples.unwrap_unchecked()
-            };
-
-            pcm.replace_channel(channel, samples);
+            output.push(samples.to_vec());
         }
 
         self.output_buffer.consume(frames);
+
+        pcm.replace_channels(
+            output,
+            pcm.spec.channels().clone(),
+        );
 
         if pcm.spec.rate() != self.output_rate {
             pcm.spec = AudioSpec::new(

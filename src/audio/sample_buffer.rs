@@ -61,7 +61,26 @@ impl<T: Copy> SampleBuffer<T> {
             self.head = 0;
         }
     }
+
+    pub fn reserve_append(
+        &mut self,
+        count: usize,
+    ) -> &mut [T]
+    where
+        T: Default
+    {
+        let start = self.data.len();
+
+        self.data.resize(
+            start + count,
+            T::default(),
+        );
+
+        &mut self.data[start..]
+    }
 }
+
+
 
 impl<T: Copy> Default for SampleBuffer<T> {
     fn default() -> Self {
