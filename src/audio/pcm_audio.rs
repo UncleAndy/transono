@@ -6,7 +6,7 @@ use crate::audio::PlanarAdapter;
 ///
 /// The library supports arbitrary sample formats through `Audio`,
 /// but all built-in DSP processors currently operate on `f32`.
-pub(crate) struct PcmAudio {
+pub struct PcmAudio {
     pub spec: AudioSpec,
     pub channels: Vec<Vec<f32>>, // Один Vec на канал.
 }
@@ -32,6 +32,8 @@ impl PcmAudio {
         self.channels.len()
     }
 
+    #[allow(unused)]
+    #[allow(mismatched_lifetime_syntaxes)]
     pub(crate) fn adapter(
         &mut self,
     ) -> PlanarAdapter<f32> {
@@ -50,6 +52,7 @@ impl PcmAudio {
         &self.channels[index]
     }
 
+    #[allow(unused)]
     pub(crate) fn replace_channel(
         &mut self,
         channel: usize,
@@ -80,6 +83,7 @@ impl PcmAudio {
     }
 
     /// Удаляет канал.
+    #[allow(unused)]
     pub(crate) fn remove_channel(
         &mut self,
         channel: usize,
@@ -93,6 +97,7 @@ impl PcmAudio {
     }
 
     /// Вставляет канал в указанную позицию.
+    #[allow(unused)]
     pub(crate) fn insert_channel(
         &mut self,
         channel: usize,
@@ -127,6 +132,7 @@ impl PcmAudio {
         self.set_channels(layout);
     }
 
+    #[allow(unused)]
     pub(crate) fn reserve_channels(
         &mut self,
         additional: usize,
@@ -135,6 +141,7 @@ impl PcmAudio {
     }
 
     /// Удаляет все каналы.
+    #[allow(unused)]
     pub(crate) fn clear_channels(
         &mut self,
     ) {
@@ -150,6 +157,7 @@ impl PcmAudio {
         self.set_channels(layout)
     }
 
+    #[allow(unused)]
     pub(crate) fn replace_channel_vec(
         &mut self,
         channel: usize,

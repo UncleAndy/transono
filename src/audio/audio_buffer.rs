@@ -5,7 +5,11 @@ use std::sync::Arc;
 use anyhow::Result;
 use rtrb::{Consumer, Producer, RingBuffer};
 use symphonia::core::audio::GenericAudioBuffer;
-use crate::audio::{frame::{AudioFrame, FrameId}, frame_pool::FramePool, FRAME_CAPACITY};
+use crate::audio::{
+    frame::{AudioFrame, FrameId},
+    frame_pool::FramePool,
+    FRAME_CAPACITY,
+};
 
 pub struct FrameProducer {
     pool: Arc<FramePool>,
@@ -135,6 +139,7 @@ impl FrameConsumer {
     }
 }
 
-pub(crate) trait IntoGenericAudioBuffer {
+#[allow(unused)]
+pub trait IntoGenericAudioBuffer {
     fn into_generic(self) -> GenericAudioBuffer;
 }

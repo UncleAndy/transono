@@ -28,9 +28,11 @@ where
         channel: usize,
         frame: usize,
     ) -> T {
-        let channel = self.channels.get_unchecked(channel);
+        unsafe {
+            let channel = self.channels.get_unchecked(channel);
 
-        *channel.as_ptr().add(frame)
+            *channel.as_ptr().add(frame)
+        }
     }
 
     fn channels(&self) -> usize {
@@ -55,9 +57,11 @@ where
         frame: usize,
         value: &T,
     ) -> bool {
-        let channel = self.channels.get_unchecked_mut(channel);
+        unsafe {
+            let channel = self.channels.get_unchecked_mut(channel);
 
-        *channel.as_mut_ptr().add(frame) = *value;
+            *channel.as_mut_ptr().add(frame) = *value;
+        }
 
         false
     }

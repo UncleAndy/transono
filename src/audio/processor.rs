@@ -21,7 +21,7 @@ pub struct IdentityProcessor;
 impl AudioProcessor for IdentityProcessor {
     fn process(
         &mut self,
-        audio: &mut Audio,
+        _audio: &mut Audio,
     ) -> Result<()> {
         Ok(())
     }

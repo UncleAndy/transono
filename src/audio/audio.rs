@@ -39,7 +39,7 @@ impl Audio {
         self.buffer.copy_to_slice_planar(dst);
     }
 
-    pub fn from_planar<S>(
+    pub(crate) fn from_planar<S>(
         spec: AudioSpec,
         src: &[&[S]],
     ) -> Self
