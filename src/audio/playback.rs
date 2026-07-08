@@ -23,13 +23,6 @@ impl AudioPlayback {
     ) -> Result<(Self, mpsc::Sender<Audio>)> {
         let (config, sample_format) = select_config(&device)?;
 
-        println!(
-            "Playback: rate={} channels={} buffer={:?}",
-            config.sample_rate,
-            config.channels,
-            config.buffer_size,
-        );
-
         let (tx, rx) = mpsc::channel(32);
 
         let stream = match sample_format {

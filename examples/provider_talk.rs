@@ -72,80 +72,48 @@ async fn main() -> Result<()> {
         ).await?;
 
     // Input DSP
+    {
+        line.add_input_processor(
+            Processor::Dsp(Box::new(
+                ChannelConverter::new(mono.clone())
+            ))
+        )?;
 
-    line.add_input_processor(
-        Processor::Dsp(Box::new(
-            ChannelConverter::new(mono.clone())
-        ))
-    )?;
-
-    line.add_input_processor(
-        Processor::Dsp(Box::new(
-            Resampler::new(
-                AudioSpec::new(
-                    input_sample_rate,
-                    mono.clone(),
-                ),
-                remote_spec.rate()
-            )?
-        ))
-    )?;
+        line.add_input_processor(
+            Processor::Dsp(Box::new(
+                Resampler::new(
+                    AudioSpec::new(
+                        input_sample_rate,
+                        mono.clone(),
+                    ),
+                    remote_spec.rate()
+                )?
+            ))
+        )?;
+    }
 
     // Output DSP
-
-    line.add_output_processor(
-        Processor::Dsp(Box::new(
-            WavDump::new(
-                "01_output_24khz.wav",
-                AudioSpec::new(
-                    remote_spec.rate(),
-                    mono.clone(),
-                ),
-            )?
-        ))
-    )?;
-
-    line.add_output_processor(
-        Processor::Dsp(Box::new(
-            Resampler::new(
-                AudioSpec::new(
-                    remote_spec.rate(),
-                    mono.clone(),
-                ),
-                output_sample_rate,
-            )?
-        ))
-    )?;
-
-    line.add_output_processor(
-        Processor::Dsp(Box::new(
-            WavDump::new(
-                "02_resampler.wav",
-                AudioSpec::new(
+    {
+        line.add_output_processor(
+            Processor::Dsp(Box::new(
+                Resampler::new(
+                    AudioSpec::new(
+                        remote_spec.rate(),
+                        mono.clone(),
+                    ),
                     output_sample_rate,
-                    mono.clone(),
-                ),
-            )?
-        ))
-    )?;
+                )?
+            ))
+        )?;
 
-    line.add_output_processor(
-        Processor::Dsp(Box::new(
-            ChannelConverter::new(stereo.clone())
-        ))
-    )?;
+        line.add_output_processor(
+            Processor::Dsp(Box::new(
+                ChannelConverter::new(stereo.clone())
+            ))
+        )?;
+    }
 
-    line.add_output_processor(
-        Processor::Dsp(Box::new(
-            WavDump::new(
-                "03_converter.wav",
-                AudioSpec::new(
-                    output_sample_rate,
-                    stereo.clone(),
-                ),
-            )?
-        ))
-    )?;
+    println!("Run...");
 
     line.run().await?;
 

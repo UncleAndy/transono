@@ -31,13 +31,6 @@ impl AudioCapture {
             sample_format,
         };
 
-        println!(
-            "Capture: rate={} channels={} buffer={:?}",
-            config.sample_rate.to_string(),
-            config.channels.to_string(),
-            config.buffer_size,
-        );
-
         let (tx, rx) = mpsc::channel(32);
 
         let stream = match sample_format {
