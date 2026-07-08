@@ -3,6 +3,7 @@ use cpal::traits::DeviceTrait;
 use symphonia::core::audio::{AudioSpec, Channels, Position};
 use tokio::signal;
 use realtime_translator::audio::{AudioDevices, Processor};
+use realtime_translator::audio::processors::channel_converter::ChannelConverter;
 use realtime_translator::audio::processors::resampler::Resampler;
 use realtime_translator::providers::openai::realtime::{
     OpenAIRealtimeConfig,
@@ -35,6 +36,12 @@ async fn main() -> Result<()> {
 
     let remote = config.audio_format();
 
+    let remote_spec = remote.spec().clone();
+    let mono = Channels::Positioned(Position::FRONT_CENTER);
+    let stereo = Channels::Positioned(
+        Position::FRONT_LEFT | Position::FRONT_RIGHT,
+    );
+
     println!(
         "OpenAI format: {} Hz, {} channel(s)",
         remote.spec().rate(),
@@ -51,20 +58,25 @@ async fn main() -> Result<()> {
             provider,
             capture.clone(),
             playback.clone(),
-        )
-            .await?;
+        ).await?;
 
     let input_sample_rate = capture.default_input_config()?.sample_rate();
     let output_sample_rate = playback.default_output_config()?.sample_rate();
 
     line.add_input_processor(
         Processor::Dsp(Box::new(
+            ChannelConverter::new(mono.clone())
+        ))
+    )?;
+
+    line.add_input_processor(
+        Processor::Dsp(Box::new(
             Resampler::new(
                 AudioSpec::new(
                     input_sample_rate,
-                    Channels::Positioned(Position::FRONT_CENTER)
+                    mono.clone(),
                 ),
-                remote.spec().rate()
+                remote_spec.rate()
             )?
         ))
     )?;
@@ -73,11 +85,17 @@ async fn main() -> Result<()> {
         Processor::Dsp(Box::new(
             Resampler::new(
                 AudioSpec::new(
-                    remote.spec().rate(),
-                    Channels::Positioned(Position::FRONT_CENTER)
+                    remote_spec.rate(),
+                    mono.clone(),
                 ),
                 output_sample_rate,
             )?
+        ))
+    )?;
+
+    line.add_output_processor(
+        Processor::Dsp(Box::new(
+            ChannelConverter::new(stereo)
         ))
     )?;
 
