@@ -3,7 +3,7 @@ use cpal::traits::DeviceTrait;
 use symphonia::core::audio::{AudioSpec, Channels, Position};
 use tokio::signal;
 use realtime_translator::audio::{AudioDevices, Processor};
-use realtime_translator::audio::processors::audio_dump::WavDump;
+use realtime_translator::audio::diagnost::wav_dump::WavDump;
 use realtime_translator::audio::processors::channel_converter::ChannelConverter;
 use realtime_translator::audio::processors::resampler::Resampler;
 use realtime_translator::providers::openai::realtime::{

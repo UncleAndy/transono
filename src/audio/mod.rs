@@ -17,6 +17,7 @@ pub mod planar_adapter;
 pub mod pcm_audio;
 pub mod encoders;
 pub mod audio_encoder;
+pub mod diagnost;
 
 pub use capture::*;
 pub use device::*;

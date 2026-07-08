@@ -9,7 +9,7 @@
 
 ---
 
-## 🚧 v0.2.0
+## ✅ v0.2.0
 
 - [x] Provider architecture
 - [x] OpenAI connection
@@ -19,7 +19,7 @@
 
 ---
 
-## 🚧 v0.3.0
+## ✅ v0.3.0
 
 - [x] TranslationLine
 - [x] Runtime
