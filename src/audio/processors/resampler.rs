@@ -127,12 +127,6 @@ impl Resampler {
                 );
             }
 
-            println!(
-                "need={}, inbuf={}",
-                required,
-                self.input_buffer.available(),
-            );
-
             let (input_frames, output_frames) = self
                 .fft
                 .process_into_buffer(
@@ -141,13 +135,6 @@ impl Resampler {
                     None,
                 )
                 .map_err(|e| CoreError::Other(e.into()))?;
-
-            println!(
-                "fft in={} out={} outbuf={}",
-                input_frames,
-                output_frames,
-                self.output_buffer.available(),
-            );
 
             // ---------- output ----------
             for channel in 0..channels_count {
@@ -168,11 +155,6 @@ impl Resampler {
             }
 
             self.input_buffer.consume(input_frames);
-
-            println!(
-                "after pop={}",
-                self.output_buffer.available(),
-            );
         }
 
         Ok(())
@@ -187,6 +169,8 @@ impl Resampler {
         if frames == 0 {
             return;
         }
+
+        println!("pop {} frames", frames);
 
         let channels = pcm.channel_count();
 

@@ -2,14 +2,15 @@ use anyhow::Result;
 use cpal::traits::DeviceTrait;
 use symphonia::core::audio::{AudioSpec, Channels, Position};
 use tokio::signal;
-
 use realtime_translator::audio::{AudioDevices, Processor};
+use realtime_translator::audio::processors::audio_dump::WavDump;
 use realtime_translator::audio::processors::channel_converter::ChannelConverter;
 use realtime_translator::audio::processors::resampler::Resampler;
 use realtime_translator::providers::openai::realtime::{
     OpenAIRealtimeConfig,
     OpenAIRealtimeProvider,
 };
+
 use realtime_translator::runtime::TranslationLine;
 
 #[tokio::main]
@@ -62,12 +63,15 @@ async fn main() -> Result<()> {
     println!("Remote : {} Hz", remote_spec.rate());
     println!("Playback: {} Hz", output_sample_rate);
 
+    // TranslationLine
     let mut line =
         TranslationLine::new(
             provider,
             capture.clone(),
             playback.clone(),
         ).await?;
+
+    // Input DSP
 
     line.add_input_processor(
         Processor::Dsp(Box::new(
@@ -87,6 +91,20 @@ async fn main() -> Result<()> {
         ))
     )?;
 
+    // Output DSP
+
+    line.add_output_processor(
+        Processor::Dsp(Box::new(
+            WavDump::new(
+                "01_output_24khz.wav",
+                AudioSpec::new(
+                    remote_spec.rate(),
+                    mono.clone(),
+                ),
+            )?
+        ))
+    )?;
+
     line.add_output_processor(
         Processor::Dsp(Box::new(
             Resampler::new(
@@ -101,7 +119,31 @@ async fn main() -> Result<()> {
 
     line.add_output_processor(
         Processor::Dsp(Box::new(
-            ChannelConverter::new(stereo)
+            WavDump::new(
+                "02_resampler.wav",
+                AudioSpec::new(
+                    output_sample_rate,
+                    mono.clone(),
+                ),
+            )?
+        ))
+    )?;
+
+    line.add_output_processor(
+        Processor::Dsp(Box::new(
+            ChannelConverter::new(stereo.clone())
+        ))
+    )?;
+
+    line.add_output_processor(
+        Processor::Dsp(Box::new(
+            WavDump::new(
+                "03_converter.wav",
+                AudioSpec::new(
+                    output_sample_rate,
+                    stereo.clone(),
+                ),
+            )?
         ))
     )?;
 
