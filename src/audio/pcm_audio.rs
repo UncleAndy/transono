@@ -196,7 +196,7 @@ impl PcmAudio {
 }
 
 /// Byte order for PCM encoded audio.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Endianness {
     Little,
     Big,

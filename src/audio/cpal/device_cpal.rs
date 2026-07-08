@@ -1,8 +1,6 @@
 use anyhow::{Context, Result};
-use cpal::{
-    traits::{DeviceTrait, HostTrait},
-    Device, Host,
-};
+use cpal::{traits::{DeviceTrait, HostTrait}, Device, Host, SampleFormat};
+use crate::audio::{Endianness, PcmFormat};
 
 pub struct AudioDevicesCpal {
     host: Host,
@@ -92,4 +90,25 @@ fn print_config(cfg: cpal::SupportedStreamConfigRange) {
     );
 
     println!("    {:?}", cfg.buffer_size());
+}
+
+pub(crate) fn sample_to_pcm_format(format: SampleFormat) -> PcmFormat {
+    match format {
+        SampleFormat::I8 => PcmFormat::I8,
+        SampleFormat::I16 => PcmFormat::I16(Endianness::Little),
+        SampleFormat::I24 => PcmFormat::I24(Endianness::Little),
+        SampleFormat::I32 => PcmFormat::I32(Endianness::Little),
+        SampleFormat::I64 => PcmFormat::I64(Endianness::Little),
+        SampleFormat::U8 => PcmFormat::U8,
+        SampleFormat::U16 => PcmFormat::U16(Endianness::Little),
+        SampleFormat::U24 => PcmFormat::U24(Endianness::Little),
+        SampleFormat::U32 => PcmFormat::U32(Endianness::Little),
+        SampleFormat::U64 => PcmFormat::U64(Endianness::Little),
+        SampleFormat::F32 => PcmFormat::F32(Endianness::Little),
+        SampleFormat::F64 => PcmFormat::F64(Endianness::Little),
+        SampleFormat::DsdU8 => PcmFormat::DsdU8,
+        SampleFormat::DsdU16 => PcmFormat::DsdU16(Endianness::Little),
+        SampleFormat::DsdU32 => PcmFormat::DsdU32(Endianness::Little),
+        _ => PcmFormat::U8,
+    }
 }

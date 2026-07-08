@@ -1,12 +1,11 @@
 use std::fmt;
 use std::fmt::{Debug, Formatter};
 use std::time::Instant;
-use cpal::SampleFormat;
 use symphonia::core::audio::conv::{ConvertibleSample, FromSample};
 use symphonia::core::audio::{AudioBuffer, AudioMut, AudioSpec, GenericAudioBuffer};
 use symphonia::core::audio::sample::{i24, u24, Sample};
 
-use crate::audio::{PcmAudio};
+use crate::audio::{PcmAudio, PcmFormat};
 use crate::core::error::Result;
 
 /// Universal audio container.
@@ -143,7 +142,7 @@ pub struct AudioFormat {
     /// Number of channels.
     pub channels: u16,
     /// Sample representation.
-    pub sample_format: SampleFormat,
+    pub sample_format: PcmFormat,
 }
 
 pub(crate) trait IntoGenericBuffer {

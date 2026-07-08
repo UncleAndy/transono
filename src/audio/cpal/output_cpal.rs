@@ -5,7 +5,7 @@ use cpal::{
 };
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
-use crate::audio::{Audio, AudioFormat, AudioOutput};
+use crate::audio::{sample_to_pcm_format, Audio, AudioFormat, AudioOutput};
 use crate::core::error::{CoreError, Result};
 
 pub struct AudioOutputCpal {
@@ -65,7 +65,7 @@ impl AudioOutputCpal {
             format: AudioFormat {
                 sample_rate: config.sample_rate,
                 channels: config.channels,
-                sample_format,
+                sample_format: sample_to_pcm_format(sample_format),
             },
             sender: Some(tx),
         })

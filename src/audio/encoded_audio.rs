@@ -135,14 +135,23 @@ pub enum BinaryEncoding {
     Custom(String),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Copy, Hash)]
 pub enum PcmFormat {
+    I8,
     I16(Endianness),
     I24(Endianness),
     I32(Endianness),
+    I64(Endianness),
+    U8,
+    U16(Endianness),
+    U24(Endianness),
+    U32(Endianness),
+    U64(Endianness),
     F32(Endianness),
     F64(Endianness),
-    U8,
+    DsdU8,
+    DsdU16(Endianness),
+    DsdU32(Endianness),
 }
 impl PcmFormat {
     pub fn sample_size(&self) -> usize {
@@ -153,6 +162,7 @@ impl PcmFormat {
             Self::I32(_) => 4,
             Self::F32(_) => 4,
             Self::F64(_) => 8,
+            _ => { todo!() }
         }
     }
 
@@ -238,6 +248,10 @@ impl PcmFormat {
                 output[..8].copy_from_slice(
                     &(sample as f64).to_be_bytes(),
                 );
+            }
+
+            _ => {
+                todo!()
             }
         }
     }
@@ -348,6 +362,8 @@ impl PcmFormat {
                     input[7],
                 ]) as f32
             }
+
+            _ => { todo!() }
         }
     }
 }

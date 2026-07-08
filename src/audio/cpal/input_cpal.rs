@@ -9,6 +9,7 @@ use tokio::sync::mpsc::Receiver;
 use crate::core::error::{CoreError, Result};
 use crate::audio::audio::{Audio, AudioFormat, IntoGenericBuffer};
 use crate::audio::AudioInput;
+use crate::audio::cpal::sample_to_pcm_format;
 
 pub struct AudioInputCpal {
     stream: Stream,
@@ -30,7 +31,7 @@ impl AudioInputCpal {
         let format = AudioFormat {
             sample_rate: config.sample_rate,
             channels: config.channels,
-            sample_format,
+            sample_format: sample_to_pcm_format(sample_format),
         };
 
         let (tx, rx) = mpsc::channel(32);

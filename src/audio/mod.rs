@@ -19,8 +19,6 @@ pub mod input;
 pub mod output;
 pub mod cpal;
 
-pub use cpal::input_cpal::*;
-pub use cpal::device_cpal::*;
 pub use audio_buffer::*;
 pub use frame::*;
 pub use frame_pool::*;
