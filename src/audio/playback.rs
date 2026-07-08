@@ -94,43 +94,55 @@ impl AudioPlayback {
         let stream = device.build_output_stream::<T, _, _>(
             *config,
             move |output: &mut [T], _| {
-
                 output.fill(T::EQUILIBRIUM);
 
-                if state.current.is_none() {
+                let mut output_offset = 0;
 
-                    state.current = receiver.try_recv().ok();
+                while output_offset < output.len() {
+                    // Если текущий пакет закончился — взять следующий.
+                    if state.current.is_none() {
 
-                    if let Some(audio) = &state.current {
+                        state.current = receiver.try_recv().ok();
+
+                        let Some(audio) = &state.current else {
+                            break;
+                        };
 
                         state.current_samples.clear();
 
                         audio
                             .buffer()
-                            .copy_to_vec_interleaved(&mut state.current_samples);
+                            .copy_to_vec_interleaved(
+                                &mut state.current_samples,
+                            );
 
+                        state.offset = 0;
                     }
 
-                    state.offset = 0;
+                    let remain =
+                        &state.current_samples[state.offset..];
+
+                    let count = remain
+                        .len()
+                        .min(output.len() - output_offset);
+
+                    output[
+                        output_offset..
+                            output_offset + count
+                        ]
+                        .copy_from_slice(
+                            &remain[..count],
+                        );
+
+                    output_offset += count;
+                    state.offset += count;
+
+                    if state.offset >= state.current_samples.len() {
+                        state.current = None;
+                        state.current_samples.clear();
+                        state.offset = 0;
+                    }
                 }
-
-                let remain =
-                    &state.current_samples[state.offset..];
-
-                let count =
-                    remain.len().min(output.len());
-
-                output[..count]
-                    .copy_from_slice(&remain[..count]);
-
-                state.offset += count;
-
-                if state.offset >= state.current_samples.len() {
-                    state.current = None;
-                    state.current_samples.clear();
-                    state.offset = 0;
-                }
-
             },
             move |err| {
                 eprintln!("playback: {err}");

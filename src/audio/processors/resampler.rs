@@ -170,7 +170,7 @@ impl Resampler {
             return;
         }
 
-        println!("pop {} frames", frames);
+        println!("{} pop {} frames", self.output_rate, frames);
 
         let channels = pcm.channel_count();
 
@@ -208,11 +208,24 @@ impl Resampler {
 
 impl DspProcessor for Resampler {
     fn process(&mut self, input: &mut PcmAudio) -> Result<()> {
+        println!(
+            "{} - INPUT {} frames @ {}",
+            self.output_rate,
+            input.frames(),
+            input.spec.rate(),
+        );
+
         self.push_input(input);
 
         self.process_fft()?;
 
         self.pop_output(input);
+
+        println!(
+            "{} - OUTPUT {} frames",
+            self.output_rate,
+            input.frames(),
+        );
 
         Ok(())
     }
