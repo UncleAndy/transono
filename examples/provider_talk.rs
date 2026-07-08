@@ -30,7 +30,9 @@ async fn main() -> Result<()> {
     println!();
 
     println!("Input device : {}", capture.description()?);
+    println!("Input format: {:?}", capture.default_input_config()?.sample_format());
     println!("Output device: {}", playback.description()?);
+    println!("Output format: {:?}", playback.default_output_config()?.sample_format());
 
     let config = OpenAIRealtimeConfig::from_env()?;
 
@@ -53,15 +55,19 @@ async fn main() -> Result<()> {
 
     let provider = OpenAIRealtimeProvider::new(config);
 
+    let input_sample_rate = capture.default_input_config()?.sample_rate();
+    let output_sample_rate = playback.default_output_config()?.sample_rate();
+
+    println!("Capture: {} Hz", input_sample_rate);
+    println!("Remote : {} Hz", remote_spec.rate());
+    println!("Playback: {} Hz", output_sample_rate);
+
     let mut line =
         TranslationLine::new(
             provider,
             capture.clone(),
             playback.clone(),
         ).await?;
-
-    let input_sample_rate = capture.default_input_config()?.sample_rate();
-    let output_sample_rate = playback.default_output_config()?.sample_rate();
 
     line.add_input_processor(
         Processor::Dsp(Box::new(

@@ -1,15 +1,30 @@
-use crate::core::error::Result;
-use crate::audio::{AudioCodec, AudioDecoder, AudioEncoder, EncodedAudio, EncodedAudioFormat, Endianness, PcmAudio};
+use crate::core::error::{CoreError, Result};
+use crate::audio::{AudioCodec, AudioDecoder, AudioEncoder, EncodedAudio, EncodedAudioFormat, PcmAudio, PcmFormat};
 
 pub struct PcmBinaryEncoder {
-    format: EncodedAudioFormat
+    format: EncodedAudioFormat,
+    pcm_format: PcmFormat,
 }
 
 impl PcmBinaryEncoder {
-    pub(crate) fn new(format: &EncodedAudioFormat) -> Self {
-        Self {
-            format: format.clone()
-        }
+    pub(crate) fn new(
+        format: &EncodedAudioFormat,
+    ) -> Result<Self> {
+        let pcm_format = match format.codec() {
+            AudioCodec::Pcm(format) => format,
+            _ => {
+                return Err(
+                    CoreError::UnsupportedAudioFormat(
+                        format.clone(),
+                    )
+                )
+            }
+        };
+
+        Ok(Self {
+            format: format.clone(),
+            pcm_format,
+        })
     }
 }
 
@@ -37,34 +52,27 @@ impl AudioEncoder for PcmBinaryEncoder {
         pcm: &PcmAudio,
         output: &mut Vec<u8>,
     ) -> Result<()> {
+        let sample_size = self.pcm_format.sample_size();
+
         output.clear();
 
-        let frames = pcm.frames();
-        let channels = pcm.channel_count();
-
-        output.resize(frames * channels * size_of::<i16>(), 0);
-
-        let mut pos = 0;
-        let little_endian = matches!(
-            self.format.codec(),
-            AudioCodec::Pcm(Endianness::Little)
+        output.resize(
+            pcm.frames()
+                * pcm.channel_count()
+                * sample_size,
+            0,
         );
+
+        let mut offset = 0;
 
         for channel in pcm.channels() {
             for &sample in channel {
-                let sample =
-                    (sample.clamp(-1.0, 1.0) * i16::MAX as f32) as i16;
+                self.pcm_format.encode_sample(
+                    sample,
+                    &mut output[offset..offset + sample_size],
+                );
 
-                let bytes = if little_endian {
-                    sample.to_le_bytes()
-                } else {
-                    sample.to_be_bytes()
-                };
-
-                output[pos] = bytes[0];
-                output[pos + 1] = bytes[1];
-
-                pos += 2;
+                offset += sample_size;
             }
         }
 
@@ -73,14 +81,29 @@ impl AudioEncoder for PcmBinaryEncoder {
 }
 
 pub struct PcmBinaryDecoder {
-    format: EncodedAudioFormat
+    format: EncodedAudioFormat,
+    pcm_format: PcmFormat,
 }
 
 impl PcmBinaryDecoder {
-    pub(crate) fn new(format: &EncodedAudioFormat) -> Self {
-        Self {
-            format: format.clone()
-        }
+    pub(crate) fn new(
+        format: &EncodedAudioFormat,
+    ) -> Result<Self> {
+        let pcm_format = match format.codec() {
+            AudioCodec::Pcm(format) => format,
+            _ => {
+                return Err(
+                    CoreError::UnsupportedAudioFormat(
+                        format.clone(),
+                    )
+                )
+            }
+        };
+
+        Ok(Self {
+            format: format.clone(),
+            pcm_format,
+        })
     }
 }
 
@@ -100,10 +123,11 @@ impl AudioDecoder for PcmBinaryDecoder {
         &mut self,
         bytes: &[u8],
     ) -> Result<PcmAudio> {
+        let sample_size = self.pcm_format.sample_size();
 
         let channels = self.format.spec().channels().count();
 
-        let samples = bytes.len() / 2;
+        let samples = bytes.len() / sample_size;
 
         debug_assert_eq!(samples % channels, 0);
 
@@ -114,49 +138,17 @@ impl AudioDecoder for PcmBinaryDecoder {
             frames,
         );
 
-        match self.format.codec() {
+        let mut offset = 0;
 
-            AudioCodec::Pcm(Endianness::Little) => {
+        for channel in pcm.channels_mut() {
+            for sample in channel {
 
-                let mut offset = 0;
+                *sample = self.pcm_format.decode_sample(
+                    &bytes[offset..offset + sample_size],
+                );
 
-                for channel in pcm.channels_mut() {
-                    for sample in channel {
-
-                        let value = i16::from_le_bytes([
-                            bytes[offset],
-                            bytes[offset + 1],
-                        ]);
-
-                        *sample =
-                            value as f32 / i16::MAX as f32;
-
-                        offset += 2;
-                    }
-                }
+                offset += sample_size;
             }
-
-            AudioCodec::Pcm(Endianness::Big) => {
-
-                let mut offset = 0;
-
-                for channel in pcm.channels_mut() {
-                    for sample in channel {
-
-                        let value = i16::from_be_bytes([
-                            bytes[offset],
-                            bytes[offset + 1],
-                        ]);
-
-                        *sample =
-                            value as f32 / i16::MAX as f32;
-
-                        offset += 2;
-                    }
-                }
-            }
-
-            _ => unreachable!(),
         }
 
         Ok(pcm)
