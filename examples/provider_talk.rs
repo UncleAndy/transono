@@ -2,6 +2,7 @@ use anyhow::Result;
 use cpal::traits::DeviceTrait;
 use symphonia::core::audio::{AudioSpec, Channels, Position};
 use tokio::signal;
+
 use realtime_translator::audio::{AudioDevices, Processor};
 use realtime_translator::audio::processors::channel_converter::ChannelConverter;
 use realtime_translator::audio::processors::resampler::Resampler;
@@ -9,7 +10,6 @@ use realtime_translator::providers::openai::realtime::{
     OpenAIRealtimeConfig,
     OpenAIRealtimeProvider,
 };
-
 use realtime_translator::runtime::TranslationLine;
 
 #[tokio::main]

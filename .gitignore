@@ -21,3 +21,4 @@ target
 #.idea/
 
 /output.pcm
+/*.wav

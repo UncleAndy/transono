@@ -10,7 +10,7 @@ use crate::audio::{DspProcessor, PcmAudio, PlanarSampleBuffer};
 use crate::core::error::{CoreError, Result};
 
 const SUB_CHUNKS: usize = 4;
-const LATENCY_MS: u32 = 20;
+const CHUNK_DURATION_MS: u32 = 20;
 
 pub struct Resampler {
     output_rate: u32,
@@ -33,8 +33,7 @@ impl Resampler {
     ) -> Result<Self> {
         let channels = input_spec.channels().count();
 
-        let chunk_size =
-            (input_spec.rate() / LATENCY_MS) as usize;
+        let chunk_size = frames_from_duration(input_spec.rate(), CHUNK_DURATION_MS);
 
         let fft = Fft::<f32>::new(
             input_spec.rate() as usize,
@@ -128,6 +127,12 @@ impl Resampler {
                 );
             }
 
+            println!(
+                "need={}, inbuf={}",
+                required,
+                self.input_buffer.available(),
+            );
+
             let (input_frames, output_frames) = self
                 .fft
                 .process_into_buffer(
@@ -136,6 +141,13 @@ impl Resampler {
                     None,
                 )
                 .map_err(|e| CoreError::Other(e.into()))?;
+
+            println!(
+                "fft in={} out={} outbuf={}",
+                input_frames,
+                output_frames,
+                self.output_buffer.available(),
+            );
 
             // ---------- output ----------
             for channel in 0..channels_count {
@@ -156,6 +168,11 @@ impl Resampler {
             }
 
             self.input_buffer.consume(input_frames);
+
+            println!(
+                "after pop={}",
+                self.output_buffer.available(),
+            );
         }
 
         Ok(())
@@ -174,9 +191,9 @@ impl Resampler {
         let channels = pcm.channel_count();
 
         debug_assert_eq!(
-        channels,
-        self.output_buffer.channels(),
-    );
+            channels,
+            self.output_buffer.channels(),
+        );
 
         let mut output = Vec::with_capacity(channels);
 
@@ -215,4 +232,11 @@ impl DspProcessor for Resampler {
 
         Ok(())
     }
+}
+
+fn frames_from_duration(
+    sample_rate: u32,
+    duration_ms: u32,
+) -> usize {
+    (sample_rate as usize * duration_ms as usize) / 1000
 }
