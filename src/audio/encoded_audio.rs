@@ -198,11 +198,9 @@ impl PcmFormat {
 
             Self::I24(endian) => {
                 let value: i32 = sample.convert_to();
-                write_i24(
-                    I24::wrapping_from_i32(value),
-                    out,
-                    *endian,
-                );
+                let value = value >> 8;
+                let value = I24::wrapping_from_i32(value);
+                write_i24(value, out, *endian);
             }
 
             Self::I32(Endianness::Little) => {
@@ -368,7 +366,8 @@ impl PcmFormat {
 
             Self::I24(endian) => {
                 let value = read_i24(input, *endian);
-                value.to_i32().convert_to()
+                let value = value.to_i32() << 8;
+                value.convert_to()
             }
 
             Self::I32(Endianness::Little) => {
@@ -569,7 +568,6 @@ impl PcmFormat {
 }
 
 
-#[allow(unused)]
 #[inline]
 fn read_i24(input: &[u8], endian: Endianness) -> I24 {
     match endian {
@@ -604,7 +602,6 @@ fn write_i24(
     output[..3].copy_from_slice(&bytes);
 }
 
-#[allow(unused)]
 #[inline]
 fn read_u24(
     input: &[u8],
@@ -640,4 +637,141 @@ fn write_u24(
     };
 
     output[..3].copy_from_slice(&bytes);
+}
+
+#[cfg(test)]
+const TEST_SAMPLES: &[f32] = &[
+    -1.0,
+    -0.75,
+    -0.5,
+    -0.25,
+    0.0,
+    0.25,
+    0.5,
+    0.75,
+    1.0,
+];
+
+#[cfg(test)]
+fn roundtrip(format: PcmFormat) {
+    let mut buf = [0u8; 8];
+
+    for &sample in TEST_SAMPLES {
+        format.encode_sample(sample, &mut buf);
+
+        let decoded =
+            format.decode_sample(&buf);
+
+        let error =
+            (decoded - sample).abs();
+
+        assert!(
+            error < 0.004,
+            "{:?}: {} -> {} (error={})",
+            format,
+            sample,
+            decoded,
+            error,
+        );
+    }
+}
+
+#[test]
+fn pcm_i8() {
+    roundtrip(PcmFormat::I8);
+}
+
+#[test]
+fn pcm_u8() {
+    roundtrip(PcmFormat::U8);
+}
+
+#[test]
+fn pcm_i16_le() {
+    roundtrip(PcmFormat::I16(Endianness::Little));
+}
+
+#[test]
+fn pcm_i16_be() {
+    roundtrip(PcmFormat::I16(Endianness::Big));
+}
+
+#[test]
+fn pcm_i24_le() {
+    roundtrip(PcmFormat::I24(Endianness::Little));
+}
+
+#[test]
+fn pcm_i24_be() {
+    roundtrip(PcmFormat::I24(Endianness::Big));
+}
+
+#[test]
+fn pcm_u24_le() {
+    roundtrip(PcmFormat::U24(Endianness::Little));
+}
+
+#[test]
+fn pcm_u24_be() {
+    roundtrip(PcmFormat::U24(Endianness::Big));
+}
+
+#[test]
+fn pcm_i32_le() {
+    roundtrip(PcmFormat::I32(Endianness::Little));
+}
+
+#[test]
+fn pcm_i32_be() {
+    roundtrip(PcmFormat::I32(Endianness::Big));
+}
+
+#[test]
+fn pcm_u32_le() {
+    roundtrip(PcmFormat::U32(Endianness::Little));
+}
+
+#[test]
+fn pcm_u32_be() {
+    roundtrip(PcmFormat::U32(Endianness::Big));
+}
+
+#[test]
+fn pcm_i64_le() {
+    roundtrip(PcmFormat::I64(Endianness::Little));
+}
+
+#[test]
+fn pcm_i64_be() {
+    roundtrip(PcmFormat::I64(Endianness::Big));
+}
+
+#[test]
+fn pcm_u64_le() {
+    roundtrip(PcmFormat::U64(Endianness::Little));
+}
+
+#[test]
+fn pcm_u64_be() {
+    roundtrip(PcmFormat::U64(Endianness::Big));
+}
+
+#[test]
+fn pcm_f32_le() {
+    roundtrip(PcmFormat::F32(Endianness::Little));
+}
+
+#[test]
+fn pcm_f32_be() {
+    roundtrip(PcmFormat::F32(Endianness::Big));
+}
+
+#[test]
+fn pcm_f64_le() {
+    roundtrip(PcmFormat::F64(Endianness::Little));
+}
+
+#[test]
+fn pcm_f64_be() {
+    roundtrip(PcmFormat::F64(Endianness::Big));
 }
