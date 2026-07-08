@@ -43,21 +43,17 @@ impl AudioCodecs {
                 AudioContainer::Raw,
                 AudioCodec::Pcm(_),
                 BinaryEncoding::Binary,
-            ) => {
-                Ok(Box::new(
-                    PcmBinaryEncoder::new(&format)
-                ))
-            }
+            ) => Ok(Box::new(
+                PcmBinaryEncoder::new(format)?,
+            )),
 
             (
                 AudioContainer::Raw,
                 AudioCodec::Pcm(_),
                 BinaryEncoding::Base64,
-            ) => {
-                Ok(Box::new(
-                    PcmBase64Encoder::new(&format)
-                ))
-            }
+            ) => Ok(Box::new(
+                PcmBase64Encoder::new(format)?,
+            )),
 
             _ => Err(CoreError::UnsupportedAudioFormat(
                 format.clone(),
@@ -77,21 +73,17 @@ impl AudioCodecs {
                 AudioContainer::Raw,
                 AudioCodec::Pcm(_),
                 BinaryEncoding::Binary,
-            ) => {
-                Ok(Box::new(
-                    PcmBinaryDecoder::new(&format)
-                ))
-            }
+            ) => Ok(Box::new(
+                PcmBinaryDecoder::new(format)?,
+            )),
 
             (
                 AudioContainer::Raw,
                 AudioCodec::Pcm(_),
                 BinaryEncoding::Base64,
-            ) => {
-                Ok(Box::new(
-                    PcmBase64Decoder::new(&format)
-                ))
-            }
+            ) => Ok(Box::new(
+                PcmBase64Decoder::new(format)?,
+            )),
 
             _ => Err(CoreError::UnsupportedAudioFormat(
                 format.clone(),

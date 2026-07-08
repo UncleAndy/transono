@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use symphonia::core::audio::{AudioSpec, Channels, Position};
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::handshake::client::Request;
-use crate::audio::{AudioCodec, AudioContainer, BinaryEncoding, EncodedAudioFormat, Endianness};
+use crate::audio::{AudioCodec, AudioContainer, BinaryEncoding, EncodedAudioFormat, Endianness, PcmFormat};
 use crate::core::error::{CoreError, ProtocolError, Result};
 use crate::providers::openai::realtime::protocol::{Audio, AudioFormat, AudioInput, AudioOutput, OutputModality, SessionConfig, TurnDetection};
 
@@ -146,7 +146,9 @@ impl OpenAIRealtimeConfig {
     pub fn audio_format(&self) -> EncodedAudioFormat {
         EncodedAudioFormat::new(
             AudioContainer::Raw,
-            AudioCodec::Pcm(Endianness::Little),
+            AudioCodec::Pcm(
+                PcmFormat::I16(Endianness::Little),
+            ),
             BinaryEncoding::Base64,
             AudioSpec::new(
                 24_000,

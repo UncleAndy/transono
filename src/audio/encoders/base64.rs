@@ -9,12 +9,14 @@ pub struct PcmBase64Encoder {
 }
 
 impl PcmBase64Encoder {
-    pub(crate) fn new(format: &EncodedAudioFormat) -> Self {
-        Self {
+    pub(crate) fn new(
+        format: &EncodedAudioFormat,
+    ) -> Result<Self> {
+        Ok(Self {
             format: format.clone(),
-            binary: PcmBinaryEncoder::new(format),
+            binary: PcmBinaryEncoder::new(format)?,
             scratch: Vec::new(),
-        }
+        })
     }
 }
 
@@ -43,7 +45,6 @@ impl AudioEncoder for PcmBase64Encoder {
         pcm: &PcmAudio,
         output: &mut Vec<u8>,
     ) -> Result<()> {
-
         self.binary.encode_bytes(
             pcm,
             &mut self.scratch,
@@ -73,12 +74,14 @@ pub struct PcmBase64Decoder {
 }
 
 impl PcmBase64Decoder {
-    pub(crate) fn new(format: &EncodedAudioFormat) -> Self {
-        Self {
+    pub(crate) fn new(
+        format: &EncodedAudioFormat,
+    ) -> Result<Self> {
+        Ok(Self {
             format: format.clone(),
-            binary: PcmBinaryDecoder::new(format),
+            binary: PcmBinaryDecoder::new(format)?,
             scratch: Vec::new(),
-        }
+        })
     }
 }
 
