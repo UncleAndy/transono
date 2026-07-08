@@ -1,11 +1,7 @@
-pub mod input_cpal;
-pub mod device_cpal;
-
 pub mod audio_buffer;
 pub mod frame;
 pub mod frame_pool;
 pub mod pipeline;
-pub mod output_cpal;
 pub mod processor;
 pub mod audio;
 pub mod sample_buffer;
@@ -21,14 +17,15 @@ pub mod diagnost;
 pub mod device;
 pub mod input;
 pub mod output;
+pub mod cpal;
 
-pub use input_cpal::*;
-pub use device_cpal::*;
+pub use cpal::input_cpal::*;
+pub use cpal::device_cpal::*;
 pub use audio_buffer::*;
 pub use frame::*;
 pub use frame_pool::*;
 pub use pipeline::*;
-pub use output_cpal::*;
+pub use cpal::output_cpal::*;
 pub use processor::*;
 pub use audio::*;
 pub use sample_buffer::*;
@@ -41,3 +38,4 @@ pub use audio_encoder::*;
 pub use device::*;
 pub use input::*;
 pub use output::*;
+pub use cpal::*;
