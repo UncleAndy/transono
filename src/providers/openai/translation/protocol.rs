@@ -41,12 +41,6 @@ impl Protocol for TranslationProtocol {
 
 #[derive(Debug, Serialize)]
 pub struct SessionConfig {
-    #[serde(rename = "type")]
-    pub session_type: &'static str,
-
-    #[serde(rename = "model")]
-    pub model: String,
-
     #[serde(rename = "audio")]
     pub audio: AudioConfig,
 }
