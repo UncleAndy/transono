@@ -6,7 +6,7 @@ pub struct InputPort {
     sender: Sender<Audio>
 }
 
-// InputPort - это AudioOutput для аудио API
+/// InputPort - это AudioOutput для аудио API
 impl InputPort {
     pub(crate) fn new(format: AudioFormat, output_tx: Sender<Audio>) -> Self {
         Self {

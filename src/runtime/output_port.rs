@@ -4,7 +4,7 @@ use tokio::sync::mpsc::Receiver;
 use crate::audio::{Audio, AudioFormat, AudioInput};
 use crate::core::error::{CoreError, Result};
 
-// OutputPort - это AudioInput для внешнего API
+/// OutputPort - это AudioInput для внешнего API
 pub struct OutputPort {
     format: AudioFormat,
     receiver: Option<Receiver<Audio>>
@@ -28,11 +28,11 @@ impl AudioInput for OutputPort {
         Ok(receiver)
     }
 
-    fn start(&self) -> crate::core::error::Result<()> {
+    fn start(&self) -> Result<()> {
         Ok(())
     }
 
-    fn stop(&self) -> crate::core::error::Result<()> {
+    fn stop(&self) -> Result<()> {
         Ok(())
     }
 
