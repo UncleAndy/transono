@@ -1,5 +1,7 @@
 use anyhow::anyhow;
 use async_trait::async_trait;
+use tokio::io;
+use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
@@ -51,6 +53,8 @@ impl ProviderSession for RealtimeSession {
     ) -> JoinHandle<Result<Pipelines>>
     {
         tokio::spawn(async move {
+            let mut stdout = io::stdout();
+
             loop {
                 tokio::select! {
                 _ = cancel.cancelled() => {
@@ -96,6 +100,13 @@ impl ProviderSession for RealtimeSession {
                                 .await
                                 .map_err(|_| CoreError::Other(anyhow!("playback channel closed")))?;
 
+                        }
+
+                        SessionEvent::Text(delta) => {
+                            stdout.write_all(delta.as_bytes()).await
+                                .map_err(|e| CoreError::Other(anyhow!(e)))?;
+                            stdout.flush().await
+                                .map_err(|e| CoreError::Other(anyhow!(e)))?;
                         }
 
                         SessionEvent::RequestStarted => {}
