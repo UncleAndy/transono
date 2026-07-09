@@ -25,7 +25,7 @@ async fn main() -> Result<()> {
     let capture = devices.default_input()?;
     let playback = devices.default_output()?;
 
-    println!("Realtime Translator Example");
+    println!("Realtime Example");
     println!("===========================");
     println!();
 

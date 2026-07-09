@@ -1,13 +1,9 @@
 use anyhow::anyhow;
 use async_trait::async_trait;
-
-use crate::audio::{
-    Audio,
-    AudioEncoder,
-    EncodedAudio,
-    AudioDecoder,
-    AudioCodecs,
-};
+use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::task::JoinHandle;
+use tokio_util::sync::CancellationToken;
+use crate::audio::{Audio, AudioEncoder, EncodedAudio, AudioDecoder, AudioCodecs, Pipelines};
 use crate::core::{
     websocket::WebSocketTransport,
     error::Result,
@@ -18,13 +14,7 @@ use crate::core::protocol::Protocol;
 use crate::core::session::Session;
 use crate::core::session_event::SessionEvent;
 use crate::core::transport::Transport;
-use crate::providers::openai::translation::{
-    TranslationProtocol,
-    SessionAudioBufferAppend,
-    config::OpenAITranslationConfig,
-    commands::ProtocolCommand,
-    events::ProtocolEvent,
-};
+use crate::providers::openai::translation::{TranslationProtocol, SessionAudioBufferAppend, config::OpenAITranslationConfig, commands::ProtocolCommand, ProtocolEvent};
 
 pub struct TranslationSession {
     closed: bool,
@@ -34,9 +24,21 @@ pub struct TranslationSession {
 
     transport: WebSocketTransport,
     protocol: TranslationProtocol,
+
+    config: OpenAITranslationConfig,
 }
 
-impl ProviderSession for TranslationSession {}
+impl ProviderSession for TranslationSession {
+    fn spawn(
+        self,
+        capture_rx: Receiver<Audio>,
+        playback_tx: Sender<Audio>,
+        pipelines: Pipelines,
+        cancel: CancellationToken) -> JoinHandle<Result<Pipelines>>
+    {
+        todo!()
+    }
+}
 
 impl TranslationSession {
     pub async fn connect(
@@ -56,6 +58,7 @@ impl TranslationSession {
             protocol: TranslationProtocol::new(),
             encoder: AudioCodecs::encoder(&format)?,
             decoder: AudioCodecs::decoder(&format)?,
+            config: config.clone(),
         })
     }
 
@@ -92,6 +95,13 @@ impl TranslationSession {
         event: ProtocolEvent,
     ) -> Result<Option<SessionEvent>> {
         match event {
+            ProtocolEvent::SessionCreated {
+                session
+            } => {
+                Ok(Some(
+                    SessionEvent::SessionStarted(session)
+                ))
+            }
             ProtocolEvent::SessionUpdated { .. } => {
                 Ok(None)
             }
@@ -99,6 +109,7 @@ impl TranslationSession {
                 Ok(Some(self.map_audio(delta)?))
             }
             ProtocolEvent::Error(e) => {
+                println!("Error: {}", e);
                 Err(CoreError::Other(anyhow!(e)))
             }
             ProtocolEvent::Unknown => {
@@ -147,10 +158,12 @@ impl Session for TranslationSession {
         loop {
             let data = self.transport.recv().await?;
 
-            let event = self.protocol.decode(data)?;
+            let event = self.protocol.decode(data.clone())?;
 
             if let Some(event) = self.map_event(event)? {
                 return Ok(event);
+            } else {
+                println!("{:#?}", data);
             }
         }
     }

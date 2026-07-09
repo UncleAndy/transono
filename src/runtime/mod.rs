@@ -1,4 +1,4 @@
-mod line;
+pub(crate) mod line;
 mod state;
 pub mod link;
 pub mod input_port;

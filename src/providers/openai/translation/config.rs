@@ -46,6 +46,11 @@ impl OpenAITranslationConfig {
         self.model = model.to_string();
         self
     }
+
+    pub fn with_lang(&mut self, lang: &str) -> &mut Self {
+        self.lang = lang.to_string();
+        self
+    }
 }
 
 impl OpenAITranslationConfig {

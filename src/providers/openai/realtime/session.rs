@@ -1,12 +1,9 @@
+use anyhow::anyhow;
 use async_trait::async_trait;
-
-use crate::audio::{
-    Audio,
-    AudioEncoder,
-    EncodedAudio,
-    AudioDecoder,
-    AudioCodecs,
-};
+use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
+use tokio_util::sync::CancellationToken;
+use crate::audio::{Audio, AudioEncoder, EncodedAudio, AudioDecoder, AudioCodecs, Pipelines};
 use crate::core::{
     websocket::WebSocketTransport,
     error::Result,
@@ -35,7 +32,120 @@ pub struct RealtimeSession {
     protocol: RealtimeProtocol,
 }
 
-impl ProviderSession for RealtimeSession {}
+impl ProviderSession for RealtimeSession {
+    fn spawn(
+        mut self,
+        mut capture_rx: mpsc::Receiver<Audio>,
+        playback_tx: mpsc::Sender<Audio>,
+        mut pipelines: Pipelines,
+        cancel: CancellationToken,
+    ) -> JoinHandle<Result<Pipelines>>
+    {
+        tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                _ = cancel.cancelled() => {
+                    break;
+                }
+
+                Some(audio) = capture_rx.recv() => {
+                    let audio = pipelines.input.process(audio)?;
+
+                    self.send_audio(audio).await?;
+                }
+
+                event = self.next_event() => {
+                    match event? {
+                        SessionEvent::SessionStarted(_) => {
+                            // Отправляем конфиг в 'session.update'
+                        }
+                        SessionEvent::Audio(audio) => {
+                            let audio = pipelines.output.process(audio)?;
+
+                            playback_tx
+                                .send(audio)
+                                .await
+                                .map_err(|_| CoreError::Other(anyhow!("playback channel closed")))?;
+
+                        }
+
+                        SessionEvent::RequestStarted => {}
+
+                        SessionEvent::RequestFinished => {}
+
+                        SessionEvent::ResponseStarted => {}
+
+                        SessionEvent::ResponseFinished => {}
+                    }
+                }
+            }
+            }
+
+            self.close().await?;
+
+            Ok(pipelines)
+        })
+    }
+}
+
+#[async_trait]
+impl Session for RealtimeSession {
+    async fn send_audio(
+        &mut self,
+        audio: Audio,
+    ) -> Result<()> {
+        if self.closed {
+            return Err(CoreError::Other(anyhow::Error::msg("session closed")))
+        }
+
+        let pcm = audio.to_pcm()?;
+
+        let encoded = self.encoder.encode(&pcm)?;
+
+        self.send(
+            ProtocolCommand::InputAudioBufferAppend(
+                InputAudioBufferAppend {
+                    event_type: "input_audio_buffer.append",
+                    audio: String::from_utf8(
+                        encoded.bytes().to_vec(),
+                    )
+                        .map_err(|e| CoreError::Other(anyhow::Error::from(e)))?,
+                }
+            )
+        ).await?;
+
+        Ok(())
+    }
+
+    async fn next_event(
+        &mut self,
+    ) -> Result<SessionEvent> {
+        if self.closed {
+            return Err(CoreError::Other(anyhow::Error::msg("session closed")))
+        }
+
+        loop {
+            let data = self.transport.recv().await?;
+
+            let event = self.protocol.decode(data)?;
+
+            if let Some(event) = self.map_event(event)? {
+                return Ok(event);
+            }
+        }
+    }
+
+    async fn close(&mut self) -> Result<()> {
+        if self.closed {
+            return Err(CoreError::Other(anyhow::Error::msg("session closed")))
+        }
+
+        self.closed = true;
+
+        let _ = self.transport.close().await;
+        Ok(())
+    }
+}
 
 impl RealtimeSession {
     pub async fn connect(
@@ -125,64 +235,5 @@ impl RealtimeSession {
                 Ok(None)
             }
         }
-    }
-}
-
-#[async_trait]
-impl Session for RealtimeSession {
-    async fn send_audio(
-        &mut self,
-        audio: Audio,
-    ) -> Result<()> {
-        if self.closed {
-            return Err(CoreError::Other(anyhow::Error::msg("session closed")))
-        }
-
-        let pcm = audio.to_pcm()?;
-
-        let encoded = self.encoder.encode(&pcm)?;
-
-        self.send(
-            ProtocolCommand::InputAudioBufferAppend(
-                InputAudioBufferAppend {
-                    event_type: "input_audio_buffer.append",
-                    audio: String::from_utf8(
-                        encoded.bytes().to_vec(),
-                    )
-                        .map_err(|e| CoreError::Other(anyhow::Error::from(e)))?,
-                }
-            )
-        ).await?;
-
-        Ok(())
-    }
-
-    async fn next_event(
-        &mut self,
-    ) -> Result<SessionEvent> {
-        if self.closed {
-            return Err(CoreError::Other(anyhow::Error::msg("session closed")))
-        }
-
-        loop {
-            let data = self.transport.recv().await?;
-
-            let event = self.protocol.decode(data)?;
-
-            if let Some(event) = self.map_event(event)? {
-                return Ok(event);
-            }
-        }
-    }
-
-    async fn close(&mut self) -> Result<()> {
-        if self.closed {
-            return Err(CoreError::Other(anyhow::Error::msg("session closed")))
-        }
-
-        self.closed = true;
-
-        let _ = self.transport.close().await;
-        Ok(())
     }
 }

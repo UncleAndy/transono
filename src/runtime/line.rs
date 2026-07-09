@@ -1,13 +1,10 @@
 use anyhow::anyhow;
-use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-use crate::audio::{Audio, AudioPipeline, Processor, AudioInput, AudioOutput};
-use crate::core::provider::Provider;
+use crate::audio::{AudioPipeline, Processor, AudioInput, AudioOutput, Pipelines};
+use crate::core::provider::{Provider, ProviderSession};
 use crate::runtime::LineState;
 use crate::core::error::{CoreError, Result};
-use crate::core::session::Session;
-use crate::core::session_event::SessionEvent;
 
 pub struct TranslationLine<P>
 where
@@ -25,11 +22,6 @@ where
     session_task: Option<tokio::task::JoinHandle<Result<Pipelines>>>,
 
     state: LineState,
-}
-
-struct Pipelines {
-    input: AudioPipeline,
-    output: AudioPipeline,
 }
 
 impl<P: Provider> TranslationLine<P> {
@@ -153,9 +145,10 @@ impl<P: Provider> TranslationLine<P> {
             .take()
             .expect("pipelines missing");
 
+        let session = self.provider.create_session().await?;
+
         self.session_task = Some(
-            spawn_session(
-                self.provider.create_session().await?,
+            session.spawn(
                 input_rx,
                 output_tx,
                 pipelines,
@@ -167,57 +160,4 @@ impl<P: Provider> TranslationLine<P> {
 
         Ok(())
     }
-}
-
-fn spawn_session<S>(
-    mut session: S,
-    mut capture_rx: mpsc::Receiver<Audio>,
-    playback_tx: mpsc::Sender<Audio>,
-    mut pipelines: Pipelines,
-    cancel: CancellationToken,
-) -> tokio::task::JoinHandle<Result<Pipelines>>
-where
-    S: Session + 'static,
-{
-    tokio::spawn(async move {
-        loop {
-            tokio::select! {
-                _ = cancel.cancelled() => {
-                    break;
-                }
-
-                Some(audio) = capture_rx.recv() => {
-                    let audio = pipelines.input.process(audio)?;
-
-                    session.send_audio(audio).await?;
-                }
-
-                event = session.next_event() => {
-                    match event? {
-                        SessionEvent::Audio(audio) => {
-                            let audio = pipelines.output.process(audio)?;
-
-                            playback_tx
-                                .send(audio)
-                                .await
-                                .map_err(|_| CoreError::Other(anyhow!("playback channel closed")))?;
-
-                        }
-
-                        SessionEvent::RequestStarted => {}
-
-                        SessionEvent::RequestFinished => {}
-
-                        SessionEvent::ResponseStarted => {}
-
-                        SessionEvent::ResponseFinished => {}
-                    }
-                }
-            }
-        }
-
-        session.close().await?;
-
-        Ok(pipelines)
-    })
 }

@@ -4,6 +4,11 @@ use crate::providers::openai::error::OpenAiError;
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type")]
 pub enum ProtocolEvent {
+    #[serde(rename = "session.created")]
+    SessionCreated {
+        session: SessionInfo,
+    },
+
     #[serde(rename = "session.updated")]
     SessionUpdated {
         session: SessionInfo,
