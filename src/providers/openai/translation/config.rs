@@ -14,7 +14,6 @@ use crate::providers::openai::translation::{AudioConfig, AudioFormat, AudioInput
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct OpenAITranslationConfig {
     pub api_key: String,
-    pub model: String,
 
     pub endpoint: String,
 
@@ -29,7 +28,6 @@ pub struct OpenAITranslationConfig {
 impl OpenAITranslationConfig {
     pub fn from_env() -> Result<Self> {
         let mut cfg = Self {
-            model: "gpt-realtime-translate".to_string(),
             endpoint: "wss://api.openai.com/v1/realtime/translations".to_string(),
             ..Self::default()
         };
@@ -42,11 +40,6 @@ impl OpenAITranslationConfig {
         Ok(cfg)
     }
 
-    pub fn with_model(&mut self, model: &str) -> &mut Self {
-        self.model = model.to_string();
-        self
-    }
-
     pub fn with_lang(&mut self, lang: &str) -> &mut Self {
         self.lang = lang.to_string();
         self
@@ -56,9 +49,8 @@ impl OpenAITranslationConfig {
 impl OpenAITranslationConfig {
     pub(crate) fn request(&self) -> Result<Request> {
         let mut request = format!(
-            "{}?model={}",
+            "{}?model=gpt-realtime-translate",
             self.endpoint,
-            self.model,
         )
             .into_client_request()
             .map_err(|e| ProtocolError::Other(e.to_string()))?;
@@ -107,9 +99,6 @@ impl OpenAITranslationConfig {
 
     pub fn session(&self) -> SessionConfig {
         SessionConfig {
-            session_type: "realtime",
-            model: self.model.clone(),
-
             audio: AudioConfig {
                 input: Some(AudioInputConfig {
                     format: Some(AudioFormat::pcm_24khz()),
