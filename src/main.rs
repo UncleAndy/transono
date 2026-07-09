@@ -1,34 +1,32 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use cpal::traits::{DeviceTrait, HostTrait};
-use symphonia::core::audio::{AudioSpec, Channels, Position};
-use tokio::signal;
-use realtime_translator::audio::{AudioDevicesCpal, AudioInput, AudioInputCpal, AudioOutput, AudioOutputCpal, Processor};
 use realtime_translator::audio::processors::channel_converter::ChannelConverter;
 use realtime_translator::audio::processors::resampler::Resampler;
+use realtime_translator::audio::{AudioDevicesCpal, AudioInputCpal, AudioOutputCpal, Processor};
 use realtime_translator::providers::openai::translation::{
-    OpenAITranslationConfig,
-    OpenAITranslationProvider,
+    OpenAITranslationConfig, OpenAITranslationProvider,
 };
+use realtime_translator::runtime::TranslationLine;
 use std::process::Command;
 use std::time::Duration;
-use realtime_translator::runtime::TranslationLine;
+use symphonia::core::audio::{AudioSpec, Channels, Position};
+use tokio::signal;
 
 /*
-    Создания устройства воспроизведения (Виртуального динамика):
-    $ pactl load-module module-null-sink
-        sink_name=translator_out
-        sink_properties=device.description="Translator.EN.Speaker"
+   Создания устройства воспроизведения (Виртуального динамика):
+   $ pactl load-module module-null-sink
+       sink_name=translator_out
+       sink_properties=device.description="Translator.EN.Speaker"
 
-    Создание виртуального микрофона:
-    $ pactl load-module module-remap-source
-        master=translator_out.monitor
-        source_name=translator_in
-        source_properties=device.description="Translator.EN.Microphone"
+   Создание виртуального микрофона:
+   $ pactl load-module module-remap-source
+       master=translator_out.monitor
+       source_name=translator_in
+       source_properties=device.description="Translator.EN.Microphone"
 
-    Оба метода возвращают числовые идентификаторы, которые можно использовать для их удаления:
-    $ pactl unload-module <num id>
- */
-
+   Оба метода возвращают числовые идентификаторы, которые можно использовать для их удаления:
+   $ pactl unload-module <num id>
+*/
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -43,7 +41,6 @@ async fn main() -> Result<()> {
     let capture = devices.default_input()?;
     let playback = devices.default_output()?;
 
-
     let virtual_devices = VirtualDevices::create("EN");
 
     tokio::time::sleep(Duration::from_secs(1)).await;
@@ -53,14 +50,20 @@ async fn main() -> Result<()> {
     let virtual_speaker = host
         .output_devices()?
         .find(|d| {
-            d.description().unwrap().name().contains("translator_en_speaker")
+            d.description()
+                .unwrap()
+                .name()
+                .contains("translator_en_speaker")
         })
         .expect("virtual speaker not found");
 
     let virtual_microphone = host
         .input_devices()?
         .find(|d| {
-            d.description().unwrap().name().contains("translator_en_microphone")
+            d.description()
+                .unwrap()
+                .name()
+                .contains("translator_en_microphone")
         })
         .expect("virtual microphone not found");
 
@@ -69,17 +72,22 @@ async fn main() -> Result<()> {
     println!();
 
     println!("Input device : {}", capture.description()?);
-    println!("Input format: {:?}", capture.default_input_config()?.sample_format());
+    println!(
+        "Input format: {:?}",
+        capture.default_input_config()?.sample_format()
+    );
     println!("Output device: {}", playback.description()?);
-    println!("Output format: {:?}", playback.default_output_config()?.sample_format());
+    println!(
+        "Output format: {:?}",
+        playback.default_output_config()?.sample_format()
+    );
 
-    let config = OpenAITranslationConfig::from_env()?
-        .with_lang("en")
-        .clone();
+    let config = OpenAITranslationConfig::from_env()?.with_lang("en").clone();
 
     let remote = config.audio_format();
 
     let remote_spec = remote.spec().clone();
+
     let mono = Channels::Positioned(Position::FRONT_CENTER);
     let stereo = Channels::Positioned(Position::FRONT_LEFT | Position::FRONT_RIGHT);
 
@@ -95,68 +103,98 @@ async fn main() -> Result<()> {
     let provider = OpenAITranslationProvider::new(config);
 
     let input_sample_rate = capture.default_input_config()?.sample_rate();
-    let output_sample_rate = playback.default_output_config()?.sample_rate();
+    let output_sample_rate = virtual_microphone.default_output_config()?.sample_rate();
 
     println!("Capture: {} Hz", input_sample_rate);
     println!("Remote : {} Hz", remote_spec.rate());
     println!("Playback: {} Hz", output_sample_rate);
 
     let input = AudioInputCpal::new(capture)?;
-    let output = AudioOutputCpal::new(playback)?;
+    let output_virtual = AudioOutputCpal::new(virtual_microphone)?;
+
+    /*
+        ------------------------------------------------------------------
+        Линия для перевода с реального микрофона на виртуальный (RU -> EN)
+        ------------------------------------------------------------------
+    */
 
     // TranslationLine
     let mut line =
-        TranslationLine::new(
-            provider,
-            Box::new(input),
-            Box::new(output),
-        ).await?;
+        TranslationLine::new(provider, Box::new(input), Box::new(output_virtual)).await?;
 
     // Input DSP
     {
-        line.add_input_processor(
-            Processor::Dsp(Box::new(
-                ChannelConverter::new(mono.clone())
-            ))
-        )?;
+        line.add_input_processor(Processor::Dsp(Box::new(ChannelConverter::new(
+            mono.clone(),
+        ))))?;
 
-        line.add_input_processor(
-            Processor::Dsp(Box::new(
-                Resampler::new(
-                    AudioSpec::new(
-                        input_sample_rate,
-                        mono.clone(),
-                    ),
-                    remote_spec.rate()
-                )?
-            ))
-        )?;
+        line.add_input_processor(Processor::Dsp(Box::new(Resampler::new(
+            AudioSpec::new(input_sample_rate, mono.clone()),
+            remote_spec.rate(),
+        )?)))?;
     }
 
     // Output DSP
     {
-        line.add_output_processor(
-            Processor::Dsp(Box::new(
-                Resampler::new(
-                    AudioSpec::new(
-                        remote_spec.rate(),
-                        mono.clone(),
-                    ),
-                    output_sample_rate,
-                )?
-            ))
-        )?;
+        line.add_output_processor(Processor::Dsp(Box::new(Resampler::new(
+            AudioSpec::new(remote_spec.rate(), mono.clone()),
+            output_sample_rate,
+        )?)))?;
 
-        line.add_output_processor(
-            Processor::Dsp(Box::new(
-                ChannelConverter::new(stereo.clone())
-            ))
-        )?;
+        line.add_output_processor(Processor::Dsp(Box::new(ChannelConverter::new(
+            stereo.clone(),
+        ))))?;
     }
+
+    /*
+        -----------------------------------------------------------------
+        Линия для перевода с виртуального динамика на реальный (EN -> RU)
+        -----------------------------------------------------------------
+    */
+
+    let config_back = OpenAITranslationConfig::from_env()?.with_lang("ru").clone();
+
+    let provider_back = OpenAITranslationProvider::new(config_back);
+
+    let input_virtual = AudioInputCpal::new(virtual_speaker)?;
+    let output = AudioOutputCpal::new(playback)?;
+
+    // TranslationLine
+    let mut line_back =
+        TranslationLine::new(provider_back, Box::new(input_virtual), Box::new(output)).await?;
+
+    // Input DSP
+    {
+        line_back.add_input_processor(Processor::Dsp(Box::new(ChannelConverter::new(
+            mono.clone(),
+        ))))?;
+
+        line_back.add_input_processor(Processor::Dsp(Box::new(Resampler::new(
+            AudioSpec::new(input_sample_rate, mono.clone()),
+            remote_spec.rate(),
+        )?)))?;
+    }
+
+    // Output DSP
+    {
+        line_back.add_output_processor(Processor::Dsp(Box::new(Resampler::new(
+            AudioSpec::new(remote_spec.rate(), mono.clone()),
+            output_sample_rate,
+        )?)))?;
+
+        line_back.add_output_processor(Processor::Dsp(Box::new(ChannelConverter::new(
+            stereo.clone(),
+        ))))?;
+    }
+
+    /*
+    ----------------------------------------------------------------------------------
+     */
 
     println!("Run...");
 
     line.run().await?;
+    line_back.run().await?;
 
     println!("Connected.");
     println!("Press Ctrl+C to stop.");
@@ -165,13 +203,15 @@ async fn main() -> Result<()> {
 
     println!("Stopping...");
 
+    line_back.stop().await?;
     line.stop().await?;
+
+    drop(virtual_devices);
 
     println!("Done.");
 
     Ok(())
 }
-
 
 pub struct VirtualDevices {
     pub sink_name: String,
@@ -239,10 +279,7 @@ impl Drop for VirtualDevices {
     }
 }
 
-fn load_module(
-    module: &str,
-    args: &[(&str, &str)],
-) -> Result<u32> {
+fn load_module(module: &str, args: &[(&str, &str)]) -> Result<u32> {
     let mut cmd = Command::new("pactl");
 
     cmd.arg("load-module");
@@ -255,15 +292,10 @@ fn load_module(
     let out = cmd.output()?;
 
     if !out.status.success() {
-        return Err(anyhow!(
-            "{}",
-            String::from_utf8_lossy(&out.stderr)
-        ));
+        return Err(anyhow!("{}", String::from_utf8_lossy(&out.stderr)));
     }
 
-    Ok(String::from_utf8(out.stdout)?
-        .trim()
-        .parse()?)
+    Ok(String::from_utf8(out.stdout)?.trim().parse()?)
 }
 
 fn unload_module(id: u32) -> Result<()> {
