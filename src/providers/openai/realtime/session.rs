@@ -15,9 +15,16 @@ use crate::core::session::Session;
 use crate::core::session_event::SessionEvent;
 use crate::core::transport::Transport;
 use crate::providers::openai::realtime::{
+    InputAudioBufferAppend,
+    SessionUpdateEvent,
+    SessionConfig,
+    AudioConfig,
+    AudioOutputConfig,
+    AudioInputConfig,
+    AudioFormat,
+    ProtocolCommand::SessionUpdate,
     protocol::RealtimeProtocol,
     config::OpenAIRealtimeConfig,
-    InputAudioBufferAppend,
     commands::ProtocolCommand,
     events::ProtocolEvent,
 };
@@ -30,6 +37,8 @@ pub struct RealtimeSession {
 
     transport: WebSocketTransport,
     protocol: RealtimeProtocol,
+
+    config: OpenAIRealtimeConfig,
 }
 
 impl ProviderSession for RealtimeSession {
@@ -58,6 +67,26 @@ impl ProviderSession for RealtimeSession {
                     match event? {
                         SessionEvent::SessionStarted(_) => {
                             // Отправляем конфиг в 'session.update'
+                            self.send(SessionUpdate(
+                                SessionUpdateEvent {
+                                    event_type: "session.update",
+                                    session: SessionConfig {
+                                        session_type: Some("realtime"),
+                                        model: self.config.model.clone(),
+                                        instructions: self.config.instructions.clone(),
+                                        audio: AudioConfig {
+                                            input: Some(
+                                                    AudioInputConfig {
+                                                        format: Some(AudioFormat::pcm_24khz()),
+                                                        turn_detection: Some(self.config.turn_mode.clone()),
+                                                    }
+                                                ),
+                                            output: AudioOutputConfig { format: None,voice: None},
+                                        },
+                                        output_modalities: None,
+                                    },
+                                }
+                            )).await?;
                         }
                         SessionEvent::Audio(audio) => {
                             let audio = pipelines.output.process(audio)?;
@@ -165,6 +194,7 @@ impl RealtimeSession {
             protocol: RealtimeProtocol::new(),
             encoder: AudioCodecs::encoder(&format)?,
             decoder: AudioCodecs::decoder(&format)?,
+            config: config.clone(),
         })
     }
 

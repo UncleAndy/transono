@@ -5,7 +5,7 @@ use crate::providers::openai::realtime::protocol::SessionConfig;
 #[derive(Debug, Serialize)]
 #[serde(untagged)]
 pub enum ProtocolCommand {
-    SessionUpdate(SessionUpdate),
+    SessionUpdate(SessionUpdateEvent),
 
     InputAudioBufferAppend(InputAudioBufferAppend),
 
@@ -17,18 +17,18 @@ pub enum ProtocolCommand {
 }
 
 #[derive(Debug, Serialize)]
-pub struct SessionUpdate {
+pub struct SessionUpdateEvent {
     #[serde(rename = "type")]
     pub event_type: &'static str,
 
     pub session: SessionConfig,
 }
 
-impl SessionUpdate {
+impl SessionUpdateEvent {
     pub fn new(
         session: SessionConfig,
     ) -> ProtocolCommand {
-        ProtocolCommand::SessionUpdate(SessionUpdate{
+        ProtocolCommand::SessionUpdate(SessionUpdateEvent {
             event_type: "session.update",
             session,
         })

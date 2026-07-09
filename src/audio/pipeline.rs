@@ -105,7 +105,7 @@ impl PipelineState {
     }
 }
 
-pub(crate) struct Pipelines {
-    pub(crate) input: AudioPipeline,
-    pub(crate) output: AudioPipeline,
+pub struct Pipelines {
+    pub input: AudioPipeline,
+    pub output: AudioPipeline,
 }

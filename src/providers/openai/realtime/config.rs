@@ -9,7 +9,8 @@ use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::handshake::client::Request;
 use crate::audio::{AudioCodec, AudioContainer, BinaryEncoding, EncodedAudioFormat, Endianness, PcmFormat};
 use crate::core::error::{CoreError, ProtocolError, Result};
-use crate::providers::openai::realtime::protocol::{Audio, AudioFormat, AudioInput, AudioOutput, OutputModality, SessionConfig, TurnDetection};
+use crate::providers::openai::realtime::AudioConfig;
+use crate::providers::openai::realtime::protocol::{AudioFormat, AudioInputConfig, AudioOutputConfig, OutputModality, SessionConfig, TurnDetection};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct OpenAIRealtimeConfig {
@@ -23,7 +24,7 @@ pub struct OpenAIRealtimeConfig {
 
     pub headers: HashMap<String, String>,
 
-    pub turn_mode: TurnMode,
+    pub turn_mode: TurnDetection,
     pub instructions: Option<String>,
     pub voice: Option<String>,
 }
@@ -33,7 +34,7 @@ impl OpenAIRealtimeConfig {
         let mut cfg = Self {
             model: "gpt-realtime".to_string(),
             endpoint: "wss://api.openai.com/v1/realtime".to_string(),
-            turn_mode: TurnMode::ServerVad,
+            turn_mode: TurnDetection::server_vad(),
             ..Self::default()
         };
 
@@ -57,7 +58,7 @@ impl OpenAIRealtimeConfig {
         self
     }
 
-    pub fn with_turn_mode (&mut self, mode: TurnMode) -> &mut Self {
+    pub fn with_turn_mode (&mut self, mode: TurnDetection) -> &mut Self {
         self.turn_mode = mode;
         self
     }
@@ -123,16 +124,16 @@ impl OpenAIRealtimeConfig {
     pub fn session(&self) -> SessionConfig {
         SessionConfig {
             session_type: Some("realtime"),
-            model: Some(self.model.clone()),
+            model: self.model.clone(),
             instructions: self.instructions.clone(),
 
-            audio: Audio {
-                input: Some(AudioInput {
+            audio: AudioConfig {
+                input: Some(AudioInputConfig {
                     format: Some(AudioFormat::pcm_24khz()),
-                    turn_detection: self.turn_mode.turn_detection(),
+                    turn_detection: Some(self.turn_mode.clone()),
                 }),
 
-                output: AudioOutput {
+                output: AudioOutputConfig {
                     format: Some(AudioFormat::pcm_24khz()),
                     voice: self.voice.clone(),
                 },

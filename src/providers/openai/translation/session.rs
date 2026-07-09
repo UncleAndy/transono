@@ -30,13 +30,57 @@ pub struct TranslationSession {
 
 impl ProviderSession for TranslationSession {
     fn spawn(
-        self,
-        capture_rx: Receiver<Audio>,
+        mut self,
+        mut capture_rx: Receiver<Audio>,
         playback_tx: Sender<Audio>,
-        pipelines: Pipelines,
-        cancel: CancellationToken) -> JoinHandle<Result<Pipelines>>
+        mut pipelines: Pipelines,
+        cancel: CancellationToken,
+    ) -> JoinHandle<Result<Pipelines>>
     {
-        todo!()
+        tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                _ = cancel.cancelled() => {
+                    break;
+                }
+
+                Some(audio) = capture_rx.recv() => {
+                    let audio = pipelines.input.process(audio)?;
+
+                    self.send_audio(audio).await?;
+                }
+
+                event = self.next_event() => {
+                    match event? {
+                        SessionEvent::SessionStarted(_) => {
+                            // Отправляем конфиг в 'session.update'
+                        }
+                        SessionEvent::Audio(audio) => {
+                            let audio = pipelines.output.process(audio)?;
+
+                            playback_tx
+                                .send(audio)
+                                .await
+                                .map_err(|_| CoreError::Other(anyhow!("playback channel closed")))?;
+
+                        }
+
+                        SessionEvent::RequestStarted => {}
+
+                        SessionEvent::RequestFinished => {}
+
+                        SessionEvent::ResponseStarted => {}
+
+                        SessionEvent::ResponseFinished => {}
+                    }
+                }
+            }
+            }
+
+            self.close().await?;
+
+            Ok(pipelines)
+        })
     }
 }
 

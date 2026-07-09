@@ -1,4 +1,4 @@
-use serde::{Serialize};
+use serde::{Deserialize, Serialize};
 use crate::core::protocol::Protocol;
 use crate::core::error::{ProtocolError, Result};
 use crate::core::transport::TransportData;
@@ -46,28 +46,27 @@ pub struct SessionConfig {
     #[serde(rename = "type")]
     pub session_type: Option<&'static str>,
 
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub model: Option<String>,
+    pub model: String,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub instructions: Option<String>,
 
-    pub audio: Audio,
+    pub audio: AudioConfig,
 
     #[serde(skip_serializing_if = "Option::is_none")]
     pub output_modalities: Option<Vec<OutputModality>>,
 }
 
 #[derive(Debug, Serialize)]
-pub struct Audio {
+pub struct AudioConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub input: Option<AudioInput>,
+    pub input: Option<AudioInputConfig>,
 
-    pub output: AudioOutput,
+    pub output: AudioOutputConfig,
 }
 
 #[derive(Debug, Serialize)]
-pub struct AudioInput {
+pub struct AudioInputConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub format: Option<AudioFormat>,
 
@@ -75,7 +74,7 @@ pub struct AudioInput {
 }
 
 #[derive(Debug, Serialize)]
-pub struct AudioOutput {
+pub struct AudioOutputConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub format: Option<AudioFormat>,
 
@@ -100,10 +99,10 @@ impl AudioFormat {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct TurnDetection {
     #[serde(rename = "type")]
-    pub detection_type: &'static str,
+    pub detection_type: String,
 
     pub prefix_padding_ms: u32,
 
@@ -113,7 +112,7 @@ pub struct TurnDetection {
 impl TurnDetection {
     pub fn server_vad() -> Self {
         Self {
-            detection_type: "server_vad",
+            detection_type: "server_vad".to_string(),
             prefix_padding_ms: 300,
             silence_duration_ms: 200,
         }

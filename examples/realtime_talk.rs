@@ -34,7 +34,9 @@ async fn main() -> Result<()> {
     println!("Output device: {}", playback.description()?);
     println!("Output format: {:?}", playback.default_output_config()?.sample_format());
 
-    let config = OpenAIRealtimeConfig::from_env()?;
+    let config = OpenAIRealtimeConfig::from_env()?
+        .with_voice("marin")
+        .clone();
 
     let remote = config.audio_format();
 
