@@ -58,7 +58,8 @@ impl ProviderSession for TranslationSession {
 
                 event = self.next_event() => {
                     match event? {
-                        SessionEvent::SessionStarted(_) => {
+                        SessionEvent::SessionStarted(msg) => {
+                            println!("{}", msg);
                             // Отправляем конфиг в 'session.update'
                             self.send(SessionUpdate(
                                 TranslationSessionUpdateEvent {
@@ -75,8 +76,8 @@ impl ProviderSession for TranslationSession {
                                 }
                             )).await?;
                         }
-                        SessionEvent::SessionConfigured(_) => {
-                                println!("Session ready...")
+                        SessionEvent::SessionConfigured(msg) => {
+                            println!("{}", msg);
                         }
                         SessionEvent::Audio(audio) => {
                             let audio = pipelines.output.process(audio)?;
@@ -169,13 +170,11 @@ impl TranslationSession {
         event: ProtocolEvent,
     ) -> Result<Option<SessionEvent>> {
         match event {
-            ProtocolEvent::SessionCreated {
-                session
-            } => {
-                Ok(Some(SessionEvent::SessionStarted(session)))
+            ProtocolEvent::SessionCreated { .. } => {
+                Ok(Some(SessionEvent::SessionStarted("Translation session created".to_string())))
             }
-            ProtocolEvent::SessionUpdated { session } => {
-                Ok(Some(SessionEvent::SessionConfigured(session)))
+            ProtocolEvent::SessionUpdated { .. } => {
+                Ok(Some(SessionEvent::SessionConfigured("Translation session configured".to_string())))
             }
             ProtocolEvent::SessionOutputAudioDelta { delta } => {
                 Ok(Some(self.map_audio(delta)?))

@@ -16,20 +16,7 @@ use crate::core::protocol::Protocol;
 use crate::core::session::Session;
 use crate::core::session_event::SessionEvent;
 use crate::core::transport::Transport;
-use crate::providers::openai::realtime::{
-    InputAudioBufferAppend,
-    SessionUpdateEvent,
-    SessionConfig,
-    AudioConfig,
-    AudioOutputConfig,
-    AudioInputConfig,
-    AudioFormat,
-    ProtocolCommand::SessionUpdate,
-    protocol::RealtimeProtocol,
-    config::OpenAIRealtimeConfig,
-    commands::ProtocolCommand,
-    events::ProtocolEvent,
-};
+use crate::providers::openai::realtime::{InputAudioBufferAppend, SessionUpdateEvent, SessionConfig, AudioConfig, AudioOutputConfig, AudioInputConfig, AudioFormat, ProtocolCommand::SessionUpdate, protocol::RealtimeProtocol, config::OpenAIRealtimeConfig, commands::ProtocolCommand, events::ProtocolEvent};
 
 pub struct RealtimeSession {
     closed: bool,
@@ -69,7 +56,8 @@ impl ProviderSession for RealtimeSession {
 
                 event = self.next_event() => {
                     match event? {
-                        SessionEvent::SessionStarted(_) => {
+                        SessionEvent::SessionStarted(msg) => {
+                            println!("{}", msg);
                             // Отправляем конфиг в 'session.update'
                             self.send(SessionUpdate(
                                 SessionUpdateEvent {
@@ -92,8 +80,8 @@ impl ProviderSession for RealtimeSession {
                                 }
                             )).await?;
                         }
-                        SessionEvent::SessionConfigured(_) => {
-                            println!("Session ready...")
+                        SessionEvent::SessionConfigured(msg) => {
+                            println!("{}", msg)
                         }
                         SessionEvent::Audio(audio) => {
                             let audio = pipelines.output.process(audio)?;
@@ -246,10 +234,10 @@ impl RealtimeSession {
     ) -> Result<Option<SessionEvent>> {
         match event {
             ProtocolEvent::SessionCreated { .. } => {
-                Ok(None)
+                Ok(Some(SessionEvent::SessionStarted("Translation session created".to_string())))
             }
             ProtocolEvent::SessionUpdated { .. } => {
-                Ok(None)
+                Ok(Some(SessionEvent::SessionConfigured("Translation session created".to_string())))
             }
             ProtocolEvent::ResponseOutputAudioDelta { delta } => {
                 Ok(Some(self.map_audio(delta)?))
