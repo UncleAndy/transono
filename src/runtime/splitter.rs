@@ -41,7 +41,7 @@ impl AudioSplitter {
     }
 
     #[allow(unused)]
-    pub fn new_output(&mut self) -> &OutputPort {
+    pub fn create_output(&mut self) -> &OutputPort {
         let (tx, rx) = mpsc::channel(self.capacity);
 
         let port = OutputPort::new(self.format, rx);
