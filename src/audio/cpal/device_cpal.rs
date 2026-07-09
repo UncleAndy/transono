@@ -54,6 +54,7 @@ impl AudioDevicesCpal {
     }
 }
 
+#[allow(unused)]
 fn print_device(device: &Device) -> Result<()> {
     println!("Device: {}", device.id()?);
 
@@ -80,6 +81,7 @@ fn print_device(device: &Device) -> Result<()> {
     Ok(())
 }
 
+#[allow(unused)]
 fn print_config(cfg: cpal::SupportedStreamConfigRange) {
     println!(
         "  {} ch | {:?} | {}..{} Hz",

@@ -1,6 +1,6 @@
 use tokio::sync::mpsc;
 
-use crate::audio::{Audio, AudioFormat, AudioDevice};
+use crate::audio::{Audio, AudioFormat};
 use crate::core::error::Result;
 
 pub trait AudioInput {

@@ -11,8 +11,11 @@ pub struct PcmAudio {
     pub spec: AudioSpec,
     pub channels: Vec<Vec<f32>>, // Один Vec на канал.
 
+    #[allow(unused)]
     pub(crate) sequence: u64,
+    #[allow(unused)]
     pub(crate) capture_timestamp: Instant,
+    #[allow(unused)]
     pub(crate) processing_timestamp: Instant,
 }
 
