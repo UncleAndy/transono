@@ -9,7 +9,7 @@ use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::handshake::client::Request;
 use crate::audio::{AudioCodec, AudioContainer, BinaryEncoding, EncodedAudioFormat, Endianness, PcmFormat};
 use crate::core::error::{CoreError, ProtocolError, Result};
-use crate::providers::openai::translation::{AudioConfig, AudioFormat, AudioInput, AudioOutput, SessionConfig};
+use crate::providers::openai::translation::{AudioConfig, AudioFormat, AudioInputConfig, AudioOutputConfig, SessionConfig};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct OpenAITranslationConfig {
@@ -111,12 +111,13 @@ impl OpenAITranslationConfig {
             model: self.model.clone(),
 
             audio: AudioConfig {
-                input: Some(AudioInput {
+                input: Some(AudioInputConfig {
                     format: Some(AudioFormat::pcm_24khz()),
                 }),
 
-                output: AudioOutput {
+                output: AudioOutputConfig {
                     format: Some(AudioFormat::pcm_24khz()),
+                    language: "en".to_string(),
                 },
             },
         }

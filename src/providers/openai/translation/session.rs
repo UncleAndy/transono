@@ -14,7 +14,9 @@ use crate::core::protocol::Protocol;
 use crate::core::session::Session;
 use crate::core::session_event::SessionEvent;
 use crate::core::transport::Transport;
-use crate::providers::openai::translation::{TranslationProtocol, SessionAudioBufferAppend, config::OpenAITranslationConfig, commands::ProtocolCommand, ProtocolEvent};
+
+use crate::providers::openai::translation::{TranslationProtocol, SessionAudioBufferAppend, config::OpenAITranslationConfig, commands::ProtocolCommand, ProtocolEvent, TranslationSessionUpdateEvent, SessionConfig, AudioConfig, AudioOutputConfig};
+use crate::providers::openai::translation::ProtocolCommand::SessionUpdate;
 
 pub struct TranslationSession {
     closed: bool,
@@ -54,6 +56,22 @@ impl ProviderSession for TranslationSession {
                     match event? {
                         SessionEvent::SessionStarted(_) => {
                             // Отправляем конфиг в 'session.update'
+                            self.send(SessionUpdate(
+                                TranslationSessionUpdateEvent {
+                                    event_type: "session.update",
+                                    session: SessionConfig {
+                                        session_type: "realtime",
+                                        model: self.config.model.clone(),
+                                        audio: AudioConfig {
+                                            input: None,
+                                            output: AudioOutputConfig {
+                                                format: None,
+                                                language: self.config.lang.clone(),
+                                            },
+                                        },
+                                    },
+                                }
+                            )).await?;
                         }
                         SessionEvent::Audio(audio) => {
                             let audio = pipelines.output.process(audio)?;

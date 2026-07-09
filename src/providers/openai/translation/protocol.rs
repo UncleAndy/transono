@@ -54,21 +54,23 @@ pub struct SessionConfig {
 #[derive(Debug, Serialize)]
 pub struct AudioConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub input: Option<AudioInput>,
+    pub input: Option<AudioInputConfig>,
 
-    pub output: AudioOutput,
+    pub output: AudioOutputConfig,
 }
 
 #[derive(Debug, Serialize)]
-pub struct AudioInput {
+pub struct AudioInputConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub format: Option<AudioFormat>,
 }
 
 #[derive(Debug, Serialize)]
-pub struct AudioOutput {
+pub struct AudioOutputConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub format: Option<AudioFormat>,
+
+    pub language: String,
 }
 
 #[derive(Debug, Serialize)]

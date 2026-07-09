@@ -5,24 +5,24 @@ use crate::providers::openai::translation::{SessionConfig};
 #[derive(Debug, Serialize)]
 #[serde(untagged)]
 pub enum ProtocolCommand {
-    SessionUpdate(TranslationSessionUpdate),
+    SessionUpdate(TranslationSessionUpdateEvent),
 
     SessionInputAudioBufferAppend(SessionAudioBufferAppend),
 }
 
 #[derive(Debug, Serialize)]
-pub struct TranslationSessionUpdate {
+pub struct TranslationSessionUpdateEvent {
     #[serde(rename = "type")]
     pub event_type: &'static str,
 
     pub session: SessionConfig,
 }
 
-impl TranslationSessionUpdate {
+impl TranslationSessionUpdateEvent {
     pub fn new(
         session: SessionConfig,
     ) -> ProtocolCommand {
-        ProtocolCommand::SessionUpdate(TranslationSessionUpdate {
+        ProtocolCommand::SessionUpdate(TranslationSessionUpdateEvent {
             event_type: "session.update",
             session,
         })
