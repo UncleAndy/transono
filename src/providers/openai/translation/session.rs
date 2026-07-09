@@ -5,20 +5,21 @@ use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
-use crate::audio::{Audio, AudioEncoder, EncodedAudio, AudioDecoder, AudioCodecs, Pipelines};
-use crate::core::{
-    websocket::WebSocketTransport,
-    error::Result,
-    provider::ProviderSession,
-};
+
+use crate::audio::{Audio, AudioCodecs, AudioDecoder, AudioEncoder, EncodedAudio, Pipelines};
 use crate::core::error::CoreError;
 use crate::core::protocol::Protocol;
 use crate::core::session::Session;
 use crate::core::session_event::SessionEvent;
 use crate::core::transport::Transport;
+use crate::core::{error::Result, provider::ProviderSession, websocket::WebSocketTransport};
 
-use crate::providers::openai::translation::{TranslationProtocol, SessionAudioBufferAppend, config::OpenAITranslationConfig, commands::ProtocolCommand, ProtocolEvent, TranslationSessionUpdateEvent, SessionConfig, AudioConfig, AudioOutputConfig};
 use crate::providers::openai::translation::ProtocolCommand::SessionUpdate;
+use crate::providers::openai::translation::{
+    AudioConfig, AudioOutputConfig, ProtocolEvent, SessionAudioBufferAppend, SessionConfig,
+    TranslationProtocol, TranslationSessionUpdateEvent, commands::ProtocolCommand,
+    config::OpenAITranslationConfig,
+};
 
 pub struct TranslationSession {
     closed: bool,
@@ -39,73 +40,72 @@ impl ProviderSession for TranslationSession {
         playback_tx: Sender<Audio>,
         mut pipelines: Pipelines,
         cancel: CancellationToken,
-    ) -> JoinHandle<Result<Pipelines>>
-    {
+    ) -> JoinHandle<Result<Pipelines>> {
         tokio::spawn(async move {
             let mut stdout = io::stdout();
 
             loop {
                 tokio::select! {
-                _ = cancel.cancelled() => {
-                    break;
-                }
+                    _ = cancel.cancelled() => {
+                        break;
+                    }
 
-                Some(audio) = capture_rx.recv() => {
-                    let audio = pipelines.input.process(audio)?;
+                    Some(audio) = capture_rx.recv() => {
+                        let audio = pipelines.input.process(audio)?;
 
-                    self.send_audio(audio).await?;
-                }
+                        self.send_audio(audio).await?;
+                    }
 
-                event = self.next_event() => {
-                    match event? {
-                        SessionEvent::SessionStarted(msg) => {
-                            println!("{}", msg);
-                            // Отправляем конфиг в 'session.update'
-                            self.send(SessionUpdate(
-                                TranslationSessionUpdateEvent {
-                                    event_type: "session.update",
-                                    session: SessionConfig {
-                                        audio: AudioConfig {
-                                            input: None,
-                                            output: AudioOutputConfig {
-                                                format: None,
-                                                language: self.config.lang.clone(),
+                    event = self.next_event() => {
+                        match event? {
+                            SessionEvent::SessionStarted(msg) => {
+                                println!("{}", msg);
+                                // Отправляем конфиг в 'session.update'
+                                self.send(SessionUpdate(
+                                    TranslationSessionUpdateEvent {
+                                        event_type: "session.update",
+                                        session: SessionConfig {
+                                            audio: AudioConfig {
+                                                input: None,
+                                                output: AudioOutputConfig {
+                                                    format: None,
+                                                    language: self.config.lang.clone(),
+                                                },
                                             },
                                         },
-                                    },
-                                }
-                            )).await?;
+                                    }
+                                )).await?;
+                            }
+                            SessionEvent::SessionConfigured(msg) => {
+                                println!("{}", msg);
+                            }
+                            SessionEvent::Audio(audio) => {
+                                let audio = pipelines.output.process(audio)?;
+
+                                playback_tx
+                                    .send(audio)
+                                    .await
+                                    .map_err(|_| CoreError::Other(anyhow!("playback channel closed")))?;
+
+                            }
+
+                            SessionEvent::Text(delta) => {
+                                stdout.write_all(delta.as_bytes()).await
+                                    .map_err(|e| CoreError::Other(anyhow!(e)))?;
+                                stdout.flush().await
+                                    .map_err(|e| CoreError::Other(anyhow!(e)))?;
+                            }
+
+                            SessionEvent::RequestStarted => {}
+
+                            SessionEvent::RequestFinished => {}
+
+                            SessionEvent::ResponseStarted => {}
+
+                            SessionEvent::ResponseFinished => {}
                         }
-                        SessionEvent::SessionConfigured(msg) => {
-                            println!("{}", msg);
-                        }
-                        SessionEvent::Audio(audio) => {
-                            let audio = pipelines.output.process(audio)?;
-
-                            playback_tx
-                                .send(audio)
-                                .await
-                                .map_err(|_| CoreError::Other(anyhow!("playback channel closed")))?;
-
-                        }
-
-                        SessionEvent::Text(delta) => {
-                            stdout.write_all(delta.as_bytes()).await
-                                .map_err(|e| CoreError::Other(anyhow!(e)))?;
-                            stdout.flush().await
-                                .map_err(|e| CoreError::Other(anyhow!(e)))?;
-                        }
-
-                        SessionEvent::RequestStarted => {}
-
-                        SessionEvent::RequestFinished => {}
-
-                        SessionEvent::ResponseStarted => {}
-
-                        SessionEvent::ResponseFinished => {}
                     }
                 }
-            }
             }
 
             self.close().await?;
@@ -116,14 +116,10 @@ impl ProviderSession for TranslationSession {
 }
 
 impl TranslationSession {
-    pub async fn connect(
-        config: &OpenAITranslationConfig,
-    ) -> Result<Self> {
+    pub async fn connect(config: &OpenAITranslationConfig) -> Result<Self> {
         let request = config.request()?;
 
-        let transport =
-            WebSocketTransport::connect(request)
-                .await?;
+        let transport = WebSocketTransport::connect(request).await?;
 
         let format = config.audio_format();
 
@@ -137,48 +133,31 @@ impl TranslationSession {
         })
     }
 
-    async fn send(
-        &mut self,
-        command: ProtocolCommand,
-    ) -> Result<()>
-    {
+    async fn send(&mut self, command: ProtocolCommand) -> Result<()> {
         let data = self.protocol.encode(&command)?;
 
         self.transport.send(data).await
     }
 
-    fn map_audio(
-        &mut self,
-        delta: String,
-    ) -> Result<SessionEvent> {
-        let encoded = EncodedAudio::new(
-            self.decoder.format().clone(),
-            delta.into_bytes().into(),
-        );
+    fn map_audio(&mut self, delta: String) -> Result<SessionEvent> {
+        let encoded = EncodedAudio::new(self.decoder.format().clone(), delta.into_bytes().into());
 
-        let pcm =
-            self.decoder.decode(&encoded)?;
+        let pcm = self.decoder.decode(&encoded)?;
 
-        let audio =
-            Audio::from_pcm(&pcm)?;
+        let audio = Audio::from_pcm(&pcm)?;
 
         Ok(SessionEvent::Audio(audio))
     }
 
-    fn map_event(
-        &mut self,
-        event: ProtocolEvent,
-    ) -> Result<Option<SessionEvent>> {
+    fn map_event(&mut self, event: ProtocolEvent) -> Result<Option<SessionEvent>> {
         match event {
-            ProtocolEvent::SessionCreated { .. } => {
-                Ok(Some(SessionEvent::SessionStarted("Translation session created".to_string())))
-            }
-            ProtocolEvent::SessionUpdated { .. } => {
-                Ok(Some(SessionEvent::SessionConfigured("Translation session configured".to_string())))
-            }
-            ProtocolEvent::SessionOutputAudioDelta { delta } => {
-                Ok(Some(self.map_audio(delta)?))
-            }
+            ProtocolEvent::SessionCreated { .. } => Ok(Some(SessionEvent::SessionStarted(
+                "Translation session created".to_string(),
+            ))),
+            ProtocolEvent::SessionUpdated { .. } => Ok(Some(SessionEvent::SessionConfigured(
+                "Translation session configured".to_string(),
+            ))),
+            ProtocolEvent::SessionOutputAudioDelta { delta } => Ok(Some(self.map_audio(delta)?)),
             ProtocolEvent::SessionOutputTranscriptDelta { delta } => {
                 Ok(Some(SessionEvent::Text(delta)))
             }
@@ -186,47 +165,37 @@ impl TranslationSession {
                 println!("Error: {}", e);
                 Err(CoreError::Other(anyhow!(e)))
             }
-            ProtocolEvent::Unknown => {
-                Ok(None)
-            }
+            ProtocolEvent::Unknown => Ok(None),
         }
     }
 }
 
 #[async_trait]
 impl Session for TranslationSession {
-    async fn send_audio(
-        &mut self,
-        audio: Audio,
-    ) -> Result<()> {
+    async fn send_audio(&mut self, audio: Audio) -> Result<()> {
         if self.closed {
-            return Err(CoreError::Other(anyhow::Error::msg("session closed")))
+            return Err(CoreError::Other(anyhow::Error::msg("session closed")));
         }
 
         let pcm = audio.to_pcm()?;
 
         let encoded = self.encoder.encode(&pcm)?;
 
-        self.send(
-            ProtocolCommand::SessionInputAudioBufferAppend(
-                SessionAudioBufferAppend {
-                    event_type: "session.input_audio_buffer.append",
-                    audio: String::from_utf8(
-                        encoded.bytes().to_vec(),
-                    )
-                        .map_err(|e| CoreError::Other(anyhow::Error::from(e)))?,
-                }
-            )
-        ).await?;
+        self.send(ProtocolCommand::SessionInputAudioBufferAppend(
+            SessionAudioBufferAppend {
+                event_type: "session.input_audio_buffer.append",
+                audio: String::from_utf8(encoded.bytes().to_vec())
+                    .map_err(|e| CoreError::Other(anyhow::Error::from(e)))?,
+            },
+        ))
+        .await?;
 
         Ok(())
     }
 
-    async fn next_event(
-        &mut self,
-    ) -> Result<SessionEvent> {
+    async fn next_event(&mut self) -> Result<SessionEvent> {
         if self.closed {
-            return Err(CoreError::Other(anyhow::Error::msg("session closed")))
+            return Err(CoreError::Other(anyhow::Error::msg("session closed")));
         }
 
         loop {
@@ -244,7 +213,7 @@ impl Session for TranslationSession {
 
     async fn close(&mut self) -> Result<()> {
         if self.closed {
-            return Err(CoreError::Other(anyhow::Error::msg("session closed")))
+            return Err(CoreError::Other(anyhow::Error::msg("session closed")));
         }
 
         self.closed = true;
