@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use async_trait::async_trait;
 
 use crate::audio::{
@@ -97,8 +98,8 @@ impl TranslationSession {
             ProtocolEvent::SessionOutputAudioDelta { delta } => {
                 Ok(Some(self.map_audio(delta)?))
             }
-            ProtocolEvent::Error { .. } => {
-                Ok(None)
+            ProtocolEvent::Error(e) => {
+                Err(CoreError::Other(anyhow!(e)))
             }
             ProtocolEvent::Unknown => {
                 Ok(None)

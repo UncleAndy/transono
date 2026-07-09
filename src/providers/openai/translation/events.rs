@@ -15,9 +15,7 @@ pub enum ProtocolEvent {
     },
 
     #[serde(rename = "error")]
-    Error {
-        error: OpenAiError,
-    },
+    Error(OpenAiError),
 
     #[serde(other)]
     Unknown,
