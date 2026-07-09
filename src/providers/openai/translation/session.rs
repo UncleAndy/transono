@@ -1,5 +1,7 @@
 use anyhow::anyhow;
 use async_trait::async_trait;
+use tokio::io;
+use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
@@ -40,6 +42,8 @@ impl ProviderSession for TranslationSession {
     ) -> JoinHandle<Result<Pipelines>>
     {
         tokio::spawn(async move {
+            let mut stdout = io::stdout();
+
             loop {
                 tokio::select! {
                 _ = cancel.cancelled() => {
@@ -60,8 +64,6 @@ impl ProviderSession for TranslationSession {
                                 TranslationSessionUpdateEvent {
                                     event_type: "session.update",
                                     session: SessionConfig {
-                                        session_type: "realtime",
-                                        model: self.config.model.clone(),
                                         audio: AudioConfig {
                                             input: None,
                                             output: AudioOutputConfig {
@@ -73,6 +75,9 @@ impl ProviderSession for TranslationSession {
                                 }
                             )).await?;
                         }
+                        SessionEvent::SessionConfigured(_) => {
+                                println!("Session ready...")
+                        }
                         SessionEvent::Audio(audio) => {
                             let audio = pipelines.output.process(audio)?;
 
@@ -81,6 +86,13 @@ impl ProviderSession for TranslationSession {
                                 .await
                                 .map_err(|_| CoreError::Other(anyhow!("playback channel closed")))?;
 
+                        }
+
+                        SessionEvent::Text(delta) => {
+                            stdout.write_all(delta.as_bytes()).await
+                                .map_err(|e| CoreError::Other(anyhow!(e)))?;
+                            stdout.flush().await
+                                .map_err(|e| CoreError::Other(anyhow!(e)))?;
                         }
 
                         SessionEvent::RequestStarted => {}
@@ -160,15 +172,16 @@ impl TranslationSession {
             ProtocolEvent::SessionCreated {
                 session
             } => {
-                Ok(Some(
-                    SessionEvent::SessionStarted(session)
-                ))
+                Ok(Some(SessionEvent::SessionStarted(session)))
             }
-            ProtocolEvent::SessionUpdated { .. } => {
-                Ok(None)
+            ProtocolEvent::SessionUpdated { session } => {
+                Ok(Some(SessionEvent::SessionConfigured(session)))
             }
             ProtocolEvent::SessionOutputAudioDelta { delta } => {
                 Ok(Some(self.map_audio(delta)?))
+            }
+            ProtocolEvent::SessionOutputTranscriptDelta { delta } => {
+                Ok(Some(SessionEvent::Text(delta)))
             }
             ProtocolEvent::Error(e) => {
                 println!("Error: {}", e);
@@ -225,7 +238,7 @@ impl Session for TranslationSession {
             if let Some(event) = self.map_event(event)? {
                 return Ok(event);
             } else {
-                println!("{:#?}", data);
+                println!("ERROR MAP EVENT: {:#?}", data);
             }
         }
     }

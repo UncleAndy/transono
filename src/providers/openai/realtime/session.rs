@@ -92,6 +92,9 @@ impl ProviderSession for RealtimeSession {
                                 }
                             )).await?;
                         }
+                        SessionEvent::SessionConfigured(_) => {
+                            println!("Session ready...")
+                        }
                         SessionEvent::Audio(audio) => {
                             let audio = pipelines.output.process(audio)?;
 

@@ -4,6 +4,8 @@ use crate::providers::openai::translation::SessionInfo;
 pub enum SessionEvent {
     SessionStarted(SessionInfo),
 
+    SessionConfigured(SessionInfo),
+
     /// Очередная порция аудио.
     Audio(Audio),
 
