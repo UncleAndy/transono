@@ -1,4 +1,5 @@
 use serde::Deserialize;
+use crate::providers::openai::error::OpenAiError;
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type")]
@@ -51,12 +52,4 @@ pub struct SessionInfo {
 
     #[serde(default)]
     pub model: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct OpenAiError {
-    pub message: String,
-
-    #[serde(default)]
-    pub code: Option<String>,
 }

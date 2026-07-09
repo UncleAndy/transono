@@ -1,11 +1,38 @@
-use crate::providers::openai::translation::protocol::{Session, SessionUpdate};
+use serde::Serialize;
 
-pub enum ProtocolCommand<'a> {
-    SessionUpdate(SessionUpdate),
+use crate::providers::openai::translation::{SessionConfig};
 
-    SessionInputAudioBufferAppend {
-        audio: &'a str,
-    },
+#[derive(Debug, Serialize)]
+#[serde(untagged)]
+pub enum ProtocolCommand {
+    SessionUpdate(TranslationSessionUpdate),
 
-    SessionFinish(Session),
+    SessionInputAudioBufferAppend(SessionAudioBufferAppend),
+}
+
+#[derive(Debug, Serialize)]
+pub struct TranslationSessionUpdate {
+    #[serde(rename = "type")]
+    pub event_type: &'static str,
+
+    pub session: SessionConfig,
+}
+
+impl TranslationSessionUpdate {
+    pub fn new(
+        session: SessionConfig,
+    ) -> ProtocolCommand {
+        ProtocolCommand::SessionUpdate(TranslationSessionUpdate {
+            event_type: "session.update",
+            session,
+        })
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct SessionAudioBufferAppend {
+    #[serde(rename = "type")]
+    pub event_type: &'static str,
+
+    pub audio: String,
 }
