@@ -1,5 +1,6 @@
 use std::fmt;
 use std::fmt::{Debug, Formatter};
+use std::sync::Arc;
 use std::time::Instant;
 
 use symphonia::core::audio::conv::{ConvertibleSample, FromSample};
@@ -10,8 +11,9 @@ use crate::audio::{PcmAudio, PcmFormat};
 use crate::core::error::Result;
 
 /// Universal audio container.
+#[derive(Clone)]
 pub struct Audio {
-    buffer: GenericAudioBuffer,
+    buffer: Arc<GenericAudioBuffer>,
 }
 
 impl Audio {
@@ -19,15 +21,12 @@ impl Audio {
         buffer: GenericAudioBuffer,
     ) -> Self {
         Self {
-            buffer,
+            buffer: Arc::new(buffer),
         }
     }
 
-    pub fn buffer(&self) -> &GenericAudioBuffer {
-        &self.buffer
-    }
-    pub fn buffer_mut(&mut self) -> &mut GenericAudioBuffer {
-        &mut self.buffer
+    pub fn buffer(&self) -> Arc<GenericAudioBuffer> {
+        self.buffer.clone()
     }
 
     pub fn copy_to_planar<S>(
@@ -117,7 +116,7 @@ macro_rules! impl_audio_from {
         impl From<AudioBuffer<$sample>> for Audio {
             fn from(buffer: AudioBuffer<$sample>) -> Self {
                 Self {
-                    buffer: GenericAudioBuffer::$variant(buffer),
+                    buffer: Arc::new(GenericAudioBuffer::$variant(buffer)),
                 }
             }
         }

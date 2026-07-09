@@ -2,7 +2,7 @@ use anyhow::anyhow;
 use tokio::sync::mpsc::Receiver;
 
 use crate::audio::{Audio, AudioFormat, AudioInput};
-use crate::core::error::CoreError;
+use crate::core::error::{CoreError, Result};
 
 // OutputPort - это AudioInput для внешнего API
 pub struct OutputPort {
@@ -20,7 +20,7 @@ impl OutputPort {
 }
 
 impl AudioInput for OutputPort {
-    fn take_receiver(&mut self) -> crate::core::error::Result<Receiver<Audio>> {
+    fn take_receiver(&mut self) -> Result<Receiver<Audio>> {
         let Some(receiver) = self.receiver.take() else {
             return Err(CoreError::Other(anyhow!("receiver already taken")))
         };

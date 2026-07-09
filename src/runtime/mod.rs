@@ -3,6 +3,7 @@ mod state;
 pub mod link;
 pub mod input_port;
 pub mod output_port;
+pub mod splitter;
 
 // pub use bridge::*;
 pub use line::*;
