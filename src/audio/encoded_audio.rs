@@ -57,7 +57,8 @@ impl EncodedAudio {
     pub fn into_string(self) -> Result<String> {
         match self.encoding() {
             BinaryEncoding::Base64 => {
-                String::from_utf8(self.data.to_vec())
+                let bytes = self.data.to_vec();
+                String::from_utf8(bytes)
                     .map_err(|e| CoreError::Other(anyhow::Error::from(e)))
             }
             _ => Err(CoreError::Other(anyhow::anyhow!("EncodedAudio is not text"))),

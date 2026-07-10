@@ -1,4 +1,6 @@
 use serde::Serialize;
+use bytes::Bytes;
+use crate::core::transport::serialize_bytes_as_str;
 
 use crate::providers::openai::translation::{SessionConfig};
 
@@ -34,5 +36,6 @@ pub struct SessionAudioBufferAppend {
     #[serde(rename = "type")]
     pub event_type: &'static str,
 
-    pub audio: String,
+    #[serde(serialize_with = "serialize_bytes_as_str")]
+    pub audio: Bytes,
 }

@@ -3,17 +3,14 @@ use crate::core::error::Result;
 
 pub struct AudioPipeline {
     processors: Vec<Processor>,
-}
-
-enum PipelineState {
-    Audio(Audio),
-    Pcm(PcmAudio),
+    scratch_pcm: Option<PcmAudio>,
 }
 
 impl AudioPipeline {
     pub fn new() -> Self {
         Self {
             processors: Vec::new(),
+            scratch_pcm: None,
         }
     }
 
@@ -30,20 +27,42 @@ impl AudioPipeline {
         &mut self,
         audio: Audio,
     ) -> Result<Audio> {
-        let mut state = PipelineState::Audio(audio);
+        if self.processors.is_empty() {
+            return Ok(audio);
+        }
+
+        let mut current_audio = Some(audio);
 
         for processor in &mut self.processors {
             match processor {
                 Processor::Audio(proc) => {
-                    proc.process(state.ensure_audio()?)?;
+                    let mut audio = if let Some(a) = current_audio.take() {
+                        a
+                    } else {
+                        Audio::from_pcm(self.scratch_pcm.as_ref().expect("scratch_pcm must be initialized"))?
+                    };
+
+                    proc.process(&mut audio)?;
+                    current_audio = Some(audio);
                 }
                 Processor::Dsp(dsp) => {
-                    dsp.process(state.ensure_pcm()?)?;
+                    if let Some(audio) = current_audio.take() {
+                        if let Some(ref mut scratch) = self.scratch_pcm {
+                            audio.to_pcm_into(scratch)?;
+                        } else {
+                            self.scratch_pcm = Some(audio.to_pcm()?);
+                        }
+                    }
+                    dsp.process(self.scratch_pcm.as_mut().expect("scratch_pcm must be initialized"))?;
                 }
             }
         }
 
-        state.into_audio()
+        if let Some(audio) = current_audio {
+            Ok(audio)
+        } else {
+            Audio::from_pcm(self.scratch_pcm.as_ref().expect("scratch_pcm must be initialized"))
+        }
     }
 
     pub fn is_empty(&self) -> bool {
@@ -58,50 +77,6 @@ impl AudioPipeline {
 impl Default for AudioPipeline {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-impl PipelineState {
-    fn ensure_pcm(
-        &mut self,
-    ) -> Result<&mut PcmAudio> {
-        if let PipelineState::Audio(audio) = self {
-            let pcm = audio.to_pcm()?;
-
-            *self = PipelineState::Pcm(pcm);
-        }
-
-        match self {
-            PipelineState::Pcm(pcm) => Ok(pcm),
-            _ => unreachable!(),
-        }
-    }
-
-    fn ensure_audio(
-        &mut self,
-    ) -> Result<&mut Audio> {
-
-        if let PipelineState::Pcm(pcm) = self {
-
-            let audio = Audio::from_pcm(&pcm)?;
-
-            *self = PipelineState::Audio(audio);
-        }
-
-        match self {
-            PipelineState::Audio(audio) => {
-                Ok(audio)
-            }
-            _ => unreachable!(),
-        }
-    }
-
-
-    fn into_audio(self) -> Result<Audio> {
-        match self {
-            PipelineState::Audio(audio) => Ok(audio),
-            PipelineState::Pcm(pcm) => Audio::from_pcm(&pcm),
-        }
     }
 }
 

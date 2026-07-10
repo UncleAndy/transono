@@ -1,4 +1,6 @@
 use serde::{*};
+use bytes::Bytes;
+use crate::core::transport::serialize_bytes_as_str;
 
 use crate::providers::openai::realtime::protocol::SessionConfig;
 
@@ -40,12 +42,13 @@ pub struct InputAudioBufferAppend {
     #[serde(rename = "type")]
     pub event_type: &'static str,
 
-    pub audio: String,
+    #[serde(serialize_with = "serialize_bytes_as_str")]
+    pub audio: Bytes,
 }
 
 impl InputAudioBufferAppend {
     pub fn new(
-        audio: impl Into<String>,
+        audio: impl Into<Bytes>,
     ) -> ProtocolCommand {
         ProtocolCommand::InputAudioBufferAppend(
             Self {

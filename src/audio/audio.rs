@@ -1,7 +1,6 @@
 use std::fmt;
 use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
-use std::time::Instant;
 
 use symphonia::core::audio::conv::{ConvertibleSample, FromSample};
 use symphonia::core::audio::{AudioBuffer, AudioMut, AudioSpec, GenericAudioBuffer};
@@ -62,28 +61,33 @@ impl Audio {
         &self,
     ) -> Result<PcmAudio> {
         let buffer = self.buffer();
-
         let spec = buffer.spec().clone();
 
-        let mut channels = vec![
-            vec![0.0f32; buffer.frames()];
-            spec.channels().count()
-        ];
+        let mut pcm = PcmAudio::new(spec, buffer.frames());
+        self.to_pcm_into(&mut pcm)?;
 
-        let mut slices: Vec<&mut [f32]> = channels
+        Ok(pcm)
+    }
+
+    pub fn to_pcm_into(
+        &self,
+        pcm: &mut PcmAudio,
+    ) -> Result<()> {
+        let buffer = self.buffer();
+        let spec = buffer.spec().clone();
+
+        if pcm.spec != spec || pcm.frames() != buffer.frames() {
+            *pcm = PcmAudio::new(spec, buffer.frames());
+        }
+
+        let mut slices: Vec<&mut [f32]> = pcm.channels
             .iter_mut()
             .map(Vec::as_mut_slice)
             .collect();
 
         buffer.copy_to_slice_planar(&mut slices);
 
-        Ok(PcmAudio {
-            spec,
-            channels,
-            sequence: 0,
-            capture_timestamp: Instant::now(),
-            processing_timestamp: Instant::now(),
-        })
+        Ok(())
     }
 
     pub fn from_pcm(

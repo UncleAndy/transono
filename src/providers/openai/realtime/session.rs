@@ -133,12 +133,8 @@ impl Session for RealtimeSession {
 
         let encoded = self.encoder.encode(&pcm)?;
 
-        self.send(ProtocolCommand::InputAudioBufferAppend(
-            InputAudioBufferAppend {
-                event_type: "input_audio_buffer.append",
-                audio: String::from_utf8(encoded.bytes().to_vec())
-                    .map_err(|e| CoreError::Other(anyhow::Error::from(e)))?,
-            },
+        self.send(InputAudioBufferAppend::new(
+            encoded.bytes().clone(),
         ))
         .await?;
 

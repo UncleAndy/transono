@@ -184,8 +184,7 @@ impl Session for TranslationSession {
         self.send(ProtocolCommand::SessionInputAudioBufferAppend(
             SessionAudioBufferAppend {
                 event_type: "session.input_audio_buffer.append",
-                audio: String::from_utf8(encoded.bytes().to_vec())
-                    .map_err(|e| CoreError::Other(anyhow::Error::from(e)))?,
+                audio: encoded.bytes().clone(),
             },
         ))
         .await?;

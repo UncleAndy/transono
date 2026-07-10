@@ -3,6 +3,7 @@ use futures_util::{
     StreamExt,
     stream::{SplitSink, SplitStream},
 };
+use bytes::Bytes;
 use tokio::net::TcpStream;
 use tokio_tungstenite::{
     connect_async,
@@ -11,6 +12,7 @@ use tokio_tungstenite::{
     tungstenite::{
         Message,
         client::IntoClientRequest,
+        Utf8Bytes,
     },
 };
 use crate::core::{
@@ -56,12 +58,12 @@ impl Transport for WebSocketTransport {
         data: TransportData,
     ) -> Result<()> {
         let message = match data {
-            TransportData::Text(text) => {
-                Message::Text(text.into())
+            TransportData::Text(data) => {
+                Message::Text(unsafe { Utf8Bytes::from_bytes_unchecked(data) })
             }
 
             TransportData::Binary(data) => {
-                Message::Binary(data.into())
+                Message::Binary(data)
             }
         };
 
@@ -86,11 +88,11 @@ impl Transport for WebSocketTransport {
 
             match message {
                 Message::Text(text) => {
-                    return Ok(text.to_string().into());
+                    return Ok(TransportData::Text(Bytes::copy_from_slice(text.as_bytes())));
                 }
 
                 Message::Binary(data) => {
-                    return Ok(data.to_vec().into());
+                    return Ok(TransportData::Binary(data));
                 }
 
                 Message::Ping(data) => {

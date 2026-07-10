@@ -23,13 +23,15 @@ impl Protocol for RealtimeProtocol {
     fn encode(&self, command: &Self::Command) -> Result<TransportData> {
         let json = serde_json::to_string(command)
             .map_err(|e| ProtocolError::Json(e))?;
-        Ok(TransportData::Text(json))
+        Ok(TransportData::Text(json.into()))
     }
 
     fn decode(&self, data: TransportData) -> Result<Self::Event> {
         match data {
             TransportData::Text(text) => {
-                Ok(serde_json::from_str(&text)
+                let s = std::str::from_utf8(text.as_ref())
+                    .map_err(|e| ProtocolError::Other(e.to_string()))?;
+                Ok(serde_json::from_str(s)
                     .map_err(|e| ProtocolError::Json(e))?)
             }
 

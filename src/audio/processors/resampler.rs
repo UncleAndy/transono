@@ -177,23 +177,18 @@ impl Resampler {
             self.output_buffer.channels(),
         );
 
-        let mut output = Vec::with_capacity(channels);
-
         for channel in 0..channels {
             let samples = self
                 .output_buffer
                 .read_channel(channel, frames)
                 .unwrap();
 
-            output.push(samples.to_vec());
+            let dst = &mut pcm.channels[channel];
+            dst.clear();
+            dst.extend_from_slice(samples);
         }
 
         self.output_buffer.consume(frames);
-
-        pcm.replace_channels(
-            output,
-            pcm.spec.channels().clone(),
-        );
 
         if pcm.spec.rate() != self.output_rate {
             pcm.spec = AudioSpec::new(
