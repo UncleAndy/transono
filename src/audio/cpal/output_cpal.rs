@@ -9,6 +9,7 @@ use crate::audio::{sample_to_pcm_format, Audio, AudioFormat, AudioOutput};
 use crate::core::error::{CoreError, Result};
 
 pub struct AudioOutputCpal {
+    name: String,
     stream: Stream,
     format: AudioFormat,
     sender: Option<Sender<Audio>>
@@ -18,6 +19,12 @@ struct OutputStateCpal<T> {
     current: Option<Audio>,
     current_samples: Vec<T>,
     offset: usize,
+}
+
+impl Drop for AudioOutputCpal {
+    fn drop(&mut self) {
+        let _ = self.stream.pause();
+    }
 }
 
 impl AudioOutputCpal {
@@ -61,6 +68,7 @@ impl AudioOutputCpal {
         };
 
         Ok(Self {
+            name: device.to_string(),
             stream,
             format: AudioFormat {
                 sample_rate: config.sample_rate,
@@ -152,7 +160,7 @@ impl AudioOutputCpal {
 }
 
 impl AudioOutput for AudioOutputCpal {
-    fn take_sender(&mut self) -> Result<Sender<Audio>> {
+    fn clone_sender(&mut self) -> Result<Sender<Audio>> {
         let Some(sender) = self.sender.clone() else {
             return Err(CoreError::Other(anyhow!("sender absent")))
         };

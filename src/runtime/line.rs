@@ -129,7 +129,7 @@ impl<P: Provider> TranslationLine<P> {
         let Some(mut playback) = self.audio_output.take() else {
             return Err(CoreError::Other(anyhow!("audio output not found")));
         };
-        let output_tx = playback.take_sender()?;
+        let output_tx = playback.clone_sender()?;
         playback.start()?;
         self.audio_output = Some(playback);
 

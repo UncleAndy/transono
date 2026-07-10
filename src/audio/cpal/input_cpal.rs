@@ -12,9 +12,16 @@ use crate::audio::AudioInput;
 use crate::audio::cpal::sample_to_pcm_format;
 
 pub struct AudioInputCpal {
+    name: String,
     stream: Stream,
     format: AudioFormat,
     receiver: Option<Receiver<Audio>>,
+}
+
+impl Drop for AudioInputCpal {
+    fn drop(&mut self) {
+        let _ = self.stream.pause();
+    }
 }
 
 impl AudioInputCpal {
@@ -70,6 +77,7 @@ impl AudioInputCpal {
         };
 
         Ok(Self {
+            name: device.to_string(),
             stream,
             format,
             receiver: Some(rx),
@@ -112,9 +120,20 @@ impl AudioInputCpal {
                 let audio =
                     Audio::new(buffer.into_generic_buffer());
 
-                let _ =
-                    sender.blocking_send(audio);
+                if sender.is_closed() {
+                    return;
+                }
 
+                match sender.try_send(audio) {
+                    Ok(_) => {}
+                    Err(mpsc::error::TrySendError::Full(_)) => {
+                        // увеличить счетчик dropped_frames
+                    }
+                    Err(mpsc::error::TrySendError::Closed(_)) => {
+                        // линия уже остановлена
+                        return;
+                    }
+                }
             },
             move |err| {
                 eprintln!("capture: {err}");

@@ -18,7 +18,7 @@ impl InputPort {
 }
 
 impl AudioOutput for InputPort {
-    fn take_sender(&mut self) -> crate::core::error::Result<Sender<Audio>> {
+    fn clone_sender(&mut self) -> crate::core::error::Result<Sender<Audio>> {
         Ok(self.sender.clone())
     }
 

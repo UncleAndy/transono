@@ -181,16 +181,16 @@ async fn main() -> Result<()> {
     let provider_back = OpenAITranslationProvider::new(config_back);
 
     let from_speaker_virt = AudioInputCpal::new(from_speaker)?;
-    let output = AudioOutputCpal::new(playback)?;
+    let output_hw = AudioOutputCpal::new(playback)?;
 
     let input_back_sample_rate = from_speaker_virt.format().sample_rate;
-    let output_back_sample_rate = output.format().sample_rate;
+    let output_back_sample_rate = output_hw.format().sample_rate;
 
     // TranslationLine
 
     // Для отладки - выход линка на вход Line
     let mut line_back =
-        TranslationLine::new(provider_back, Box::new(link_output), Box::new(output)).await?;
+        TranslationLine::new(provider_back, Box::new(link_output), Box::new(output_hw)).await?;
 
     //let mut line_back =
     //    TranslationLine::new(provider_back, Box::new(from_speaker_virt), Box::new(output)).await?;
@@ -234,10 +234,20 @@ async fn main() -> Result<()> {
 
     println!("Stopping...");
 
+    println!("Stop back line...");
     line_back.stop().await?;
+//    drop(line_back);
+    println!("Stop direct line...");
     line.stop().await?;
-
+//    drop(line);
+/*
+    println!("Drop virtual devices...");
     drop(virtual_devices);
+    drop(to_microphone_virt);
+    println!("pause...");
+    drop(from_speaker_virt);
+    println!("paused.");
+ */
 
     println!("Done.");
 
@@ -289,13 +299,13 @@ fn create_pair(lang: &str, prefix: &str) -> Result<VirtualDevicePair> {
     let output_name = format!(
         "Translator.{}.{}.Speaker",
         lang.to_uppercase(),
-        prefix.to_uppercase(),
+        prefix,
     );
 
     let input_name = format!(
         "Translator.{}.{}.Microphone",
         lang.to_uppercase(),
-        prefix.to_uppercase(),
+        prefix,
     );
 
     let sink_module = load_module(
