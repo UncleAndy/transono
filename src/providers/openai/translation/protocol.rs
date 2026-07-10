@@ -4,7 +4,7 @@ use crate::core::error::{ProtocolError, Result};
 use crate::core::transport::TransportData;
 use crate::providers::openai::translation::{ProtocolCommand, ProtocolEvent};
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct TranslationProtocol;
 
 impl TranslationProtocol {

@@ -19,10 +19,13 @@ use crate::providers::openai::realtime::{
     config::OpenAIRealtimeConfig, events::ProtocolEvent, protocol::RealtimeProtocol,
 };
 
+use tokio_tungstenite::tungstenite::{Message, Utf8Bytes};
+use crate::core::transport::TransportData;
+
 pub struct RealtimeSession {
     closed: bool,
 
-    encoder: Box<dyn AudioEncoder>,
+    encoder: Option<Box<dyn AudioEncoder>>,
     decoder: Box<dyn AudioDecoder>,
 
     transport: WebSocketTransport,
@@ -31,27 +34,102 @@ pub struct RealtimeSession {
     config: OpenAIRealtimeConfig,
 }
 
+struct RealtimeSender {
+    encoder: Box<dyn AudioEncoder>,
+    writer_tx: mpsc::Sender<Message>,
+    protocol: RealtimeProtocol,
+}
+
+impl RealtimeSender {
+    async fn send(&mut self, command: ProtocolCommand) -> Result<()> {
+        let data = self.protocol.encode(&command)?;
+        let message = match data {
+            TransportData::Text(data) => {
+                Message::Text(unsafe { Utf8Bytes::from_bytes_unchecked(data) })
+            }
+            TransportData::Binary(data) => Message::Binary(data),
+        };
+        self.writer_tx.send(message).await.map_err(|_| CoreError::Transport(crate::core::error::TransportError::ConnectionClosed))?;
+        Ok(())
+    }
+
+    async fn send_audio(&mut self, audio: Audio) -> Result<()> {
+        let pcm = audio.to_pcm()?;
+        let encoded = self.encoder.encode(&pcm)?;
+
+        self.send(InputAudioBufferAppend::new(encoded.bytes().clone()))
+            .await?;
+
+        Ok(())
+    }
+}
+
 impl ProviderSession for RealtimeSession {
     fn spawn(
         mut self,
         mut capture_rx: mpsc::Receiver<Audio>,
         playback_tx: mpsc::Sender<Audio>,
-        mut pipelines: Pipelines,
+        pipelines: Pipelines,
         cancel: CancellationToken,
     ) -> JoinHandle<Result<Pipelines>> {
         tokio::spawn(async move {
             let mut stdout = io::stdout();
 
+            // Разделяем пайплайны
+            let stats = pipelines.stats.clone();
+            let mut input_pipeline = pipelines.input;
+            let mut output_pipeline = pipelines.output;
+
+            // Создаем Sender для input_task
+            let mut sender = RealtimeSender {
+                encoder: self.encoder.take().expect("encoder missing"),
+                writer_tx: self.transport.clone_sender(),
+                protocol: self.protocol.clone(),
+            };
+
+            let cancel_input = cancel.clone();
+            let input_task = tokio::spawn(async move {
+                loop {
+                    tokio::select! {
+                        _ = cancel_input.cancelled() => break,
+                        audio = capture_rx.recv() => {
+                            match audio {
+                                Some(audio) => {
+                                    let capture_ts = audio.capture_timestamp();
+                                    let (audio, pipeline_duration) = input_pipeline.process(audio)?;
+
+                                    let processing_latency = capture_ts.elapsed();
+                                    if processing_latency > std::time::Duration::from_millis(100) {
+                                        eprintln!(
+                                            "High input latency: total={:?}, pipeline={:?}",
+                                            processing_latency,
+                                            pipeline_duration
+                                        );
+                                    }
+
+                                    // Отправляем аудио напрямую из input_task
+                                    tokio::select! {
+                                        _ = cancel_input.cancelled() => break,
+                                        res = sender.send_audio(audio) => {
+                                            if let Err(e) = res {
+                                                eprintln!("Error sending audio: {}", e);
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                                None => break,
+                            }
+                        }
+                    }
+                }
+                Ok(input_pipeline)
+            });
+
             loop {
                 tokio::select! {
                     _ = cancel.cancelled() => {
                         break;
-                    }
-
-                    Some(audio) = capture_rx.recv() => {
-                        let audio = pipelines.input.process(audio)?;
-
-                        self.send_audio(audio).await?;
                     }
 
                     event = self.next_event() => {
@@ -87,12 +165,24 @@ impl ProviderSession for RealtimeSession {
                                 // println!("{}", msg)
                             }
                             SessionEvent::Audio(audio) => {
-                                let audio = pipelines.output.process(audio)?;
+                                let (audio, pipeline_duration) = output_pipeline.process(audio)?;
 
-                                playback_tx
-                                    .send(audio)
-                                    .await
-                                    .map_err(|_| CoreError::Other(anyhow!("playback channel closed")))?;
+                                let total_latency = audio.capture_timestamp().elapsed();
+
+                                if total_latency > std::time::Duration::from_millis(500) {
+                                     eprintln!(
+                                        "High E2E latency: total={:?}, pipeline={:?}",
+                                        total_latency,
+                                        pipeline_duration
+                                    );
+                                }
+
+                                tokio::select! {
+                                    _ = cancel.cancelled() => break,
+                                    res = playback_tx.send(audio) => {
+                                        res.map_err(|_| CoreError::Other(anyhow!("playback channel closed")))?;
+                                    }
+                                }
 
                             }
 
@@ -117,7 +207,16 @@ impl ProviderSession for RealtimeSession {
 
             self.close().await?;
 
-            Ok(pipelines)
+            // Собираем пайплайны обратно
+            let input_pipeline = input_task.await
+                .map_err(|e| CoreError::Other(anyhow!("input task panicked: {}", e)))?
+                .map_err(|e: CoreError| CoreError::Other(anyhow!("input task error: {}", e)))?;
+
+            Ok(Pipelines {
+                input: input_pipeline,
+                output: output_pipeline,
+                stats,
+            })
         })
     }
 }
@@ -129,14 +228,14 @@ impl Session for RealtimeSession {
             return Err(CoreError::Other(anyhow::Error::msg("session closed")));
         }
 
+        let encoder = self.encoder.as_mut().ok_or_else(|| CoreError::Other(anyhow!("encoder taken")))?;
+
         let pcm = audio.to_pcm()?;
 
-        let encoded = self.encoder.encode(&pcm)?;
+        let encoded = encoder.encode(&pcm)?;
 
-        self.send(InputAudioBufferAppend::new(
-            encoded.bytes().clone(),
-        ))
-        .await?;
+        self.send(InputAudioBufferAppend::new(encoded.bytes().clone()))
+            .await?;
 
         Ok(())
     }
@@ -181,7 +280,7 @@ impl RealtimeSession {
             closed: false,
             transport,
             protocol: RealtimeProtocol::new(),
-            encoder: AudioCodecs::encoder(&format)?,
+            encoder: Some(AudioCodecs::encoder(&format)?),
             decoder: AudioCodecs::decoder(&format)?,
             config: config.clone(),
         })

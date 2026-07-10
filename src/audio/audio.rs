@@ -1,6 +1,7 @@
 use std::fmt;
 use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
+use std::time::Instant;
 
 use symphonia::core::audio::conv::{ConvertibleSample, FromSample};
 use symphonia::core::audio::{AudioBuffer, AudioMut, AudioSpec, GenericAudioBuffer};
@@ -13,6 +14,7 @@ use crate::core::error::Result;
 #[derive(Clone)]
 pub struct Audio {
     buffer: Arc<GenericAudioBuffer>,
+    capture_timestamp: Instant,
 }
 
 impl Audio {
@@ -21,7 +23,22 @@ impl Audio {
     ) -> Self {
         Self {
             buffer: Arc::new(buffer),
+            capture_timestamp: Instant::now(),
         }
+    }
+
+    pub fn new_with_timestamp(
+        buffer: GenericAudioBuffer,
+        timestamp: Instant,
+    ) -> Self {
+        Self {
+            buffer: Arc::new(buffer),
+            capture_timestamp: timestamp,
+        }
+    }
+
+    pub fn capture_timestamp(&self) -> Instant {
+        self.capture_timestamp
     }
 
     pub fn buffer(&self) -> Arc<GenericAudioBuffer> {
@@ -80,6 +97,9 @@ impl Audio {
             *pcm = PcmAudio::new(spec, buffer.frames());
         }
 
+        pcm.capture_timestamp = self.capture_timestamp;
+        pcm.processing_timestamp = Instant::now();
+
         let frames = pcm.frames();
         let mut slices: Vec<&mut [f32]> = pcm.data
             .chunks_exact_mut(frames)
@@ -98,10 +118,14 @@ impl Audio {
             .chunks_exact(frames)
             .collect();
 
-        Ok(Self::from_planar::<f32>(
+        let mut audio = Self::from_planar::<f32>(
             pcm.spec.clone(),
             &refs,
-        ))
+        );
+
+        audio.capture_timestamp = pcm.capture_timestamp;
+
+        Ok(audio)
     }
 }
 
@@ -119,6 +143,7 @@ macro_rules! impl_audio_from {
             fn from(buffer: AudioBuffer<$sample>) -> Self {
                 Self {
                     buffer: Arc::new(GenericAudioBuffer::$variant(buffer)),
+                    capture_timestamp: Instant::now(),
                 }
             }
         }

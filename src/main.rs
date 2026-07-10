@@ -247,7 +247,12 @@ async fn main() -> Result<()> {
     println!("Stop direct line...");
     line.stop().await?;
 
-    println!("Remove virtual devices...");
+    println!("\nDirect Line Latency:");
+    print_latency_stats(line.latency());
+    println!("\nBack Line Latency:");
+    print_latency_stats(line_back.latency());
+
+    println!("\nRemove virtual devices...");
     drop(virtual_devices);
 
     VirtualDevices::cleanup()?;
@@ -255,6 +260,24 @@ async fn main() -> Result<()> {
     println!("Done.");
 
     Ok(())
+}
+
+fn print_latency_stats(snapshot: realtime_translator::audio::LatencySnapshot) {
+    println!("---------------------------------------------------------------");
+    println!("Stage             | Min    | Avg    | Max    | Last   |");
+    println!("---------------------------------------------------------------");
+    print_metric("Input Pipeline ", snapshot.input_pipeline);
+    print_metric("Input Total    ", snapshot.input_total);
+    print_metric("Output Pipeline", snapshot.output_pipeline);
+    print_metric("Output Total   ", snapshot.output_total);
+    println!("---------------------------------------------------------------");
+}
+
+fn print_metric(name: &str, m: realtime_translator::audio::MetricSnapshot) {
+    println!(
+        "{} | {:6.2} | {:6.2} | {:6.2} | {:6.2} |",
+        name, m.min_ms, m.avg_ms, m.max_ms, m.last_ms
+    );
 }
 
 #[derive(Clone)]

@@ -1,9 +1,10 @@
 use futures_util::{
     SinkExt,
     StreamExt,
-    stream::{SplitSink, SplitStream},
+    stream::SplitStream,
 };
 use bytes::Bytes;
+use tokio::sync::mpsc;
 use tokio::net::TcpStream;
 use tokio_tungstenite::{
     connect_async,
@@ -22,12 +23,11 @@ use crate::core::{
 use crate::core::error::TransportError;
 
 type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
-type Writer = SplitSink<Socket, Message>;
 type Reader = SplitStream<Socket>;
 
 pub struct WebSocketTransport {
-    writer: Writer,
-    reader: Reader,
+    writer_tx: mpsc::Sender<Message>,
+    reader: Option<Reader>,
 }
 
 impl WebSocketTransport {
@@ -42,12 +42,32 @@ impl WebSocketTransport {
                 .await
                 .map_err(TransportError::from)?;
 
-        let (writer, reader) = socket.split();
+        let (mut writer, reader) = socket.split();
+
+        let (tx, mut rx) = mpsc::channel::<Message>(100);
+
+        // Фоновая задача для отправки
+        tokio::spawn(async move {
+            while let Some(msg) = rx.recv().await {
+                if let Err(_) = writer.send(msg).await {
+                    break;
+                }
+            }
+            let _ = writer.close().await;
+        });
 
         Ok(Self {
-            writer,
-            reader,
+            writer_tx: tx,
+            reader: Some(reader),
         })
+    }
+
+    pub fn clone_sender(&self) -> mpsc::Sender<Message> {
+        self.writer_tx.clone()
+    }
+
+    pub fn take_reader(&mut self) -> Option<Reader> {
+        self.reader.take()
     }
 }
 
@@ -67,10 +87,10 @@ impl Transport for WebSocketTransport {
             }
         };
 
-        self.writer
+        self.writer_tx
             .send(message)
             .await
-            .map_err(TransportError::from)?;
+            .map_err(|_| CoreError::Transport(TransportError::ConnectionClosed))?;
 
         Ok(())
     }
@@ -78,9 +98,10 @@ impl Transport for WebSocketTransport {
     async fn recv(
         &mut self,
     ) -> Result<TransportData> {
+        let reader = self.reader.as_mut()
+            .ok_or(CoreError::Transport(TransportError::ConnectionClosed))?;
         loop {
-            let message = self
-                .reader
+            let message = reader
                 .next()
                 .await
                 .ok_or(CoreError::Transport(TransportError::ConnectionClosed))?
@@ -96,10 +117,7 @@ impl Transport for WebSocketTransport {
                 }
 
                 Message::Ping(data) => {
-                    self.writer.send(
-                            Message::Pong(data)
-                        ).await
-                        .map_err(TransportError::from)?;
+                    let _ = self.writer_tx.send(Message::Pong(data)).await;
                     continue;
                 }
 
@@ -108,7 +126,6 @@ impl Transport for WebSocketTransport {
                 }
 
                 Message::Frame(_) => {
-                    // Internal tungstenite frame representation.
                     continue;
                 }
 
@@ -120,30 +137,26 @@ impl Transport for WebSocketTransport {
     }
 
     async fn close(&mut self) -> Result<()> {
-        self.writer
-            .send(Message::Close(None))
-            .await
-            .map_err(TransportError::from)?;
+        let _ = self.writer_tx.send(Message::Close(None)).await;
 
-        while let Some(message) = self.reader.next().await {
-            match message.map_err(TransportError::from)? {
-                Message::Close(_) => {
-                    return Ok(());
+        if let Some(mut reader) = self.reader.take() {
+            let timeout = std::time::Duration::from_secs(2);
+            let writer_tx = self.writer_tx.clone();
+            let _ = tokio::time::timeout(timeout, async move {
+                while let Some(message) = reader.next().await {
+                    match message.map_err(TransportError::from) {
+                        Ok(Message::Close(_)) => {
+                            break;
+                        }
+
+                        Ok(Message::Ping(data)) => {
+                            let _ = writer_tx.send(Message::Pong(data)).await;
+                        }
+
+                        _ => {}
+                    }
                 }
-
-                Message::Ping(data) => {
-                    self.writer
-                        .send(Message::Pong(data))
-                        .await
-                        .map_err(TransportError::from)?;
-                }
-
-                Message::Pong(_) => {}
-
-                _ => {
-                    // Игнорируем остальные сообщения во время закрытия.
-                }
-            }
+            }).await;
         }
 
         Ok(())

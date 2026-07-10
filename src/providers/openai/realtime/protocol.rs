@@ -5,7 +5,7 @@ use crate::core::transport::TransportData;
 use crate::providers::openai::realtime::commands::ProtocolCommand;
 use crate::providers::openai::realtime::events::ProtocolEvent;
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct RealtimeProtocol;
 
 impl RealtimeProtocol {

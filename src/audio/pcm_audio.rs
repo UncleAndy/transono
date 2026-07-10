@@ -12,10 +12,8 @@ pub struct PcmAudio {
 
     #[allow(unused)]
     pub(crate) sequence: u64,
-    #[allow(unused)]
-    pub(crate) capture_timestamp: Instant,
-    #[allow(unused)]
-    pub(crate) processing_timestamp: Instant,
+    pub capture_timestamp: Instant,
+    pub processing_timestamp: Instant,
 }
 
 impl PcmAudio {
@@ -79,30 +77,33 @@ impl PcmAudio {
         }
 
         if channels != old_channels {
-            // Если количество каналов меняется, это сложнее.
-            // Но обычно мы меняем только фреймы или пересоздаем целиком.
+            // При изменении количества каналов планарная структура меняется.
+            // Пока просто пересоздаем данные.
             self.data.resize(frames * channels, 0.0);
-            if frames != old_frames {
-                 // Тут нужна сложная логика перемещения данных если каналов > 1
-                 // Но для простоты пока просто обнулим или переаллоцируем.
-                 // В реальности ресемплер вызывает это.
-                 if old_channels > 1 && old_frames > 0 {
-                      // TODO: корректный ресайз планарных данных
-                 }
-            }
-        } else {
-            // Количество каналов то же, меняем фреймы.
-            if frames != old_frames {
+            self.data.fill(0.0);
+        } else if frames != old_frames {
+            if frames > old_frames {
+                // Увеличиваем: сначала ресайз, потом сдвиг в конец
                 self.data.resize(frames * channels, 0.0);
                 if channels > 1 && old_frames > 0 {
-                    // Перемещаем каналы (кроме первого)
                     for i in (1..channels).rev() {
                         let old_start = i * old_frames;
                         let new_start = i * frames;
-                        let count = old_frames.min(frames);
-                        self.data.copy_within(old_start..old_start + count, new_start);
+                        self.data.copy_within(old_start..old_start + old_frames, new_start);
+                        // Обнуляем старое место (опционально, так как там будут данные следующего канала)
+                        self.data[old_start..new_start].fill(0.0);
                     }
                 }
+            } else {
+                // Уменьшаем: сначала сдвиг в начало, потом ресайз
+                if channels > 1 && frames > 0 {
+                    for i in 1..channels {
+                        let old_start = i * old_frames;
+                        let new_start = i * frames;
+                        self.data.copy_within(old_start..old_start + frames, new_start);
+                    }
+                }
+                self.data.resize(frames * channels, 0.0);
             }
         }
 
@@ -115,4 +116,56 @@ impl PcmAudio {
 pub enum Endianness {
     Little,
     Big,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use symphonia::core::audio::Position;
+
+    #[test]
+    fn test_pcm_audio_resize_stereo_shrink() {
+        let spec = AudioSpec::new(44100, Channels::Positioned(Position::FRONT_LEFT | Position::FRONT_RIGHT));
+        let mut pcm = PcmAudio::new(spec, 100);
+        
+        // Заполним данными
+        for i in 0..100 {
+            pcm.data[i] = 1.0;     // Left
+            pcm.data[100 + i] = 2.0; // Right
+        }
+        
+        // Уменьшаем до 50 фреймов
+        pcm.resize(50, 2);
+        
+        assert_eq!(pcm.frames(), 50);
+        assert_eq!(pcm.data.len(), 100);
+        
+        for i in 0..50 {
+            assert_eq!(pcm.data[i], 1.0, "Left channel at {}", i);
+            assert_eq!(pcm.data[50 + i], 2.0, "Right channel at {}", i);
+        }
+    }
+
+    #[test]
+    fn test_pcm_audio_resize_stereo_grow() {
+        let spec = AudioSpec::new(44100, Channels::Positioned(Position::FRONT_LEFT | Position::FRONT_RIGHT));
+        let mut pcm = PcmAudio::new(spec, 50);
+        
+        // Заполним данными
+        for i in 0..50 {
+            pcm.data[i] = 1.0;
+            pcm.data[50 + i] = 2.0;
+        }
+        
+        // Увеличиваем до 100 фреймов
+        pcm.resize(100, 2);
+        
+        assert_eq!(pcm.frames(), 100);
+        assert_eq!(pcm.data.len(), 200);
+        
+        for i in 0..50 {
+            assert_eq!(pcm.data[i], 1.0);
+            assert_eq!(pcm.data[100 + i], 2.0);
+        }
+    }
 }

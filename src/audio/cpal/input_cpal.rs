@@ -107,7 +107,11 @@ impl AudioInputCpal {
 
                 let frames =
                     data.len() / spec.channels().count();
-
+ 
+                if frames == 0 {
+                    return;
+                }
+ 
                 let mut buffer =
                     AudioBuffer::<T>::new(
                         spec.clone(),
