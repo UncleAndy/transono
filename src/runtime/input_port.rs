@@ -1,6 +1,7 @@
 use tokio::sync::mpsc::Sender;
 use crate::audio::{Audio, AudioFormat, AudioOutput};
 
+#[derive(Clone)]
 pub struct InputPort {
     format: AudioFormat,
     sender: Sender<Audio>
