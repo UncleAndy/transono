@@ -12,6 +12,7 @@ use crate::audio::AudioInput;
 use crate::audio::cpal::sample_to_pcm_format;
 
 pub struct AudioInputCpal {
+    #[allow(unused)]
     name: String,
     stream: Stream,
     format: AudioFormat,

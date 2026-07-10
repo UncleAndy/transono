@@ -9,6 +9,7 @@ use crate::audio::{sample_to_pcm_format, Audio, AudioFormat, AudioOutput};
 use crate::core::error::{CoreError, Result};
 
 pub struct AudioOutputCpal {
+    #[allow(unused)]
     name: String,
     stream: Stream,
     format: AudioFormat,

@@ -7,11 +7,13 @@ use tokio::signal;
 
 use realtime_translator::audio::processors::channel_converter::ChannelConverter;
 use realtime_translator::audio::processors::resampler::Resampler;
-use realtime_translator::audio::{AudioDevicesCpal, AudioFormat, AudioInput, AudioInputCpal, AudioOutput, AudioOutputCpal, Endianness, PcmFormat, Processor};
+use realtime_translator::audio::{
+    AudioDevicesCpal, AudioInput, AudioInputCpal, AudioOutput, AudioOutputCpal, Processor,
+};
 use realtime_translator::providers::openai::translation::{
     OpenAITranslationConfig, OpenAITranslationProvider,
 };
-use realtime_translator::runtime::{AudioLink, TranslationLine};
+use realtime_translator::runtime::TranslationLine;
 
 /*
    Создания устройства воспроизведения (Виртуального динамика):
@@ -47,9 +49,7 @@ async fn main() -> Result<()> {
     println!("Waiting...");
 
     loop {
-        let out = Command::new("wpctl")
-            .arg("status")
-            .output()?;
+        let out = Command::new("wpctl").arg("status").output()?;
 
         let text = String::from_utf8_lossy(&out.stdout);
 
@@ -74,7 +74,8 @@ async fn main() -> Result<()> {
     let to_microphone = host
         .output_devices()?
         .find(|d| {
-            d.to_string().contains(&virtual_output_name) && d.description().unwrap().supports_output()
+            d.to_string().contains(&virtual_output_name)
+                && d.description().unwrap().supports_output()
         })
         .expect("virtual microphone not found");
 
@@ -117,18 +118,19 @@ async fn main() -> Result<()> {
     println!("Playback: {} Hz", output_sample_rate);
 
     let input_hw = AudioInputCpal::new(capture)?;
-    #[allow(unused)]
     let to_microphone_virt = AudioOutputCpal::new(to_microphone)?;
 
-    let link_format = AudioFormat {
-        sample_rate: output_sample_rate,
-        channels: stereo.count() as u16,
-        sample_format: PcmFormat::F32(Endianness::Little),
-    };
+    /*
+       let link_format = AudioFormat {
+           sample_rate: output_sample_rate,
+           channels: stereo.count() as u16,
+           sample_format: PcmFormat::F32(Endianness::Little),
+       };
 
-    // Для тестирования - Link виртуального микрофона с виртуальным динамиком
-    let (link_input, link_output) =
-        AudioLink::new_ports(link_format, 32);
+       // Для тестирования - Link виртуального микрофона с виртуальным динамиком
+       let (link_input, link_output) =
+           AudioLink::new_ports(link_format, 32);
+    */
 
     /*
         ------------------------------------------------------------------
@@ -139,11 +141,11 @@ async fn main() -> Result<()> {
     // TranslationLine
 
     // Для отладки
-    let mut line =
-        TranslationLine::new(provider, Box::new(input_hw), Box::new(link_input)).await?;
+    //let mut line =
+    //    TranslationLine::new(provider, Box::new(input_hw), Box::new(link_input)).await?;
 
-    // let mut line =
-    //     TranslationLine::new(provider, Box::new(input_hw), Box::new(to_microphone_virt)).await?;
+    let mut line =
+        TranslationLine::new(provider, Box::new(input_hw), Box::new(to_microphone_virt)).await?;
 
     // Input DSP
     {
@@ -189,11 +191,15 @@ async fn main() -> Result<()> {
     // TranslationLine
 
     // Для отладки - выход линка на вход Line
-    let mut line_back =
-        TranslationLine::new(provider_back, Box::new(link_output), Box::new(output_hw)).await?;
+    // let mut line_back =
+    //    TranslationLine::new(provider_back, Box::new(link_output), Box::new(output_hw)).await?;
 
-    //let mut line_back =
-    //    TranslationLine::new(provider_back, Box::new(from_speaker_virt), Box::new(output)).await?;
+    let mut line_back = TranslationLine::new(
+        provider_back,
+        Box::new(from_speaker_virt),
+        Box::new(output_hw),
+    )
+    .await?;
 
     // Input DSP
     {
@@ -236,18 +242,11 @@ async fn main() -> Result<()> {
 
     println!("Stop back line...");
     line_back.stop().await?;
-//    drop(line_back);
     println!("Stop direct line...");
     line.stop().await?;
-//    drop(line);
-/*
-    println!("Drop virtual devices...");
+
+    println!("Remove virtual devices...");
     drop(virtual_devices);
-    drop(to_microphone_virt);
-    println!("pause...");
-    drop(from_speaker_virt);
-    println!("paused.");
- */
 
     println!("Done.");
 
@@ -280,10 +279,11 @@ impl VirtualDevices {
     pub fn create(lang: &str) -> Result<(Self, String, String)> {
         let to_pair = create_pair(lang, "ToMeeting")?;
         let from_pair = create_pair(lang, "FromMeeting")?;
-        Ok((Self {
-            to: to_pair.clone(),
-            from: from_pair.clone(),
-        },
+        Ok((
+            Self {
+                to: to_pair.clone(),
+                from: from_pair.clone(),
+            },
             to_pair.output_name,
             from_pair.input_name,
         ))
@@ -296,17 +296,9 @@ fn create_pair(lang: &str, prefix: &str) -> Result<VirtualDevicePair> {
     let sink_name = format!("translator_{lang}_{prefix}_speaker");
     let source_name = format!("translator_{lang}_{prefix}_microphone");
 
-    let output_name = format!(
-        "Translator.{}.{}.Speaker",
-        lang.to_uppercase(),
-        prefix,
-    );
+    let output_name = format!("Translator.{}.{}.Speaker", lang.to_uppercase(), prefix,);
 
-    let input_name = format!(
-        "Translator.{}.{}.Microphone",
-        lang.to_uppercase(),
-        prefix,
-    );
+    let input_name = format!("Translator.{}.{}.Microphone", lang.to_uppercase(), prefix,);
 
     let sink_module = load_module(
         "module-null-sink",
@@ -343,10 +335,12 @@ fn create_pair(lang: &str, prefix: &str) -> Result<VirtualDevicePair> {
 
 impl Drop for VirtualDevices {
     fn drop(&mut self) {
+        println!("Unload modules for virtual devices...");
         let _ = unload_module(self.from.source_module);
         let _ = unload_module(self.from.sink_module);
         let _ = unload_module(self.to.source_module);
         let _ = unload_module(self.to.sink_module);
+        println!("Unload modules done.");
     }
 }
 
