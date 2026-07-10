@@ -116,6 +116,7 @@ async fn main() -> Result<()> {
     println!("Playback: {} Hz", output_sample_rate);
 
     let input_hw = AudioInputCpal::new(capture)?;
+    #[allow(unused)]
     let to_microphone_virt = AudioOutputCpal::new(to_microphone)?;
 
     let link_format = AudioFormat {
@@ -226,7 +227,7 @@ async fn main() -> Result<()> {
     line.run().await?;
     line_back.run().await?;
 
-    println!("Connected.");
+    println!("Можете говорить.");
     println!("Press Ctrl+C to stop.");
 
     signal::ctrl_c().await?;

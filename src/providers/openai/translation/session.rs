@@ -58,8 +58,8 @@ impl ProviderSession for TranslationSession {
 
                     event = self.next_event() => {
                         match event? {
-                            SessionEvent::SessionStarted(msg) => {
-                                println!("{}", msg);
+                            SessionEvent::SessionStarted(_) => {
+                                // println!("{}", msg);
                                 // Отправляем конфиг в 'session.update'
                                 self.send(SessionUpdate(
                                     TranslationSessionUpdateEvent {
@@ -76,8 +76,8 @@ impl ProviderSession for TranslationSession {
                                     }
                                 )).await?;
                             }
-                            SessionEvent::SessionConfigured(msg) => {
-                                println!("{}", msg);
+                            SessionEvent::SessionConfigured(_) => {
+                                // println!("{}", msg);
                             }
                             SessionEvent::Audio(audio) => {
                                 let audio = pipelines.output.process(audio)?;
