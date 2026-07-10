@@ -281,8 +281,8 @@ impl VirtualDevices {
     /// - Строку с именем устройства воспроизведения для передачи аудио в микрофон
     /// - Строку с именем устройства чтения для чтения аудиоданных со встречи
     pub fn create(lang: &str) -> Result<(Self, String, String)> {
-        let to_pair = create_pair(lang, "ToMeeting", HiddenDevice::Input)?;
-        let from_pair = create_pair(lang, "FromMeeting", HiddenDevice::Output)?;
+        let to_pair = create_pair(lang, "ToMeeting", HiddenDevice::Output)?;
+        let from_pair = create_pair(lang, "FromMeeting", HiddenDevice::Input)?;
         Ok((
             Self {
                 to: to_pair.clone(),
