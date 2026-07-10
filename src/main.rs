@@ -1,5 +1,10 @@
 use anyhow::{Result, anyhow};
 use cpal::traits::{DeviceTrait, HostTrait};
+use std::process::Command;
+use std::time::Duration;
+use symphonia::core::audio::{AudioSpec, Channels, Position};
+use tokio::signal;
+
 use realtime_translator::audio::processors::channel_converter::ChannelConverter;
 use realtime_translator::audio::processors::resampler::Resampler;
 use realtime_translator::audio::{AudioDevicesCpal, AudioFormat, AudioInput, AudioInputCpal, AudioOutput, AudioOutputCpal, Endianness, PcmFormat, Processor};
@@ -7,10 +12,6 @@ use realtime_translator::providers::openai::translation::{
     OpenAITranslationConfig, OpenAITranslationProvider,
 };
 use realtime_translator::runtime::{AudioLink, TranslationLine};
-use std::process::Command;
-use std::time::Duration;
-use symphonia::core::audio::{AudioSpec, Channels, Position};
-use tokio::signal;
 
 /*
    Создания устройства воспроизведения (Виртуального динамика):
@@ -222,8 +223,7 @@ async fn main() -> Result<()> {
     ----------------------------------------------------------------------------------
      */
 
-    println!("Run...");
-
+    println!("Run lines...");
     line.run().await?;
     line_back.run().await?;
 
