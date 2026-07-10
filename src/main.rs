@@ -39,6 +39,8 @@ async fn main() -> Result<()> {
         .install_default()
         .expect("failed to install rustls provider");
 
+    VirtualDevices::cleanup()?;
+
     let (virtual_devices, virtual_output_name, virtual_input_name) =
         if let Ok(virtual_devices) = VirtualDevices::create("EN") {
             virtual_devices
@@ -248,6 +250,8 @@ async fn main() -> Result<()> {
     println!("Remove virtual devices...");
     drop(virtual_devices);
 
+    VirtualDevices::cleanup()?;
+
     println!("Done.");
 
     Ok(())
@@ -277,8 +281,8 @@ impl VirtualDevices {
     /// - Строку с именем устройства воспроизведения для передачи аудио в микрофон
     /// - Строку с именем устройства чтения для чтения аудиоданных со встречи
     pub fn create(lang: &str) -> Result<(Self, String, String)> {
-        let to_pair = create_pair(lang, "ToMeeting")?;
-        let from_pair = create_pair(lang, "FromMeeting")?;
+        let to_pair = create_pair(lang, "ToMeeting", HiddenDevice::Input)?;
+        let from_pair = create_pair(lang, "FromMeeting", HiddenDevice::Output)?;
         Ok((
             Self {
                 to: to_pair.clone(),
@@ -288,9 +292,60 @@ impl VirtualDevices {
             from_pair.input_name,
         ))
     }
+
+    pub fn cleanup() -> Result<()> {
+        let output = Command::new("pactl")
+            .args(["list", "short", "modules"])
+            .output()?;
+
+        if !output.status.success() {
+            return Err(anyhow!("failed to execute 'pactl list short modules'"));
+        }
+
+        let stdout = String::from_utf8(output.stdout)?;
+
+        // Сначала собираем id, потом удаляем.
+        // Это безопаснее, если список модулей во время удаления изменится.
+        let mut modules = Vec::<u32>::new();
+
+        for line in stdout.lines() {
+            if !(line.contains("translator_") || line.contains("Translator.")) {
+                continue;
+            }
+
+            let Some(id) = line.split_whitespace().next() else {
+                continue;
+            };
+
+            if let Ok(id) = id.parse::<u32>() {
+                modules.push(id);
+            }
+        }
+
+        // Лучше удалять в обратном порядке:
+        // сначала remap-source, потом null-sink.
+        modules.sort_unstable_by(|a, b| b.cmp(a));
+
+        for id in modules {
+            let status = Command::new("pactl")
+                .args(["unload-module", &id.to_string()])
+                .status()?;
+
+            if !status.success() {
+                eprintln!("Failed to unload PulseAudio module {}", id);
+            }
+        }
+
+        Ok(())
+    }
 }
 
-fn create_pair(lang: &str, prefix: &str) -> Result<VirtualDevicePair> {
+enum HiddenDevice {
+    Input,
+    Output,
+}
+
+fn create_pair(lang: &str, prefix: &str, hide_device: HiddenDevice) -> Result<VirtualDevicePair> {
     let lang = lang.to_lowercase();
 
     let sink_name = format!("translator_{lang}_{prefix}_speaker");
@@ -300,17 +355,33 @@ fn create_pair(lang: &str, prefix: &str) -> Result<VirtualDevicePair> {
 
     let input_name = format!("Translator.{}.{}.Microphone", lang.to_uppercase(), prefix,);
 
+    let sink_properties = match hide_device {
+        HiddenDevice::Output => {
+            &format!("device.description={output_name} media.class=Audio/Sink/Internal")
+        }
+        HiddenDevice::Input => {
+            &format!("device.description={output_name}")
+        }
+    };
     let sink_module = load_module(
         "module-null-sink",
         &[
             ("sink_name", &sink_name),
             (
                 "sink_properties",
-                &format!("device.description={output_name}"),
+                sink_properties,
             ),
         ],
     )?;
 
+    let sink_properties = match hide_device {
+        HiddenDevice::Output => {
+            &format!("device.description={input_name}")
+        }
+        HiddenDevice::Input => {
+            &format!("device.description={input_name} media.class=Audio/Sink/Internal")
+        }
+    };
     let source_module = load_module(
         "module-remap-source",
         &[
@@ -318,7 +389,7 @@ fn create_pair(lang: &str, prefix: &str) -> Result<VirtualDevicePair> {
             ("source_name", &source_name),
             (
                 "source_properties",
-                &format!("device.description={input_name}"),
+                sink_properties,
             ),
         ],
     )?;
