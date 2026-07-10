@@ -2,7 +2,7 @@ use anyhow::{Result, anyhow};
 use cpal::traits::{DeviceTrait, HostTrait};
 use realtime_translator::audio::processors::channel_converter::ChannelConverter;
 use realtime_translator::audio::processors::resampler::Resampler;
-use realtime_translator::audio::{AudioDevicesCpal, AudioInputCpal, AudioOutput, AudioOutputCpal, Processor};
+use realtime_translator::audio::{AudioDevicesCpal, AudioInput, AudioInputCpal, AudioOutput, AudioOutputCpal, Processor};
 use realtime_translator::providers::openai::translation::{
     OpenAITranslationConfig, OpenAITranslationProvider,
 };
@@ -36,15 +36,12 @@ async fn main() -> Result<()> {
         .install_default()
         .expect("failed to install rustls provider");
 
-    let virtual_devices =
+    let (virtual_devices, virtual_output_name, virtual_input_name) =
         if let Ok(virtual_devices) = VirtualDevices::create("EN") {
             virtual_devices
         } else {
             panic!("Error creating virtual devices.")
         };
-
-    let virtual_input_name = virtual_devices.input_name();
-    let virtual_output_name = virtual_devices.output_name();
 
     println!("Waiting...");
 
@@ -73,38 +70,23 @@ async fn main() -> Result<()> {
 
     let host = devices.host();
 
-    let virtual_speaker = host
+    let to_microphone = host
         .output_devices()?
         .find(|d| {
-            d.to_string().eq(&virtual_output_name) && d.description().unwrap().supports_output()
-        })
-        .expect("virtual speaker not found");
-
-    for d in host.input_devices()?  {
-        println!("{:?}", d);
-    }
-
-    let virtual_microphone = host
-        .input_devices()?
-        .find(|d| {
-            d.to_string().eq(&virtual_input_name) && d.description().unwrap().supports_input()
+            d.to_string().contains(&virtual_output_name) && d.description().unwrap().supports_output()
         })
         .expect("virtual microphone not found");
+
+    let from_speaker = host
+        .input_devices()?
+        .find(|d| {
+            d.to_string().contains(&virtual_input_name) && d.description().unwrap().supports_input()
+        })
+        .expect("virtual speaker not found");
 
     println!("Translator App");
     println!("===========================");
     println!();
-
-    println!("Input device : {}", capture.description()?);
-    println!(
-        "Input format: {:?}",
-        capture.default_input_config()?.sample_format()
-    );
-    println!("Output device: {}", playback.description()?);
-    println!(
-        "Output format: {:?}",
-        playback.default_output_config()?.sample_format()
-    );
 
     let config = OpenAITranslationConfig::from_env()?.with_lang("en").clone();
 
@@ -126,19 +108,19 @@ async fn main() -> Result<()> {
 
     let provider = OpenAITranslationProvider::new(config);
 
+    let output_sample_rate = to_microphone.default_output_config()?.sample_rate();
     let input_sample_rate = capture.default_input_config()?.sample_rate();
-    let output_sample_rate = virtual_microphone.default_output_config()?.sample_rate();
 
     println!("Capture: {} Hz", input_sample_rate);
     println!("Remote : {} Hz", remote_spec.rate());
     println!("Playback: {} Hz", output_sample_rate);
 
-    let input = AudioInputCpal::new(capture)?;
-    let output_virtual = AudioOutputCpal::new(virtual_microphone)?;
+    let input_hw = AudioInputCpal::new(capture)?;
+    let to_microphone_virt = AudioOutputCpal::new(to_microphone)?;
 
     // Для тестирования - Link виртуального микрофона с виртуальным динамиком
     let (link_input, link_output) =
-        AudioLink::new_ports(*output_virtual.format(), 32);
+        AudioLink::new_ports(*to_microphone_virt.format(), 32);
 
     /*
         ------------------------------------------------------------------
@@ -150,10 +132,10 @@ async fn main() -> Result<()> {
 
     // Для отладки
     let mut line =
-        TranslationLine::new(provider, Box::new(input), Box::new(link_input)).await?;
+        TranslationLine::new(provider, Box::new(input_hw), Box::new(link_input)).await?;
 
-    //let mut line =
-    //    TranslationLine::new(provider, Box::new(input), Box::new(output_virtual)).await?;
+    // let mut line =
+    //     TranslationLine::new(provider, Box::new(input_hw), Box::new(to_microphone_virt)).await?;
 
     // Input DSP
     {
@@ -186,11 +168,15 @@ async fn main() -> Result<()> {
     */
 
     let config_back = OpenAITranslationConfig::from_env()?.with_lang("ru").clone();
-
+    let remote_back = config_back.audio_format();
+    let remote_back_spec = remote_back.spec().clone();
     let provider_back = OpenAITranslationProvider::new(config_back);
 
-    let _input_virtual = AudioInputCpal::new(virtual_speaker)?;
+    let from_speaker_virt = AudioInputCpal::new(from_speaker)?;
     let output = AudioOutputCpal::new(playback)?;
+
+    let input_back_sample_rate = from_speaker_virt.format().sample_rate;
+    let output_back_sample_rate = output.format().sample_rate;
 
     // TranslationLine
 
@@ -199,7 +185,7 @@ async fn main() -> Result<()> {
         TranslationLine::new(provider_back, Box::new(link_output), Box::new(output)).await?;
 
     //let mut line_back =
-    //    TranslationLine::new(provider_back, Box::new(input_virtual), Box::new(output)).await?;
+    //    TranslationLine::new(provider_back, Box::new(from_speaker_virt), Box::new(output)).await?;
 
     // Input DSP
     {
@@ -208,16 +194,16 @@ async fn main() -> Result<()> {
         ))))?;
 
         line_back.add_input_processor(Processor::Dsp(Box::new(Resampler::new(
-            AudioSpec::new(input_sample_rate, mono.clone()),
-            remote_spec.rate(),
+            AudioSpec::new(input_back_sample_rate, mono.clone()),
+            remote_back_spec.rate(),
         )?)))?;
     }
 
     // Output DSP
     {
         line_back.add_output_processor(Processor::Dsp(Box::new(Resampler::new(
-            AudioSpec::new(remote_spec.rate(), mono.clone()),
-            output_sample_rate,
+            AudioSpec::new(remote_back_spec.rate(), mono.clone()),
+            output_back_sample_rate,
         )?)))?;
 
         line_back.add_output_processor(Processor::Dsp(Box::new(ChannelConverter::new(
@@ -253,84 +239,97 @@ async fn main() -> Result<()> {
 
 #[derive(Clone)]
 pub struct VirtualDevices {
+    pub from: VirtualDevicePair,
+    pub to: VirtualDevicePair,
+}
+
+#[derive(Clone)]
+pub struct VirtualDevicePair {
     pub sink_name: String,
     pub source_name: String,
 
-    pub input_name: String,
     pub output_name: String,
+    pub input_name: String,
 
     sink_module: u32,
     source_module: u32,
 }
 
 impl VirtualDevices {
-    pub fn create(lang: &str) -> Result<Self> {
-        let lang = lang.to_lowercase();
-
-        let sink_name = format!("translator_{lang}_speaker");
-        let source_name = format!("translator_{lang}_microphone");
-
-        let input_name = format!("Translator.{}.Microphone", lang.to_uppercase());
-        let output_name = format!("Translator.{}.Speaker", lang.to_uppercase());
-
-        //
-        // Virtual speaker
-        //
-        let sink_module = load_module(
-            "module-null-sink",
-            &[
-                ("sink_name", &sink_name),
-                (
-                    "sink_properties",
-                    &format!(
-                        "device.description={}",
-                        output_name,
-                    ),
-                ),
-            ],
-        )?;
-
-        //
-        // Virtual microphone
-        //
-        let source_module = load_module(
-            "module-remap-source",
-            &[
-                ("master", &format!("{sink_name}.monitor")),
-                ("source_name", &source_name),
-                (
-                    "source_properties",
-                    &format!(
-                        "device.description={}",
-                        input_name,
-                    ),
-                ),
-            ],
-        )?;
-
-        Ok(Self {
-            sink_name,
-            source_name,
-            input_name,
-            output_name,
-            sink_module,
-            source_module,
-        })
+    /// Возвращает набор:
+    /// - Объект VirtualDevices для сохранения его времени жизни
+    /// - Строку с именем устройства воспроизведения для передачи аудио в микрофон
+    /// - Строку с именем устройства чтения для чтения аудиоданных со встречи
+    pub fn create(lang: &str) -> Result<(Self, String, String)> {
+        let to_pair = create_pair(lang, "ToMeeting")?;
+        let from_pair = create_pair(lang, "FromMeeting")?;
+        Ok((Self {
+            to: to_pair.clone(),
+            from: from_pair.clone(),
+        },
+            to_pair.output_name,
+            from_pair.input_name,
+        ))
     }
+}
 
-    pub fn input_name(&self) -> String {
-        self.input_name.clone()
-    }
+fn create_pair(lang: &str, prefix: &str) -> Result<VirtualDevicePair> {
+    let lang = lang.to_lowercase();
 
-    pub fn output_name(&self) -> String {
-        self.output_name.clone()
-    }
+    let sink_name = format!("translator_{lang}_{prefix}_speaker");
+    let source_name = format!("translator_{lang}_{prefix}_microphone");
+
+    let output_name = format!(
+        "Translator.{}.{}.Speaker",
+        lang.to_uppercase(),
+        prefix.to_uppercase(),
+    );
+
+    let input_name = format!(
+        "Translator.{}.{}.Microphone",
+        lang.to_uppercase(),
+        prefix.to_uppercase(),
+    );
+
+    let sink_module = load_module(
+        "module-null-sink",
+        &[
+            ("sink_name", &sink_name),
+            (
+                "sink_properties",
+                &format!("device.description={output_name}"),
+            ),
+        ],
+    )?;
+
+    let source_module = load_module(
+        "module-remap-source",
+        &[
+            ("master", &format!("{sink_name}.monitor")),
+            ("source_name", &source_name),
+            (
+                "source_properties",
+                &format!("device.description={input_name}"),
+            ),
+        ],
+    )?;
+
+    Ok(VirtualDevicePair {
+        sink_name,
+        source_name,
+        output_name,
+        input_name,
+        sink_module,
+        source_module,
+    })
 }
 
 impl Drop for VirtualDevices {
     fn drop(&mut self) {
-        let _ = unload_module(self.source_module);
-        let _ = unload_module(self.sink_module);
+        let _ = unload_module(self.from.source_module);
+        let _ = unload_module(self.from.sink_module);
+        let _ = unload_module(self.to.source_module);
+        let _ = unload_module(self.to.sink_module);
     }
 }
 
