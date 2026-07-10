@@ -184,7 +184,14 @@ impl<P: Provider> TranslationLine<P> {
         );
 
         self.state = LineState::Running;
-
+ 
         Ok(())
+    }
+}
+ 
+impl<P: Provider> Drop for TranslationLine<P> {
+    fn drop(&mut self) {
+        self.cancel.cancel();
+        let _ = self.stop_audio();
     }
 }
