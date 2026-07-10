@@ -2,7 +2,7 @@ use anyhow::{Result, anyhow};
 use cpal::traits::{DeviceTrait, HostTrait};
 use realtime_translator::audio::processors::channel_converter::ChannelConverter;
 use realtime_translator::audio::processors::resampler::Resampler;
-use realtime_translator::audio::{AudioDevicesCpal, AudioInput, AudioInputCpal, AudioOutput, AudioOutputCpal, Processor};
+use realtime_translator::audio::{AudioDevicesCpal, AudioFormat, AudioInput, AudioInputCpal, AudioOutput, AudioOutputCpal, Endianness, PcmFormat, Processor};
 use realtime_translator::providers::openai::translation::{
     OpenAITranslationConfig, OpenAITranslationProvider,
 };
@@ -118,9 +118,15 @@ async fn main() -> Result<()> {
     let input_hw = AudioInputCpal::new(capture)?;
     let to_microphone_virt = AudioOutputCpal::new(to_microphone)?;
 
+    let link_format = AudioFormat {
+        sample_rate: output_sample_rate,
+        channels: stereo.count() as u16,
+        sample_format: PcmFormat::F32(Endianness::Little),
+    };
+
     // Для тестирования - Link виртуального микрофона с виртуальным динамиком
     let (link_input, link_output) =
-        AudioLink::new_ports(*to_microphone_virt.format(), 32);
+        AudioLink::new_ports(link_format, 32);
 
     /*
         ------------------------------------------------------------------
