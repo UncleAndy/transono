@@ -80,9 +80,9 @@ impl Audio {
             *pcm = PcmAudio::new(spec, buffer.frames());
         }
 
-        let mut slices: Vec<&mut [f32]> = pcm.channels
-            .iter_mut()
-            .map(Vec::as_mut_slice)
+        let frames = pcm.frames();
+        let mut slices: Vec<&mut [f32]> = pcm.data
+            .chunks_exact_mut(frames)
             .collect();
 
         buffer.copy_to_slice_planar(&mut slices);
@@ -93,11 +93,9 @@ impl Audio {
     pub fn from_pcm(
         pcm: &PcmAudio,
     ) -> Result<Self> {
-
-        let refs: Vec<&[f32]> = pcm
-            .channels
-            .iter()
-            .map(Vec::as_slice)
+        let frames = pcm.frames();
+        let refs: Vec<&[f32]> = pcm.data
+            .chunks_exact(frames)
             .collect();
 
         Ok(Self::from_planar::<f32>(

@@ -74,13 +74,13 @@ async fn main() -> Result<()> {
     // Input DSP
     {
         line.add_input_processor(
-            Processor::Dsp(Box::new(
+            Processor::ChannelConverter(
                 ChannelConverter::new(mono.clone())
-            ))
+            )
         )?;
 
         line.add_input_processor(
-            Processor::Dsp(Box::new(
+            Processor::Resampler(
                 Resampler::new(
                     AudioSpec::new(
                         input_sample_rate,
@@ -88,14 +88,14 @@ async fn main() -> Result<()> {
                     ),
                     remote_spec.rate()
                 )?
-            ))
+            )
         )?;
     }
 
     // Output DSP
     {
         line.add_output_processor(
-            Processor::Dsp(Box::new(
+            Processor::Resampler(
                 Resampler::new(
                     AudioSpec::new(
                         remote_spec.rate(),
@@ -103,13 +103,13 @@ async fn main() -> Result<()> {
                     ),
                     output_sample_rate,
                 )?
-            ))
+            )
         )?;
 
         line.add_output_processor(
-            Processor::Dsp(Box::new(
+            Processor::ChannelConverter(
                 ChannelConverter::new(stereo.clone())
-            ))
+            )
         )?;
     }
 

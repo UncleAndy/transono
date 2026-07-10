@@ -6,7 +6,6 @@ use crate::core::error::{CoreError, Result};
 
 pub struct ChannelConverter {
     output_channels: Channels,
-    scratch: Vec<f32>,
 }
 
 impl ChannelConverter {
@@ -15,7 +14,6 @@ impl ChannelConverter {
     ) -> Self {
         Self {
             output_channels,
-            scratch: Vec::new(),
         }
     }
 
@@ -25,36 +23,23 @@ impl ChannelConverter {
     ) {
         let frames = pcm.frames();
 
-        self.scratch.clear();
-        self.scratch.resize(frames, 0.0);
-
-        let left = pcm.channel(0);
-        let right = pcm.channel(1);
-
         for i in 0..frames {
-            self.scratch[i] =
-                (left[i] + right[i]) * 0.5;
+            let left = pcm.data[i];
+            let right = pcm.data[i + frames];
+            pcm.data[i] = (left + right) * 0.5;
         }
 
-        pcm.replace_channels(
-            vec![std::mem::take(&mut self.scratch)],
-            self.output_channels.clone(),
-        );
+        pcm.data.truncate(frames);
+        pcm.set_channel_layout(self.output_channels.clone());
     }
 
     fn mono_to_stereo(
         &mut self,
         pcm: &mut PcmAudio,
     ) {
-        self.scratch.clear();
-        self.scratch.extend_from_slice(
-            pcm.channel(0),
-        );
-
-        pcm.add_channel(
-            &self.scratch,
-            self.output_channels.clone(),
-        );
+        let frames = pcm.frames();
+        pcm.data.extend_from_within(0..frames);
+        pcm.set_channel_layout(self.output_channels.clone());
     }
 }
 

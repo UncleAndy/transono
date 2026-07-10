@@ -1,15 +1,14 @@
 use std::time::Instant;
 use symphonia::core::audio::{AudioSpec, Channels};
 
-use crate::audio::PlanarAdapter;
-
 /// Internal DSP representation.
 ///
 /// The library supports arbitrary sample formats through `Audio`,
 /// but all built-in DSP processors currently operate on `f32`.
 pub struct PcmAudio {
     pub spec: AudioSpec,
-    pub channels: Vec<Vec<f32>>, // Один Vec на канал.
+    pub data: Vec<f32>, // Один плоский массив для всех каналов (планарный: [chan0][chan1]...).
+    pub(crate) frames: usize,
 
     #[allow(unused)]
     pub(crate) sequence: u64,
@@ -21,14 +20,13 @@ pub struct PcmAudio {
 
 impl PcmAudio {
     pub(crate) fn new(spec: AudioSpec, frames: usize) -> Self {
-        let mut channels = Vec::new();
-        for _ in 0..spec.channels().count() {
-            channels.push(vec![0.0; frames])
-        }
+        let channel_count = spec.channels().count();
+        let data = vec![0.0; frames * channel_count];
 
         Self {
             spec,
-            channels,
+            data,
+            frames,
             sequence: 0,
             capture_timestamp: Instant::now(),
             processing_timestamp: Instant::now(),
@@ -36,129 +34,23 @@ impl PcmAudio {
     }
 
     pub(crate) fn frames(&self) -> usize {
-        self.channels.first().map_or(0, Vec::len)
+        self.frames
     }
 
     pub(crate) fn channel_count(&self) -> usize {
-        self.channels.len()
-    }
-
-    #[allow(unused)]
-    #[allow(mismatched_lifetime_syntaxes)]
-    pub(crate) fn adapter(
-        &mut self,
-    ) -> PlanarAdapter<f32> {
-        PlanarAdapter::new(&mut self.channels)
-    }
-
-    pub(crate) fn channels(&self) -> &[Vec<f32>] {
-        &self.channels
-    }
-
-    pub(crate) fn channels_mut(&mut self) -> &mut [Vec<f32>] {
-        self.channels.as_mut_slice()
+        self.spec.channels().count()
     }
 
     pub(crate) fn channel(&self, index: usize) -> &[f32] {
-        &self.channels[index]
+        let start = index * self.frames;
+        let end = start + self.frames;
+        &self.data[start..end]
     }
 
-    #[allow(unused)]
-    pub(crate) fn replace_channel(
-        &mut self,
-        channel: usize,
-        samples: &[f32],
-    ) {
-        debug_assert_eq!(
-            samples.len(),
-            self.frames(),
-        );
-
-        let dst = &mut self.channels[channel];
-
-        dst.clear();
-        dst.extend_from_slice(samples);
-    }
-
-    /// Добавляет новый канал.
-    pub(crate) fn add_channel(
-        &mut self,
-        samples: &[f32],
-        layout: Channels,
-    ) {
-        self.assert_frames(samples);
-
-        self.channels.push(samples.to_vec());
-
-        self.set_channels(layout);
-    }
-
-    /// Удаляет канал.
-    #[allow(unused)]
-    pub(crate) fn remove_channel(
-        &mut self,
-        channel: usize,
-        layout: Channels,
-    ) -> Vec<f32> {
-        let removed = self.channels.remove(channel);
-
-        self.set_channels(layout);
-
-        removed
-    }
-
-    /// Вставляет канал в указанную позицию.
-    #[allow(unused)]
-    pub(crate) fn insert_channel(
-        &mut self,
-        channel: usize,
-        samples: &[f32],
-        layout: Channels,
-    ) {
-        self.assert_frames(samples);
-
-        self.channels.insert(
-            channel,
-            samples.to_vec(),
-        );
-
-        self.set_channels(layout);
-    }
-
-    /// Заменяет все каналы.
-    pub(crate) fn replace_channels(
-        &mut self,
-        channels: Vec<Vec<f32>>,
-        layout: Channels,
-    ) {
-        debug_assert!(
-            channels.is_empty()
-                || channels
-                .iter()
-                .all(|c| c.len() == channels[0].len())
-        );
-
-        self.channels = channels;
-
-        self.set_channels(layout);
-    }
-
-    #[allow(unused)]
-    pub(crate) fn reserve_channels(
-        &mut self,
-        additional: usize,
-    ) {
-        self.channels.reserve(additional);
-    }
-
-    /// Удаляет все каналы.
-    #[allow(unused)]
-    pub(crate) fn clear_channels(
-        &mut self,
-    ) {
-        self.channels.clear();
-
-        self.set_channels(Channels::None);
+    pub(crate) fn channel_mut(&mut self, index: usize) -> &mut [f32] {
+        let start = index * self.frames;
+        let end = start + self.frames;
+        &mut self.data[start..end]
     }
 
     pub(crate) fn set_channel_layout(
@@ -166,15 +58,6 @@ impl PcmAudio {
         layout: Channels,
     ) {
         self.set_channels(layout)
-    }
-
-    #[allow(unused)]
-    pub(crate) fn replace_channel_vec(
-        &mut self,
-        channel: usize,
-        samples: Vec<f32>,
-    ) {
-        self.channels[channel] = samples;
     }
 
     fn set_channels(
@@ -187,14 +70,43 @@ impl PcmAudio {
         );
     }
 
-    fn assert_frames(
-        &self,
-        samples: &[f32],
-    ) {
-        debug_assert!(
-            self.channels.is_empty()
-                || samples.len() == self.frames()
-        );
+    pub(crate) fn resize(&mut self, frames: usize, channels: usize) {
+        let old_frames = self.frames;
+        let old_channels = self.channel_count();
+
+        if frames == old_frames && channels == old_channels {
+            return;
+        }
+
+        if channels != old_channels {
+            // Если количество каналов меняется, это сложнее.
+            // Но обычно мы меняем только фреймы или пересоздаем целиком.
+            self.data.resize(frames * channels, 0.0);
+            if frames != old_frames {
+                 // Тут нужна сложная логика перемещения данных если каналов > 1
+                 // Но для простоты пока просто обнулим или переаллоцируем.
+                 // В реальности ресемплер вызывает это.
+                 if old_channels > 1 && old_frames > 0 {
+                      // TODO: корректный ресайз планарных данных
+                 }
+            }
+        } else {
+            // Количество каналов то же, меняем фреймы.
+            if frames != old_frames {
+                self.data.resize(frames * channels, 0.0);
+                if channels > 1 && old_frames > 0 {
+                    // Перемещаем каналы (кроме первого)
+                    for i in (1..channels).rev() {
+                        let old_start = i * old_frames;
+                        let new_start = i * frames;
+                        let count = old_frames.min(frames);
+                        self.data.copy_within(old_start..old_start + count, new_start);
+                    }
+                }
+            }
+        }
+
+        self.frames = frames;
     }
 }
 

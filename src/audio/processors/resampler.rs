@@ -177,15 +177,15 @@ impl Resampler {
             self.output_buffer.channels(),
         );
 
+        pcm.resize(frames, channels);
+
         for channel in 0..channels {
             let samples = self
                 .output_buffer
                 .read_channel(channel, frames)
                 .unwrap();
 
-            let dst = &mut pcm.channels[channel];
-            dst.clear();
-            dst.extend_from_slice(samples);
+            pcm.channel_mut(channel).copy_from_slice(samples);
         }
 
         self.output_buffer.consume(frames);

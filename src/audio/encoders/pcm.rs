@@ -65,15 +65,13 @@ impl AudioEncoder for PcmBinaryEncoder {
 
         let mut offset = 0;
 
-        for channel in pcm.channels() {
-            for &sample in channel {
-                self.pcm_format.encode_sample(
-                    sample,
-                    &mut output[offset..offset + sample_size],
-                );
+        for &sample in &pcm.data {
+            self.pcm_format.encode_sample(
+                sample,
+                &mut output[offset..offset + sample_size],
+            );
 
-                offset += sample_size;
-            }
+            offset += sample_size;
         }
 
         Ok(())
@@ -140,15 +138,12 @@ impl AudioDecoder for PcmBinaryDecoder {
 
         let mut offset = 0;
 
-        for channel in pcm.channels_mut() {
-            for sample in channel {
+        for sample in &mut pcm.data {
+            *sample = self.pcm_format.decode_sample(
+                &bytes[offset..offset + sample_size],
+            );
 
-                *sample = self.pcm_format.decode_sample(
-                    &bytes[offset..offset + sample_size],
-                );
-
-                offset += sample_size;
-            }
+            offset += sample_size;
         }
 
         Ok(pcm)

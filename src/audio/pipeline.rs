@@ -34,27 +34,24 @@ impl AudioPipeline {
         let mut current_audio = Some(audio);
 
         for processor in &mut self.processors {
-            match processor {
-                Processor::Audio(proc) => {
-                    let mut audio = if let Some(a) = current_audio.take() {
-                        a
-                    } else {
-                        Audio::from_pcm(self.scratch_pcm.as_ref().expect("scratch_pcm must be initialized"))?
-                    };
+            if processor.is_audio() {
+                let mut audio = if let Some(a) = current_audio.take() {
+                    a
+                } else {
+                    Audio::from_pcm(self.scratch_pcm.as_ref().expect("scratch_pcm must be initialized"))?
+                };
 
-                    proc.process(&mut audio)?;
-                    current_audio = Some(audio);
-                }
-                Processor::Dsp(dsp) => {
-                    if let Some(audio) = current_audio.take() {
-                        if let Some(ref mut scratch) = self.scratch_pcm {
-                            audio.to_pcm_into(scratch)?;
-                        } else {
-                            self.scratch_pcm = Some(audio.to_pcm()?);
-                        }
+                processor.process_audio(&mut audio)?;
+                current_audio = Some(audio);
+            } else {
+                if let Some(audio) = current_audio.take() {
+                    if let Some(ref mut scratch) = self.scratch_pcm {
+                        audio.to_pcm_into(scratch)?;
+                    } else {
+                        self.scratch_pcm = Some(audio.to_pcm()?);
                     }
-                    dsp.process(self.scratch_pcm.as_mut().expect("scratch_pcm must be initialized"))?;
                 }
+                processor.process_dsp(self.scratch_pcm.as_mut().expect("scratch_pcm must be initialized"))?;
             }
         }
 

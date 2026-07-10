@@ -151,26 +151,26 @@ async fn main() -> Result<()> {
 
     // Input DSP
     {
-        line.add_input_processor(Processor::Dsp(Box::new(ChannelConverter::new(
+        line.add_input_processor(Processor::ChannelConverter(ChannelConverter::new(
             mono.clone(),
-        ))))?;
+        )))?;
 
-        line.add_input_processor(Processor::Dsp(Box::new(Resampler::new(
+        line.add_input_processor(Processor::Resampler(Resampler::new(
             AudioSpec::new(input_sample_rate, mono.clone()),
             remote_spec.rate(),
-        )?)))?;
+        )?))?;
     }
 
     // Output DSP
     {
-        line.add_output_processor(Processor::Dsp(Box::new(Resampler::new(
+        line.add_output_processor(Processor::Resampler(Resampler::new(
             AudioSpec::new(remote_spec.rate(), mono.clone()),
             output_sample_rate,
-        )?)))?;
+        )?))?;
 
-        line.add_output_processor(Processor::Dsp(Box::new(ChannelConverter::new(
+        line.add_output_processor(Processor::ChannelConverter(ChannelConverter::new(
             stereo.clone(),
-        ))))?;
+        )))?;
     }
 
     /*
@@ -205,26 +205,26 @@ async fn main() -> Result<()> {
 
     // Input DSP
     {
-        line_back.add_input_processor(Processor::Dsp(Box::new(ChannelConverter::new(
+        line_back.add_input_processor(Processor::ChannelConverter(ChannelConverter::new(
             mono.clone(),
-        ))))?;
+        )))?;
 
-        line_back.add_input_processor(Processor::Dsp(Box::new(Resampler::new(
+        line_back.add_input_processor(Processor::Resampler(Resampler::new(
             AudioSpec::new(input_back_sample_rate, mono.clone()),
             remote_back_spec.rate(),
-        )?)))?;
+        )?))?;
     }
 
     // Output DSP
     {
-        line_back.add_output_processor(Processor::Dsp(Box::new(Resampler::new(
+        line_back.add_output_processor(Processor::Resampler(Resampler::new(
             AudioSpec::new(remote_back_spec.rate(), mono.clone()),
             output_back_sample_rate,
-        )?)))?;
+        )?))?;
 
-        line_back.add_output_processor(Processor::Dsp(Box::new(ChannelConverter::new(
+        line_back.add_output_processor(Processor::ChannelConverter(ChannelConverter::new(
             stereo.clone(),
-        ))))?;
+        )))?;
     }
 
     /*
