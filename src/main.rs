@@ -351,18 +351,15 @@ fn create_pair(lang: &str, prefix: &str, hide_device: HiddenDevice) -> Result<Vi
     let sink_name = format!("translator_{lang}_{prefix}_speaker");
     let source_name = format!("translator_{lang}_{prefix}_microphone");
 
-    let output_name = format!("Translator.{}.{}.Speaker", lang.to_uppercase(), prefix,);
-
-    let input_name = format!("Translator.{}.{}.Microphone", lang.to_uppercase(), prefix,);
-
-    let sink_properties = match hide_device {
+    let output_name = match hide_device {
         HiddenDevice::Output => {
-            &format!("device.description={output_name} media.class=Audio/Sink/Internal")
+            format!("___internal.not_use.{}", lang.to_uppercase())
         }
         HiddenDevice::Input => {
-            &format!("device.description={output_name}")
+            format!("Translator.{}.{}.Speaker", lang.to_uppercase(), prefix)
         }
     };
+    let sink_properties = &format!("device.description={output_name}");
     let sink_module = load_module(
         "module-null-sink",
         &[
@@ -374,14 +371,15 @@ fn create_pair(lang: &str, prefix: &str, hide_device: HiddenDevice) -> Result<Vi
         ],
     )?;
 
-    let sink_properties = match hide_device {
+    let input_name = match hide_device {
         HiddenDevice::Output => {
-            &format!("device.description={input_name}")
+            format!("Translator.{}.{}.Microphone", lang.to_uppercase(), prefix)
         }
         HiddenDevice::Input => {
-            &format!("device.description={input_name} media.class=Audio/Sink/Internal")
+            format!("___internal.not_use.{}_", lang.to_uppercase())
         }
     };
+    let sink_properties = &format!("device.description={input_name}");
     let source_module = load_module(
         "module-remap-source",
         &[
