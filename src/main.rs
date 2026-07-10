@@ -76,14 +76,18 @@ async fn main() -> Result<()> {
     let virtual_speaker = host
         .output_devices()?
         .find(|d| {
-            d.to_string().eq(&virtual_output_name)
+            d.to_string().eq(&virtual_output_name) && d.description().unwrap().supports_output()
         })
         .expect("virtual speaker not found");
+
+    for d in host.input_devices()?  {
+        println!("{:?}", d);
+    }
 
     let virtual_microphone = host
         .input_devices()?
         .find(|d| {
-            d.to_string().eq(&virtual_input_name)
+            d.to_string().eq(&virtual_input_name) && d.description().unwrap().supports_input()
         })
         .expect("virtual microphone not found");
 
@@ -297,7 +301,7 @@ impl VirtualDevices {
                 (
                     "source_properties",
                     &format!(
-                        "device.description=Translator.{}.Microphone",
+                        "device.description={}",
                         input_name,
                     ),
                 ),
