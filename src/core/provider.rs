@@ -5,6 +5,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::audio::{Audio, Pipelines};
 use crate::core::error::Result;
+use crate::core::session_event::SessionEvent;
 
 pub trait ProviderSession {
     fn spawn(
@@ -13,6 +14,7 @@ pub trait ProviderSession {
         playback_tx: mpsc::Sender<Audio>,
         pipelines: Pipelines,
         cancel: CancellationToken,
+        event_tx: Option<mpsc::UnboundedSender<SessionEvent>>,
     ) -> JoinHandle<Result<Pipelines>>;
 }
 

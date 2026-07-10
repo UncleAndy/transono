@@ -26,3 +26,5 @@ base64-simd = "=0.8.0"
 hound = "3.5.1"
 audio_samples = { version="2.0.0", features = ["full"] }
 i24 = "2.3.4"
+ratatui = "0.29"
+crossterm = { version = "0.28", features = ["event-stream"] }

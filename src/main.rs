@@ -14,6 +14,8 @@ use realtime_translator::providers::openai::translation::{
     OpenAITranslationConfig, OpenAITranslationProvider,
 };
 use realtime_translator::runtime::TranslationLine;
+use realtime_translator::console::ConsoleApp;
+use tokio::sync::mpsc;
 
 /*
    Создания устройства воспроизведения (Виртуального динамика):
@@ -232,13 +234,26 @@ async fn main() -> Result<()> {
      */
 
     println!("Run lines...");
+    
+    let (direct_tx, direct_rx) = mpsc::unbounded_channel();
+    let (back_tx, back_rx) = mpsc::unbounded_channel();
+    
+    line.set_event_sender(direct_tx);
+    line_back.set_event_sender(back_tx);
+
     line.run().await?;
     line_back.run().await?;
 
-    println!("Можете говорить.");
-    println!("Press Ctrl+C to stop.");
-
-    signal::ctrl_c().await?;
+    let app = ConsoleApp::new(
+        direct_rx,
+        back_rx,
+        line.latency_stats.clone(),
+        line_back.latency_stats.clone(),
+    );
+    
+    println!("Press 'q' to stop.");
+    // app.run() blocks until 'q' or Esc
+    app.run().await?;
 
     println!("Stopping...");
 

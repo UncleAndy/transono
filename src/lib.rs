@@ -3,3 +3,4 @@ pub mod core;
 pub mod providers;
 pub mod testing;
 pub mod runtime;
+pub mod console;

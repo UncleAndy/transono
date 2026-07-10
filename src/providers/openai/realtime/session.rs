@@ -71,6 +71,7 @@ impl ProviderSession for RealtimeSession {
         playback_tx: mpsc::Sender<Audio>,
         pipelines: Pipelines,
         cancel: CancellationToken,
+        _event_tx: Option<mpsc::UnboundedSender<SessionEvent>>,
     ) -> JoinHandle<Result<Pipelines>> {
         tokio::spawn(async move {
             let mut stdout = io::stdout();

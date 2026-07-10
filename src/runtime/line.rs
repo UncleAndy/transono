@@ -2,10 +2,12 @@ use anyhow::anyhow;
 use tokio_util::sync::CancellationToken;
 use std::sync::Arc;
 
+use tokio::sync::mpsc;
 use crate::audio::{Processor, AudioInput, AudioOutput, Pipelines};
 use crate::core::provider::{Provider, ProviderSession};
 use crate::runtime::LineState;
 use crate::core::error::{CoreError, Result};
+use crate::core::session_event::SessionEvent;
 
 pub struct TranslationLine<P>
 where
@@ -19,11 +21,13 @@ where
     audio_output: Option<Box<dyn AudioOutput>>,
 
     pipelines: Option<Pipelines>,
-    latency_stats: Arc<crate::audio::LatencyStats>,
+    pub latency_stats: Arc<crate::audio::LatencyStats>,
 
     session_task: Option<tokio::task::JoinHandle<Result<Pipelines>>>,
 
     state: LineState,
+
+    event_tx: Option<mpsc::UnboundedSender<SessionEvent>>,
 }
 
 impl<P: Provider> TranslationLine<P> {
@@ -49,7 +53,13 @@ impl<P: Provider> TranslationLine<P> {
             session_task: None,
 
             state: LineState::Created,
+
+            event_tx: None,
         })
+    }
+
+    pub fn set_event_sender(&mut self, tx: mpsc::UnboundedSender<SessionEvent>) {
+        self.event_tx = Some(tx);
     }
 
     pub fn add_input_processor(
@@ -180,6 +190,7 @@ impl<P: Provider> TranslationLine<P> {
                 output_tx,
                 pipelines,
                 self.cancel.clone(),
+                self.event_tx.clone(),
             )
         );
 

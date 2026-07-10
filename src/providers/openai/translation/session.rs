@@ -78,10 +78,9 @@ impl ProviderSession for TranslationSession {
         playback_tx: Sender<Audio>,
         pipelines: Pipelines,
         cancel: CancellationToken,
+        event_tx: Option<mpsc::UnboundedSender<SessionEvent>>,
     ) -> JoinHandle<Result<Pipelines>> {
         tokio::spawn(async move {
-            let mut stdout = io::stdout();
-
             // Разделяем пайплайны
             let stats = pipelines.stats.clone();
             let mut input_pipeline = pipelines.input;
@@ -142,6 +141,9 @@ impl ProviderSession for TranslationSession {
                     event = self.next_event() => {
                         match event? {
                             SessionEvent::SessionStarted(_) => {
+                                if let Some(tx) = &event_tx {
+                                    let _ = tx.send(SessionEvent::SessionStarted("Translation session started".to_string()));
+                                }
                                 // println!("{}", msg);
                                 // Отправляем конфиг в 'session.update'
                                 self.send(SessionUpdate(
@@ -160,10 +162,16 @@ impl ProviderSession for TranslationSession {
                                 )).await?;
                             }
                             SessionEvent::SessionConfigured(_) => {
-                                // println!("{}", msg);
+                                if let Some(tx) = &event_tx {
+                                    let _ = tx.send(SessionEvent::SessionConfigured("Translation session configured".to_string()));
+                                }
                             }
                             SessionEvent::Audio(audio) => {
                                 let (audio, pipeline_duration) = output_pipeline.process(audio)?;
+
+                                if let Some(tx) = &event_tx {
+                                    let _ = tx.send(SessionEvent::Audio(audio.clone()));
+                                }
 
                                 let total_latency = audio.capture_timestamp().elapsed();
 
@@ -185,19 +193,34 @@ impl ProviderSession for TranslationSession {
                             }
 
                             SessionEvent::Text(delta) => {
-                                stdout.write_all(delta.as_bytes()).await
-                                    .map_err(|e| CoreError::Other(anyhow!(e)))?;
-                                stdout.flush().await
-                                    .map_err(|e| CoreError::Other(anyhow!(e)))?;
+                                if let Some(tx) = &event_tx {
+                                    let _ = tx.send(SessionEvent::Text(delta));
+                                }
                             }
 
-                            SessionEvent::RequestStarted => {}
+                            SessionEvent::RequestStarted => {
+                                if let Some(tx) = &event_tx {
+                                    let _ = tx.send(SessionEvent::RequestStarted);
+                                }
+                            }
 
-                            SessionEvent::RequestFinished => {}
+                            SessionEvent::RequestFinished => {
+                                if let Some(tx) = &event_tx {
+                                    let _ = tx.send(SessionEvent::RequestFinished);
+                                }
+                            }
 
-                            SessionEvent::ResponseStarted => {}
+                            SessionEvent::ResponseStarted => {
+                                if let Some(tx) = &event_tx {
+                                    let _ = tx.send(SessionEvent::ResponseStarted);
+                                }
+                            }
 
-                            SessionEvent::ResponseFinished => {}
+                            SessionEvent::ResponseFinished => {
+                                if let Some(tx) = &event_tx {
+                                    let _ = tx.send(SessionEvent::ResponseFinished);
+                                }
+                            }
                         }
                     }
                 }
