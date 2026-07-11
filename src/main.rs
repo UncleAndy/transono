@@ -16,7 +16,6 @@ use libereco::providers::openai::translation::{
 use libereco::runtime::TranslationLine;
 use libereco::console::ConsoleApp;
 use tokio::sync::mpsc;
-use libereco::audio::diagnost::wav_dump::WavDump;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -135,40 +134,20 @@ async fn main() -> Result<()> {
     //let mut line =
     //    TranslationLine::new(provider, Box::new(input_hw), Box::new(link_input)).await?;
 
-    let input_spec = AudioSpec::new(input_hw.format().sample_rate, stereo.clone());
-
     let mut line =
         TranslationLine::new(provider, Box::new(input_hw), Box::new(to_microphone_virt), stats_direct).await?;
 
 
     // Input DSP
     {
-        line.add_input_processor(Processor::WavDumpDiag(
-            WavDump::new(
-                "input0_from_phone.wav",
-                input_spec)?
-        )).expect("error added wavdump as input processor");
-
         line.add_input_processor(Processor::ChannelConverter(ChannelConverter::new(
             mono.clone(),
         )))?;
-
-        line.add_input_processor(Processor::WavDumpDiag(
-            WavDump::new(
-                "input1_from_phone.wav",
-                AudioSpec::new(input_sample_rate, mono.clone()))?
-        )).expect("error added wavdump as input processor");
 
         line.add_input_processor(Processor::Resampler(Resampler::new(
             AudioSpec::new(input_sample_rate, mono.clone()),
             remote_spec.rate(),
         )?))?;
-
-        line.add_input_processor(Processor::WavDumpDiag(
-            WavDump::new(
-                "input2_from_phone.wav",
-                remote_spec.clone())?
-        )).expect("error added wavdump as input processor");
     }
 
     // Output DSP
