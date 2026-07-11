@@ -25,7 +25,10 @@ pub struct ConsoleApp {
     
     direct_text: String,
     back_text: String,
-    
+
+    direct_input_text: String,
+    back_input_text: String,
+
     direct_latency: LatencySnapshot,
     back_latency: LatencySnapshot,
     
@@ -49,6 +52,8 @@ impl ConsoleApp {
             back_stats,
             direct_text: String::new(),
             back_text: String::new(),
+            direct_input_text: String::new(),
+            back_input_text: String::new(),
             direct_latency: LatencySnapshot::default(),
             back_latency: LatencySnapshot::default(),
             direct_status: "IDLE".to_string(),
@@ -116,7 +121,7 @@ impl ConsoleApp {
             SessionEvent::RequestStarted => self.direct_status = "LISTENING".to_string(),
             SessionEvent::ResponseStarted => self.direct_status = "THINKING".to_string(),
             SessionEvent::ResponseFinished => self.direct_status = "READY".to_string(),
-            SessionEvent::InputText(_) => { todo!() },
+            SessionEvent::InputText(text) => self.direct_input_text.push_str(&text),
             _ => {}
         }
     }
@@ -129,7 +134,7 @@ impl ConsoleApp {
             SessionEvent::RequestStarted => self.back_status = "LISTENING".to_string(),
             SessionEvent::ResponseStarted => self.back_status = "THINKING".to_string(),
             SessionEvent::ResponseFinished => self.back_status = "READY".to_string(),
-            SessionEvent::InputText(_) => { todo!() },
+            SessionEvent::InputText(text) => self.back_input_text.push_str(&text),
             _ => {}
         }
     }
@@ -138,10 +143,37 @@ impl ConsoleApp {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
+                Constraint::Percentage(25),
                 Constraint::Min(3),
                 Constraint::Length(4),
             ])
             .split(f.area());
+
+        let input_chunks = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([
+                Constraint::Percentage(50),
+                Constraint::Percentage(50),
+            ])
+            .split(chunks[0]);
+
+        let direct_input_block = Block::default()
+            .borders(Borders::ALL)
+            .title(" RU Input ");
+        let direct_input_para = Paragraph::new(self.direct_input_text.as_str())
+            .block(direct_input_block)
+            .wrap(Wrap { trim: false })
+            .scroll((self.direct_input_text.lines().count().saturating_sub(input_chunks[0].height as usize - 2) as u16, 0));
+        f.render_widget(direct_input_para, input_chunks[0]);
+
+        let back_input_block = Block::default()
+            .borders(Borders::ALL)
+            .title(" EN Input ");
+        let back_input_para = Paragraph::new(self.back_input_text.as_str())
+            .block(back_input_block)
+            .wrap(Wrap { trim: false })
+            .scroll((self.back_input_text.lines().count().saturating_sub(input_chunks[1].height as usize - 2) as u16, 0));
+        f.render_widget(back_input_para, input_chunks[1]);
 
         let main_chunks = Layout::default()
             .direction(Direction::Horizontal)
@@ -149,7 +181,7 @@ impl ConsoleApp {
                 Constraint::Percentage(50),
                 Constraint::Percentage(50),
             ])
-            .split(chunks[0]);
+            .split(chunks[1]);
 
         let direct_block = Block::default()
             .borders(Borders::ALL)
@@ -183,6 +215,6 @@ impl ConsoleApp {
             .title(" Status & Latency ");
         let status_para = Paragraph::new(status_text)
             .block(status_block);
-        f.render_widget(status_para, chunks[1]);
+        f.render_widget(status_para, chunks[2]);
     }
 }

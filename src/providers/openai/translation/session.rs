@@ -286,8 +286,6 @@ impl TranslationSession {
     async fn send(&mut self, command: ProtocolCommand) -> Result<()> {
         let data = self.protocol.encode(&command)?;
 
-        println!("DBG: {:?}", data);
-
         self.transport.send(data).await
     }
 
