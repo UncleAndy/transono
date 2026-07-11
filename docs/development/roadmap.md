@@ -31,8 +31,8 @@
 
 ## ⏳ v0.4.0
 
-- [ ] RealtimeTranslation provider
-- [ ] Translation application
+- [x] RealtimeTranslation provider
+- [x] Translation application
 
 ---
 
