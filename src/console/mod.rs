@@ -116,6 +116,7 @@ impl ConsoleApp {
             SessionEvent::RequestStarted => self.direct_status = "LISTENING".to_string(),
             SessionEvent::ResponseStarted => self.direct_status = "THINKING".to_string(),
             SessionEvent::ResponseFinished => self.direct_status = "READY".to_string(),
+            SessionEvent::InputText(_) => { todo!() },
             _ => {}
         }
     }
@@ -128,6 +129,7 @@ impl ConsoleApp {
             SessionEvent::RequestStarted => self.back_status = "LISTENING".to_string(),
             SessionEvent::ResponseStarted => self.back_status = "THINKING".to_string(),
             SessionEvent::ResponseFinished => self.back_status = "READY".to_string(),
+            SessionEvent::InputText(_) => { todo!() },
             _ => {}
         }
     }

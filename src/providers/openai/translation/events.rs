@@ -24,6 +24,11 @@ pub enum ProtocolEvent {
         delta: String,
     },
 
+    #[serde(rename = "session.input_transcript.delta")]
+    SessionInputTranscriptDelta {
+        delta: String,
+    },
+
     #[serde(rename = "error")]
     Error(OpenAiError),
 

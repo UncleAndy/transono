@@ -2,7 +2,7 @@ use serde::{Serialize};
 use crate::core::protocol::Protocol;
 use crate::core::error::{ProtocolError, Result};
 use crate::core::transport::TransportData;
-use crate::providers::openai::translation::{ProtocolCommand, ProtocolEvent};
+use crate::providers::openai::translation::{InputAudioTranscription, ProtocolCommand, ProtocolEvent};
 
 #[derive(Default, Clone)]
 pub struct TranslationProtocol;
@@ -59,6 +59,9 @@ pub struct AudioConfig {
 pub struct AudioInputConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub format: Option<AudioFormat>,
+
+    #[serde(rename="transcription", skip_serializing_if = "Option::is_none")]
+    pub input_audio_transcription: Option<InputAudioTranscription>,
 }
 
 #[derive(Debug, Serialize)]

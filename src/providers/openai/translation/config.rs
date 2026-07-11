@@ -101,6 +101,7 @@ impl OpenAITranslationConfig {
         SessionConfig {
             audio: AudioConfig {
                 input: Some(AudioInputConfig {
+                    input_audio_transcription: None,
                     format: Some(AudioFormat::pcm_24khz()),
                 }),
 

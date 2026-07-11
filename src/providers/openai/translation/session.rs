@@ -13,11 +13,7 @@ use crate::core::transport::Transport;
 use crate::core::{error::Result, provider::ProviderSession, websocket::WebSocketTransport};
 
 use crate::providers::openai::translation::ProtocolCommand::SessionUpdate;
-use crate::providers::openai::translation::{
-    AudioConfig, AudioOutputConfig, ProtocolEvent, SessionAudioBufferAppend, SessionConfig,
-    TranslationProtocol, TranslationSessionUpdateEvent, commands::ProtocolCommand,
-    config::OpenAITranslationConfig,
-};
+use crate::providers::openai::translation::{AudioConfig, AudioOutputConfig, ProtocolEvent, SessionAudioBufferAppend, SessionConfig, TranslationProtocol, TranslationSessionUpdateEvent, commands::ProtocolCommand, config::OpenAITranslationConfig, InputAudioTranscription, AudioInputConfig};
 
 use tokio_tungstenite::tungstenite::{Message, Utf8Bytes};
 use crate::core::transport::TransportData;
@@ -137,26 +133,48 @@ impl ProviderSession for TranslationSession {
                     }
 
                     event = self.next_event() => {
-                        match event? {
+                        let event = match event {
+                            Ok(e) => e,
+                            Err(e) => {
+                                if !cancel.is_cancelled() {
+                                    eprintln!("Transport error: {}", e);
+                                }
+                                break;
+                            }
+                        };
+                        match event {
                             SessionEvent::SessionStarted(_) => {
                                 if let Some(tx) = &event_tx {
                                     let _ = tx.send(SessionEvent::SessionStarted("Translation session started".to_string()));
                                 }
                                 // println!("{}", msg);
                                 // Отправляем конфиг в 'session.update'
+                                /* Вот это надо добавить в параметры что-бы возвращался
+                                    не только переведенный, но и распознанный текст.
+                                    "input_audio_transcription": {
+                                      "model": "whisper-1"
+                                    }
+                                 */
                                 self.send(SessionUpdate(
                                     TranslationSessionUpdateEvent {
                                         event_type: "session.update",
                                         session: SessionConfig {
                                             audio: AudioConfig {
-                                                input: None,
+                                                input: Some(
+                                                    AudioInputConfig {
+                                                        format: None,
+                                                        input_audio_transcription: Some(InputAudioTranscription {
+                                                            model: "whisper-1".to_string(),
+                                                        }),
+                                                    }
+                                                ),
                                                 output: AudioOutputConfig {
                                                     format: None,
                                                     language: self.config.lang.clone(),
                                                 },
                                             },
                                         },
-                                    }
+                                    },
                                 )).await?;
                             }
                             SessionEvent::SessionConfigured(_) => {
@@ -221,6 +239,11 @@ impl ProviderSession for TranslationSession {
                                     let _ = tx.send(SessionEvent::ResponseFinished);
                                 }
                             }
+                            SessionEvent::InputText( delta ) => {
+                                if let Some(tx) = &event_tx {
+                                    let _ = tx.send(SessionEvent::InputText(delta));
+                                }
+                            }
                         }
                     }
                 }
@@ -263,6 +286,8 @@ impl TranslationSession {
     async fn send(&mut self, command: ProtocolCommand) -> Result<()> {
         let data = self.protocol.encode(&command)?;
 
+        println!("DBG: {:?}", data);
+
         self.transport.send(data).await
     }
 
@@ -287,6 +312,9 @@ impl TranslationSession {
             ProtocolEvent::SessionOutputAudioDelta { delta } => Ok(Some(self.map_audio(delta)?)),
             ProtocolEvent::SessionOutputTranscriptDelta { delta } => {
                 Ok(Some(SessionEvent::Text(delta)))
+            }
+            ProtocolEvent::SessionInputTranscriptDelta { delta } => {
+                Ok(Some(SessionEvent::InputText(delta)))
             }
             ProtocolEvent::Error(e) => {
                 println!("Error: {}", e);

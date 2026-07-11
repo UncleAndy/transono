@@ -20,6 +20,11 @@ pub struct TranslationSessionUpdateEvent {
     pub session: SessionConfig,
 }
 
+#[derive(Debug, Serialize)]
+pub struct InputAudioTranscription {
+    pub model: String
+}
+
 impl TranslationSessionUpdateEvent {
     pub fn new(
         session: SessionConfig,

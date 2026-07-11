@@ -1,5 +1,6 @@
 use crate::audio::Audio;
 
+#[derive(Debug)]
 pub enum SessionEvent {
     SessionStarted(String),
 
@@ -10,6 +11,9 @@ pub enum SessionEvent {
 
     /// Очередная порция текста.
     Text(String),
+
+    /// Очередная порция текста из распознанного на входе.
+    InputText(String),
 
     /// Провайдер начал принимать/обрабатывать новый пользовательский запрос
     RequestStarted,

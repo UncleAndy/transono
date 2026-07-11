@@ -143,8 +143,9 @@ impl ProviderSession for RealtimeSession {
                         let event = match event {
                             Ok(e) => e,
                             Err(e) => {
-                                stats.inc_dropped_network();
-                                eprintln!("Transport error: {}", e);
+                                if !cancel.is_cancelled() {
+                                    eprintln!("Transport error: {}", e);
+                                }
                                 break;
                             }
                         };
@@ -248,6 +249,7 @@ impl ProviderSession for RealtimeSession {
                                 is_playing = false;
                                 stats.set_output_active(false);
                             }
+                            _ => {}
                         }
                     }
                 }
