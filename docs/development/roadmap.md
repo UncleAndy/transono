@@ -29,7 +29,7 @@
 
 ---
 
-## ⏳ v0.4.0
+## ✅ v0.4.0
 
 - [x] RealtimeTranslation provider
 - [x] Translation application
