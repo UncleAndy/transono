@@ -44,7 +44,7 @@ impl WebSocketTransport {
 
         let (mut writer, reader) = socket.split();
 
-        let (tx, mut rx) = mpsc::channel::<Message>(100);
+        let (tx, mut rx) = mpsc::channel::<Message>(256);
 
         // Фоновая задача для отправки
         tokio::spawn(async move {

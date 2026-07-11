@@ -3,7 +3,7 @@ use crate::core::error::{Result, CoreError};
 use anyhow::anyhow;
 use std::time::{Instant, Duration};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicBool, Ordering};
 
 #[derive(Debug)]
 pub struct LatencyMetric {
@@ -57,6 +57,10 @@ pub struct LatencyStats {
     pub input_total: LatencyMetric,
     pub output_pipeline: LatencyMetric,
     pub output_total: LatencyMetric,
+    pub dropped_input: AtomicU64,
+    pub dropped_network: AtomicU64,
+    pub dropped_output: AtomicU64,
+    pub output_active: AtomicBool,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -73,6 +77,9 @@ pub struct LatencySnapshot {
     pub input_total: MetricSnapshot,
     pub output_pipeline: MetricSnapshot,
     pub output_total: MetricSnapshot,
+    pub dropped_input: u64,
+    pub dropped_network: u64,
+    pub dropped_output: u64,
 }
 
 impl LatencyStats {
@@ -82,7 +89,28 @@ impl LatencyStats {
             input_total: self.input_total.snapshot(),
             output_pipeline: self.output_pipeline.snapshot(),
             output_total: self.output_total.snapshot(),
+            dropped_input: self.dropped_input.load(Ordering::Relaxed),
+            dropped_network: self.dropped_network.load(Ordering::Relaxed),
+            dropped_output: self.dropped_output.load(Ordering::Relaxed),
         }
+    }
+
+    pub fn inc_dropped_input(&self) {
+        self.dropped_input.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn inc_dropped_network(&self) {
+        self.dropped_network.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn inc_dropped_output(&self) {
+        if self.output_active.load(Ordering::Relaxed) {
+            self.dropped_output.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    pub fn set_output_active(&self, active: bool) {
+        self.output_active.store(active, Ordering::Relaxed);
     }
 }
 
@@ -198,7 +226,10 @@ pub struct Pipelines {
 
 impl Pipelines {
     pub fn new() -> Self {
-        let stats = Arc::new(LatencyStats::default());
+        Self::with_stats(Arc::new(LatencyStats::default()))
+    }
+
+    pub fn with_stats(stats: Arc<LatencyStats>) -> Self {
         Self {
             input: AudioPipeline::new(stats.clone(), true),
             output: AudioPipeline::new(stats.clone(), false),

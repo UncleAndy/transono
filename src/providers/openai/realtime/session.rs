@@ -76,6 +76,10 @@ impl ProviderSession for RealtimeSession {
         tokio::spawn(async move {
             let mut stdout = io::stdout();
 
+            let mut jitter_buffer: Vec<Audio> = Vec::new();
+            let mut is_playing = false;
+            let jitter_threshold = std::time::Duration::from_millis(100);
+
             // Разделяем пайплайны
             let stats = pipelines.stats.clone();
             let mut input_pipeline = pipelines.input;
@@ -89,6 +93,7 @@ impl ProviderSession for RealtimeSession {
             };
 
             let cancel_input = cancel.clone();
+            let stats_input = stats.clone();
             let input_task = tokio::spawn(async move {
                 loop {
                     tokio::select! {
@@ -113,6 +118,7 @@ impl ProviderSession for RealtimeSession {
                                         _ = cancel_input.cancelled() => break,
                                         res = sender.send_audio(audio) => {
                                             if let Err(e) = res {
+                                                stats_input.inc_dropped_network();
                                                 eprintln!("Error sending audio: {}", e);
                                                 break;
                                             }
@@ -127,14 +133,22 @@ impl ProviderSession for RealtimeSession {
                 Ok(input_pipeline)
             });
 
-            loop {
+            'main_loop: loop {
                 tokio::select! {
                     _ = cancel.cancelled() => {
-                        break;
+                        break 'main_loop;
                     }
 
                     event = self.next_event() => {
-                        match event? {
+                        let event = match event {
+                            Ok(e) => e,
+                            Err(e) => {
+                                stats.inc_dropped_network();
+                                eprintln!("Transport error: {}", e);
+                                break;
+                            }
+                        };
+                        match event {
                             SessionEvent::SessionStarted(_) => {
                                 // println!("{}", msg);
                                 // Отправляем конфиг в 'session.update'
@@ -178,13 +192,29 @@ impl ProviderSession for RealtimeSession {
                                     );
                                 }
 
-                                tokio::select! {
-                                    _ = cancel.cancelled() => break,
-                                    res = playback_tx.send(audio) => {
-                                        res.map_err(|_| CoreError::Other(anyhow!("playback channel closed")))?;
+                                if !is_playing {
+                                    jitter_buffer.push(audio);
+                                    let buffered_duration: std::time::Duration = jitter_buffer.iter().map(|a| a.duration()).sum();
+                                    if buffered_duration >= jitter_threshold {
+                                        is_playing = true;
+                                        stats.set_output_active(true);
+                                        for a in jitter_buffer.drain(..) {
+                                            tokio::select! {
+                                                _ = cancel.cancelled() => break 'main_loop,
+                                                res = playback_tx.send(a) => {
+                                                    res.map_err(|_| CoreError::Other(anyhow!("playback channel closed")))?;
+                                                }
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    tokio::select! {
+                                        _ = cancel.cancelled() => break 'main_loop,
+                                        res = playback_tx.send(audio) => {
+                                            res.map_err(|_| CoreError::Other(anyhow!("playback channel closed")))?;
+                                        }
                                     }
                                 }
-
                             }
 
                             SessionEvent::Text(delta) => {
@@ -198,9 +228,26 @@ impl ProviderSession for RealtimeSession {
 
                             SessionEvent::RequestFinished => {}
 
-                            SessionEvent::ResponseStarted => {}
+                            SessionEvent::ResponseStarted => {
+                                is_playing = false;
+                                jitter_buffer.clear();
+                            }
 
-                            SessionEvent::ResponseFinished => {}
+                            SessionEvent::ResponseFinished => {
+                                if !is_playing && !jitter_buffer.is_empty() {
+                                    stats.set_output_active(true);
+                                }
+                                for a in jitter_buffer.drain(..) {
+                                    tokio::select! {
+                                        _ = cancel.cancelled() => break 'main_loop,
+                                        res = playback_tx.send(a) => {
+                                            res.map_err(|_| CoreError::Other(anyhow!("playback channel closed")))?;
+                                        }
+                                    }
+                                }
+                                is_playing = false;
+                                stats.set_output_active(false);
+                            }
                         }
                     }
                 }

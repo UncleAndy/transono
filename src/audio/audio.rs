@@ -41,6 +41,12 @@ impl Audio {
         self.capture_timestamp
     }
 
+    pub fn duration(&self) -> std::time::Duration {
+        let frames = self.buffer.frames() as u64;
+        let rate = self.buffer.spec().rate() as u64;
+        std::time::Duration::from_nanos(frames * 1_000_000_000 / rate)
+    }
+
     pub fn buffer(&self) -> Arc<GenericAudioBuffer> {
         self.buffer.clone()
     }

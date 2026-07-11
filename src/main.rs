@@ -1,5 +1,6 @@
 use anyhow::Result;
 use cpal::traits::{DeviceTrait, HostTrait};
+use std::sync::Arc;
 use std::process::Command;
 use std::time::Duration;
 use symphonia::core::audio::{AudioSpec, Channels, Position};
@@ -105,8 +106,10 @@ async fn main() -> Result<()> {
     println!("Remote : {} Hz", remote_spec.rate());
     println!("Playback: {} Hz", output_sample_rate);
 
-    let input_hw = AudioInputCpal::new(capture)?;
-    let to_microphone_virt = AudioOutputCpal::new(to_microphone)?;
+    let stats_direct = Arc::new(realtime_translator::audio::LatencyStats::default());
+
+    let input_hw = AudioInputCpal::new(capture, stats_direct.clone())?;
+    let to_microphone_virt = AudioOutputCpal::new(to_microphone, stats_direct.clone())?;
 
     /*
        let link_format = AudioFormat {
@@ -133,7 +136,7 @@ async fn main() -> Result<()> {
     //    TranslationLine::new(provider, Box::new(input_hw), Box::new(link_input)).await?;
 
     let mut line =
-        TranslationLine::new(provider, Box::new(input_hw), Box::new(to_microphone_virt)).await?;
+        TranslationLine::new(provider, Box::new(input_hw), Box::new(to_microphone_virt), stats_direct).await?;
 
     // Input DSP
     {
@@ -170,8 +173,10 @@ async fn main() -> Result<()> {
     let remote_back_spec = remote_back.spec().clone();
     let provider_back = OpenAITranslationProvider::new(config_back);
 
-    let from_speaker_virt = AudioInputCpal::new(from_speaker)?;
-    let output_hw = AudioOutputCpal::new(playback)?;
+    let stats_back = Arc::new(realtime_translator::audio::LatencyStats::default());
+
+    let from_speaker_virt = AudioInputCpal::new(from_speaker, stats_back.clone())?;
+    let output_hw = AudioOutputCpal::new(playback, stats_back.clone())?;
 
     let input_back_sample_rate = from_speaker_virt.format().sample_rate;
     let output_back_sample_rate = output_hw.format().sample_rate;
@@ -186,6 +191,7 @@ async fn main() -> Result<()> {
         provider_back,
         Box::new(from_speaker_virt),
         Box::new(output_hw),
+        stats_back,
     )
     .await?;
 
@@ -269,6 +275,9 @@ fn print_latency_stats(snapshot: realtime_translator::audio::LatencySnapshot) {
     print_metric("Input Total    ", snapshot.input_total);
     print_metric("Output Pipeline", snapshot.output_pipeline);
     print_metric("Output Total   ", snapshot.output_total);
+    println!("---------------------------------------------------------------");
+    println!("Dropped: Input: {}, Network: {}, Output: {}", 
+             snapshot.dropped_input, snapshot.dropped_network, snapshot.dropped_output);
     println!("---------------------------------------------------------------");
 }
 

@@ -209,12 +209,14 @@ impl ProviderSession for TranslationSession {
                             }
 
                             SessionEvent::ResponseStarted => {
+                                stats.set_output_active(true);
                                 if let Some(tx) = &event_tx {
                                     let _ = tx.send(SessionEvent::ResponseStarted);
                                 }
                             }
 
                             SessionEvent::ResponseFinished => {
+                                stats.set_output_active(false);
                                 if let Some(tx) = &event_tx {
                                     let _ = tx.send(SessionEvent::ResponseFinished);
                                 }

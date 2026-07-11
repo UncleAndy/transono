@@ -3,7 +3,7 @@ use tokio_util::sync::CancellationToken;
 use std::sync::Arc;
 
 use tokio::sync::mpsc;
-use crate::audio::{Processor, AudioInput, AudioOutput, Pipelines};
+use crate::audio::{Processor, AudioInput, AudioOutput, Pipelines, LatencyStats};
 use crate::core::provider::{Provider, ProviderSession};
 use crate::runtime::LineState;
 use crate::core::error::{CoreError, Result};
@@ -35,9 +35,10 @@ impl<P: Provider> TranslationLine<P> {
         provider: P,
         audio_input: Box<dyn AudioInput>,
         audio_output: Box<dyn AudioOutput>,
+        stats: Arc<LatencyStats>,
     ) -> Result<Self> {
-        let pipelines = Pipelines::new();
-        let latency_stats = pipelines.stats.clone();
+        let pipelines = Pipelines::with_stats(stats.clone());
+        let latency_stats = stats;
 
         Ok(Self {
             provider,

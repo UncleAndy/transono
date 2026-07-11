@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use anyhow::anyhow;
 use cpal::{
     traits::{DeviceTrait, StreamTrait},
@@ -8,7 +9,7 @@ use tokio::sync::mpsc;
 use tokio::sync::mpsc::Receiver;
 use crate::core::error::{CoreError, Result};
 use crate::audio::audio::{Audio, AudioFormat, IntoGenericBuffer};
-use crate::audio::AudioInput;
+use crate::audio::{AudioInput, LatencyStats};
 use crate::audio::cpal::sample_to_pcm_format;
 
 pub struct AudioInputCpal {
@@ -17,6 +18,7 @@ pub struct AudioInputCpal {
     stream: Stream,
     format: AudioFormat,
     receiver: Option<Receiver<Audio>>,
+    stats: Arc<LatencyStats>,
 }
 
 impl Drop for AudioInputCpal {
@@ -28,6 +30,7 @@ impl Drop for AudioInputCpal {
 impl AudioInputCpal {
     pub fn new(
         device: Device,
+        stats: Arc<LatencyStats>,
     ) -> Result<Self> {
         let (config, sample_format) = select_config(&device)?;
 
@@ -42,7 +45,7 @@ impl AudioInputCpal {
             sample_format: sample_to_pcm_format(sample_format),
         };
 
-        let (tx, rx) = mpsc::channel(32);
+        let (tx, rx) = mpsc::channel(256);
 
         let stream = match sample_format {
 
@@ -52,6 +55,7 @@ impl AudioInputCpal {
                     &config,
                     spec.clone(),
                     tx,
+                    stats.clone(),
                 )?,
 
             SampleFormat::I16 =>
@@ -60,6 +64,7 @@ impl AudioInputCpal {
                     &config,
                     spec.clone(),
                     tx,
+                    stats.clone(),
                 )?,
 
             SampleFormat::U16 =>
@@ -68,6 +73,7 @@ impl AudioInputCpal {
                     &config,
                     spec.clone(),
                     tx,
+                    stats.clone(),
                 )?,
 
             _ => {
@@ -82,6 +88,7 @@ impl AudioInputCpal {
             stream,
             format,
             receiver: Some(rx),
+            stats,
         })
     }
 
@@ -90,6 +97,7 @@ impl AudioInputCpal {
         config: &StreamConfig,
         spec: AudioSpec,
         sender: mpsc::Sender<Audio>,
+        stats: Arc<LatencyStats>,
     ) -> Result<Stream>
     where
         T: cpal::SizedSample
@@ -132,7 +140,7 @@ impl AudioInputCpal {
                 match sender.try_send(audio) {
                     Ok(_) => {}
                     Err(mpsc::error::TrySendError::Full(_)) => {
-                        // увеличить счетчик dropped_frames
+                        stats.inc_dropped_input();
                     }
                     Err(mpsc::error::TrySendError::Closed(_)) => {
                         // линия уже остановлена
@@ -176,6 +184,10 @@ impl AudioInput for AudioInputCpal {
     #[inline]
     fn format(&self) -> &AudioFormat {
         &self.format
+    }
+
+    fn set_stats(&mut self, stats: Arc<LatencyStats>) {
+        self.stats = stats;
     }
 }
 

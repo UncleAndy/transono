@@ -168,11 +168,13 @@ impl ConsoleApp {
         f.render_widget(back_para, main_chunks[1]);
 
         let status_text = format!(
-            "Direct (RU-EN): {} | In: {:.1}ms | Out: {:.1}ms\n\
-             Back   (EN-RU): {} | In: {:.1}ms | Out: {:.1}ms\n\
+            "Direct (RU-EN): {} | In: {:.1}ms | Out: {:.1}ms | Lost: (I:{}, N:{}, O:{})\n\
+             Back   (EN-RU): {} | In: {:.1}ms | Out: {:.1}ms | Lost: (I:{}, N:{}, O:{})\n\
              Press 'q' or 'Esc' to exit",
-            self.direct_status, self.direct_latency.input_total.last_ms, self.direct_latency.output_total.last_ms,
+            self.direct_status, self.direct_latency.input_total.last_ms, self.direct_latency.output_total.last_ms, 
+            self.direct_latency.dropped_input, self.direct_latency.dropped_network, self.direct_latency.dropped_output,
             self.back_status, self.back_latency.input_total.last_ms, self.back_latency.output_total.last_ms,
+            self.back_latency.dropped_input, self.back_latency.dropped_network, self.back_latency.dropped_output,
         );
         let status_block = Block::default()
             .borders(Borders::ALL)

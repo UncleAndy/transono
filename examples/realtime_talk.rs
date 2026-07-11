@@ -1,8 +1,9 @@
 use anyhow::Result;
 use cpal::traits::DeviceTrait;
+use std::sync::Arc;
 use symphonia::core::audio::{AudioSpec, Channels, Position};
 use tokio::signal;
-use realtime_translator::audio::{AudioDevicesCpal, AudioInputCpal, AudioOutputCpal, Processor};
+use realtime_translator::audio::{AudioDevicesCpal, AudioInputCpal, AudioOutputCpal, LatencyStats, Processor};
 use realtime_translator::audio::processors::channel_converter::ChannelConverter;
 use realtime_translator::audio::processors::resampler::Resampler;
 use realtime_translator::providers::openai::realtime::{
@@ -64,8 +65,10 @@ async fn main() -> Result<()> {
     println!("Remote : {} Hz", remote_spec.rate());
     println!("Playback: {} Hz", output_sample_rate);
 
-    let input = AudioInputCpal::new(capture)?;
-    let output = AudioOutputCpal::new(playback)?;
+    let stats = Arc::new(LatencyStats::default());
+
+    let input = AudioInputCpal::new(capture, stats.clone())?;
+    let output = AudioOutputCpal::new(playback, stats.clone())?;
 
     // TranslationLine
     let mut line =
@@ -73,6 +76,7 @@ async fn main() -> Result<()> {
             provider,
             Box::new(input),
             Box::new(output),
+            stats,
         ).await?;
 
     // Input DSP
@@ -148,6 +152,9 @@ fn print_latency_stats(snapshot: realtime_translator::audio::LatencySnapshot) {
     print_metric("Input Total    ", snapshot.input_total);
     print_metric("Output Pipeline", snapshot.output_pipeline);
     print_metric("Output Total   ", snapshot.output_total);
+    println!("---------------------------------------------------------------");
+    println!("Dropped: Input: {}, Network: {}, Output: {}", 
+             snapshot.dropped_input, snapshot.dropped_network, snapshot.dropped_output);
     println!("---------------------------------------------------------------");
 }
 

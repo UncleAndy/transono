@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use anyhow::anyhow;
 use cpal::{
     traits::{DeviceTrait, StreamTrait},
@@ -5,7 +6,7 @@ use cpal::{
 };
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
-use crate::audio::{sample_to_pcm_format, Audio, AudioFormat, AudioOutput};
+use crate::audio::{sample_to_pcm_format, Audio, AudioFormat, AudioOutput, LatencyStats};
 use crate::core::error::{CoreError, Result};
 
 pub struct AudioOutputCpal {
@@ -13,7 +14,8 @@ pub struct AudioOutputCpal {
     name: String,
     stream: Stream,
     format: AudioFormat,
-    sender: Option<Sender<Audio>>
+    sender: Option<Sender<Audio>>,
+    stats: Arc<LatencyStats>,
 }
 
 struct OutputStateCpal<T> {
@@ -31,10 +33,11 @@ impl Drop for AudioOutputCpal {
 impl AudioOutputCpal {
     pub fn new(
         device: Device,
+        stats: Arc<LatencyStats>,
     ) -> Result<Self> {
         let (config, sample_format) = select_config(&device)?;
 
-        let (tx, rx) = mpsc::channel(32);
+        let (tx, rx) = mpsc::channel(256);
 
         let stream = match sample_format {
             SampleFormat::F32 => {
@@ -42,6 +45,7 @@ impl AudioOutputCpal {
                     &device,
                     &config,
                     rx,
+                    stats.clone(),
                 )?
             }
 
@@ -50,6 +54,7 @@ impl AudioOutputCpal {
                     &device,
                     &config,
                     rx,
+                    stats.clone(),
                 )?
             }
 
@@ -58,6 +63,7 @@ impl AudioOutputCpal {
                     &device,
                     &config,
                     rx,
+                    stats.clone(),
                 )?
             }
 
@@ -77,6 +83,7 @@ impl AudioOutputCpal {
                 sample_format: sample_to_pcm_format(sample_format),
             },
             sender: Some(tx),
+            stats,
         })
     }
 
@@ -84,6 +91,7 @@ impl AudioOutputCpal {
         device: &Device,
         config: &StreamConfig,
         mut receiver: mpsc::Receiver<Audio>,
+        stats: Arc<LatencyStats>,
     ) -> Result<Stream>
     where
         T: cpal::SizedSample
@@ -110,6 +118,7 @@ impl AudioOutputCpal {
                         state.current = receiver.try_recv().ok();
 
                         let Some(audio) = &state.current else {
+                            stats.inc_dropped_output();
                             break;
                         };
 
@@ -184,6 +193,10 @@ impl AudioOutput for AudioOutputCpal {
     #[inline]
     fn format(&self) -> &AudioFormat {
         &self.format
+    }
+
+    fn set_stats(&mut self, stats: Arc<LatencyStats>) {
+        self.stats = stats;
     }
 }
 
