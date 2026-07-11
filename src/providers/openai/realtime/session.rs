@@ -102,7 +102,9 @@ impl ProviderSession for RealtimeSession {
                             match audio {
                                 Some(audio) => {
                                     let capture_ts = audio.capture_timestamp();
-                                    let (audio, pipeline_duration) = input_pipeline.process(audio)?;
+                                    let Some((audio, pipeline_duration)) = input_pipeline.process(audio)? else {
+                                        continue
+                                    };
 
                                     let processing_latency = capture_ts.elapsed();
                                     if processing_latency > std::time::Duration::from_millis(100) {
@@ -181,7 +183,9 @@ impl ProviderSession for RealtimeSession {
                                 // println!("{}", msg)
                             }
                             SessionEvent::Audio(audio) => {
-                                let (audio, pipeline_duration) = output_pipeline.process(audio)?;
+                                let Some((audio, pipeline_duration)) = output_pipeline.process(audio)? else {
+                                    continue
+                                };
 
                                 let total_latency = audio.capture_timestamp().elapsed();
 

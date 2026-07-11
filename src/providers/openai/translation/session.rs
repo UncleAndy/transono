@@ -96,7 +96,10 @@ impl ProviderSession for TranslationSession {
                             match audio {
                                 Some(audio) => {
                                     let capture_ts = audio.capture_timestamp();
-                                    let (audio, pipeline_duration) = input_pipeline.process(audio)?;
+                                    let Some((audio, pipeline_duration)) = input_pipeline.process(audio)? else {
+                                        // Если данные не готовы - продолжаем цикл
+                                        continue;
+                                    };
 
                                     let processing_latency = capture_ts.elapsed();
                                     if processing_latency > std::time::Duration::from_millis(100) {
@@ -183,7 +186,9 @@ impl ProviderSession for TranslationSession {
                                 }
                             }
                             SessionEvent::Audio(audio) => {
-                                let (audio, pipeline_duration) = output_pipeline.process(audio)?;
+                                let Some((audio, pipeline_duration)) = output_pipeline.process(audio)? else {
+                                    continue
+                                };
 
                                 if let Some(tx) = &event_tx {
                                     let _ = tx.send(SessionEvent::Audio(audio.clone()));

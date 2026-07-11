@@ -163,11 +163,11 @@ impl Resampler {
     fn pop_output(
         &mut self,
         pcm: &mut PcmAudio,
-    ) {
+    ) -> bool {
         let frames = self.output_buffer.available();
 
         if frames == 0 {
-            return;
+            return false;
         }
 
         let channels = pcm.channel_count();
@@ -196,18 +196,20 @@ impl Resampler {
                 pcm.spec.channels().clone(),
             );
         }
+
+        true
     }
 }
 
 impl DspProcessor for Resampler {
-    fn process(&mut self, input: &mut PcmAudio) -> Result<()> {
+    fn process(&mut self, input: &mut PcmAudio) -> Result<bool> {
         self.push_input(input);
 
         self.process_fft()?;
 
-        self.pop_output(input);
+        let ready =  self.pop_output(input);
 
-        Ok(())
+        Ok(ready)
     }
 }
 

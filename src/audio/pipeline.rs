@@ -152,11 +152,11 @@ impl AudioPipeline {
     pub fn process(
         &mut self,
         audio: Audio,
-    ) -> Result<(Audio, Duration)> {
+    ) -> Result<Option<(Audio, Duration)>> {
         let start_time = Instant::now();
 
         if self.processors.is_empty() {
-            return Ok((audio, Duration::from_secs(0)));
+            return Ok(Some((audio, Duration::from_secs(0))));
         }
 
         let mut current_audio = Some(audio);
@@ -168,8 +168,14 @@ impl AudioPipeline {
                 } else {
                     Audio::from_pcm(self.scratch_pcm.as_ref().ok_or_else(|| CoreError::Other(anyhow!("scratch_pcm missing")))? )?
                 };
- 
-                processor.process_audio(&mut audio)?;
+
+                let ready = processor.process_audio(&mut audio)?;
+
+                if !ready {
+                    // Прерываем пайплайн если выходные данные еще не готовы.
+                    return Ok(None);
+                }
+
                 current_audio = Some(audio);
             } else {
                 if let Some(audio) = current_audio.take() {
@@ -179,7 +185,16 @@ impl AudioPipeline {
                         self.scratch_pcm = Some(audio.to_pcm()?);
                     }
                 }
-                processor.process_dsp(self.scratch_pcm.as_mut().ok_or_else(|| CoreError::Other(anyhow!("scratch_pcm missing")))? )?;
+                let ready = processor.process_dsp(
+                    self.scratch_pcm
+                        .as_mut()
+                        .ok_or_else(|| CoreError::Other(anyhow!("scratch_pcm missing")))?,
+                )?;
+
+                if !ready {
+                    // Прерываем пайплайн если выходные данные еще не готовы.
+                    return Ok(None);
+                }
             }
         }
  
@@ -200,7 +215,7 @@ impl AudioPipeline {
             self.stats.output_total.update(result_audio.capture_timestamp().elapsed().as_micros() as u64);
         }
 
-        Ok((result_audio, duration))
+        Ok(Some((result_audio, duration)))
     }
 
     pub fn is_empty(&self) -> bool {

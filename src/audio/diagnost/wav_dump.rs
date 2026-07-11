@@ -36,7 +36,7 @@ impl DspProcessor for WavDump {
     fn process(
         &mut self,
         pcm: &mut PcmAudio,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         let frames = pcm.frames();
         let channels = pcm.channel_count();
 
@@ -55,7 +55,7 @@ impl DspProcessor for WavDump {
             }
         }
 
-        Ok(())
+        Ok(true)
     }
 }
 

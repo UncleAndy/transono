@@ -47,7 +47,7 @@ impl DspProcessor for ChannelConverter {
     fn process(
         &mut self,
         pcm: &mut PcmAudio,
-    ) -> Result<()> {
+    ) -> Result<bool> {
 
         match (
             pcm.channel_count(),
@@ -78,6 +78,6 @@ impl DspProcessor for ChannelConverter {
             }
         }
 
-        Ok(())
+        Ok(true)
     }
 }
