@@ -2,6 +2,14 @@
 name = "libereco"
 version = "0.1.0"
 edition = "2024"
+authors = ["Andrey Velikoredchanin"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/uncleandy/libereco"
+homepage = "https://github.com/uncleandy/libereco"
+documentation = "https://github.com/uncleandy/libereco"
+readme = "README.md"
+keywords = ["translation", "speech", "audio", "ai", "realtime"]
+categories = ["multimedia::audio", "api-bindings"]
 
 [dependencies]
 tokio = { version = "1.52", features = ["rt-multi-thread", "macros", "signal", "sync", "time", "io-std"] }
