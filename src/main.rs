@@ -5,17 +5,17 @@ use std::process::Command;
 use std::time::Duration;
 use symphonia::core::audio::{AudioSpec, Channels, Position};
 
-use realtime_translator::audio::processors::channel_converter::ChannelConverter;
-use realtime_translator::audio::processors::resampler::Resampler;
-use realtime_translator::audio::{
+use libereco::audio::processors::channel_converter::ChannelConverter;
+use libereco::audio::processors::resampler::Resampler;
+use libereco::audio::{
     AudioDevicesCpal, AudioInput, AudioInputCpal, AudioOutput, AudioOutputCpal, Processor,
     VirtualDevices,
 };
-use realtime_translator::providers::openai::translation::{
+use libereco::providers::openai::translation::{
     OpenAITranslationConfig, OpenAITranslationProvider,
 };
-use realtime_translator::runtime::TranslationLine;
-use realtime_translator::console::ConsoleApp;
+use libereco::runtime::TranslationLine;
+use libereco::console::ConsoleApp;
 use tokio::sync::mpsc;
 
 #[tokio::main]
@@ -106,7 +106,7 @@ async fn main() -> Result<()> {
     println!("Remote : {} Hz", remote_spec.rate());
     println!("Playback: {} Hz", output_sample_rate);
 
-    let stats_direct = Arc::new(realtime_translator::audio::LatencyStats::default());
+    let stats_direct = Arc::new(libereco::audio::LatencyStats::default());
 
     let input_hw = AudioInputCpal::new(capture, stats_direct.clone())?;
     let to_microphone_virt = AudioOutputCpal::new(to_microphone, stats_direct.clone())?;
@@ -173,7 +173,7 @@ async fn main() -> Result<()> {
     let remote_back_spec = remote_back.spec().clone();
     let provider_back = OpenAITranslationProvider::new(config_back);
 
-    let stats_back = Arc::new(realtime_translator::audio::LatencyStats::default());
+    let stats_back = Arc::new(libereco::audio::LatencyStats::default());
 
     let from_speaker_virt = AudioInputCpal::new(from_speaker, stats_back.clone())?;
     let output_hw = AudioOutputCpal::new(playback, stats_back.clone())?;
@@ -267,7 +267,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-fn print_latency_stats(snapshot: realtime_translator::audio::LatencySnapshot) {
+fn print_latency_stats(snapshot: libereco::audio::LatencySnapshot) {
     println!("---------------------------------------------------------------");
     println!("Stage             | Min    | Avg    | Max    | Last   |");
     println!("---------------------------------------------------------------");
@@ -281,7 +281,7 @@ fn print_latency_stats(snapshot: realtime_translator::audio::LatencySnapshot) {
     println!("---------------------------------------------------------------");
 }
 
-fn print_metric(name: &str, m: realtime_translator::audio::MetricSnapshot) {
+fn print_metric(name: &str, m: libereco::audio::MetricSnapshot) {
     println!(
         "{} | {:6.2} | {:6.2} | {:6.2} | {:6.2} |",
         name, m.min_ms, m.avg_ms, m.max_ms, m.last_ms

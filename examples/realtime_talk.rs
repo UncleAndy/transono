@@ -3,15 +3,15 @@ use cpal::traits::DeviceTrait;
 use std::sync::Arc;
 use symphonia::core::audio::{AudioSpec, Channels, Position};
 use tokio::signal;
-use realtime_translator::audio::{AudioDevicesCpal, AudioInputCpal, AudioOutputCpal, LatencyStats, Processor};
-use realtime_translator::audio::processors::channel_converter::ChannelConverter;
-use realtime_translator::audio::processors::resampler::Resampler;
-use realtime_translator::providers::openai::realtime::{
+
+use libereco::audio::{AudioDevicesCpal, AudioInputCpal, AudioOutputCpal, LatencyStats, Processor};
+use libereco::audio::processors::channel_converter::ChannelConverter;
+use libereco::audio::processors::resampler::Resampler;
+use libereco::providers::openai::realtime::{
     OpenAIRealtimeConfig,
     OpenAIRealtimeProvider,
 };
-
-use realtime_translator::runtime::TranslationLine;
+use libereco::runtime::TranslationLine;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -142,7 +142,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-fn print_latency_stats(snapshot: realtime_translator::audio::LatencySnapshot) {
+fn print_latency_stats(snapshot: libereco::audio::LatencySnapshot) {
     println!();
     println!("Latency Statistics (ms):");
     println!("---------------------------------------------------------------");
@@ -158,7 +158,7 @@ fn print_latency_stats(snapshot: realtime_translator::audio::LatencySnapshot) {
     println!("---------------------------------------------------------------");
 }
 
-fn print_metric(name: &str, m: realtime_translator::audio::MetricSnapshot) {
+fn print_metric(name: &str, m: libereco::audio::MetricSnapshot) {
     println!(
         "{} | {:6.2} | {:6.2} | {:6.2} | {:6.2} |",
         name, m.min_ms, m.avg_ms, m.max_ms, m.last_ms

@@ -1043,6 +1043,35 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66"
 
 [[package]]
+name = "libereco"
+version = "0.3.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "audio_samples",
+ "base64-simd",
+ "bytes",
+ "cpal",
+ "crossterm",
+ "dotenvy",
+ "futures-util",
+ "hound",
+ "http",
+ "i24",
+ "ratatui",
+ "rtrb",
+ "rubato",
+ "rustls",
+ "serde",
+ "serde_json",
+ "symphonia",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-tungstenite",
+ "tokio-util",
+]
+
+[[package]]
 name = "libloading"
 version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1737,35 +1766,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f821338fddb99d089116342c46e9f1fbf3828dba077674613e734e01d6ea8677"
 dependencies = [
  "rustfft",
-]
-
-[[package]]
-name = "realtime_translator"
-version = "0.3.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "audio_samples",
- "base64-simd",
- "bytes",
- "cpal",
- "crossterm",
- "dotenvy",
- "futures-util",
- "hound",
- "http",
- "i24",
- "ratatui",
- "rtrb",
- "rubato",
- "rustls",
- "serde",
- "serde_json",
- "symphonia",
- "thiserror 2.0.18",
- "tokio",
- "tokio-tungstenite",
- "tokio-util",
 ]
 
 [[package]]
