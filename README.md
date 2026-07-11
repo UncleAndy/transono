@@ -77,6 +77,23 @@ You can help by:
 
 Every contribution, no matter how small, helps move the project forward.
 
+## ❤️ Support the Project
+
+LIBERECO is and will always remain free and open source.
+
+If you find this project useful and would like to support its development, there are many ways to help:
+
+* ⭐ Star the project on GitHub.
+* 🐛 Report bugs and suggest improvements.
+* 💡 Share your ideas and feedback.
+* 📖 Improve or translate the documentation.
+* 💻 Contribute code or submit pull requests.
+* ❤️ If you wish, you can also support the project financially. Please see [DONATE.md](DONATE.md) for available options.
+
+Every contribution—whether it's a bug report, a documentation fix, a new feature, or a donation—helps make LIBERECO better.
+
+Thank you for supporting the project and helping make communication between people a little freer.
+
 ## Acknowledgements
 
 Many thanks to the open-source community whose work makes projects like this possible.

@@ -77,6 +77,23 @@ Vi povas kontribui per:
 
 Ĉiu kontribuo, granda aŭ malgranda, estas valora.
 
+## ❤️ Subteni la Projekton
+
+LIBERECO estas kaj ĉiam restos libera kaj malfermfonta projekto.
+
+Se ĉi tiu projekto utilas al vi kaj vi volas helpi ĝian evoluon, ekzistas multaj manieroj kontribui:
+
+* ⭐ Donu stelon al la projekto en GitHub.
+* 🐛 Raportu cimojn kaj proponu plibonigojn.
+* 💡 Kunhavigu viajn ideojn kaj reagojn.
+* 📖 Helpu plibonigi aŭ traduki la dokumentadon.
+* 💻 Kontribuu per kodo aŭ sendu Pull Request.
+* ❤️ Se vi deziras, vi ankaŭ povas subteni la projekton finance. La disponeblaj ebloj troviĝas en [DONATE.md](DONATE.md).
+
+Ĉiu kontribuo — ĉu raportita cimo, plibonigita dokumentado, nova funkcio aŭ donaco — helpas fari LIBERECON pli bona.
+
+Dankon pro via subteno kaj pro via helpo fari komunikadon inter homoj iom pli libera.
+
 ## Dankoj
 
 Sinceran dankon al la tuta malfermfonta komunumo, kies laboro ebligas projektojn kiel ĉi tiu.
