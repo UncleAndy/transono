@@ -1,4 +1,5 @@
 use std::fmt::{Display, Formatter};
+
 use crate::core::error::Result;
 
 pub trait Backend {
@@ -8,7 +9,7 @@ pub trait Backend {
 
     fn devices(&self, lang: &str) -> Result<DeviceSet>;
 
-    fn status(&self) -> Result<Vec<DeviceStatus>>;
+    fn status(&self, lang: &str) -> Result<Vec<DeviceStatus>>;
 
     fn doctor(&self) -> Result<DoctorReport>;
 }

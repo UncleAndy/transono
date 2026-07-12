@@ -1,9 +1,10 @@
 use std::num::ParseIntError;
 use std::process::{Command, Output};
-use std::string::FromUtf8Error;
 use anyhow::anyhow;
+use cpal::traits::HostTrait;
+
 use crate::core::error::{CoreError, Result};
-use crate::ctl::backend::{Backend, DeviceSet, DeviceStatus, DoctorReport};
+use crate::ctl::backend::{Backend, DeviceSet, DeviceState, DeviceStatus, DoctorReport};
 
 pub struct PipewireBackend;
 
@@ -29,19 +30,66 @@ impl Backend for PipewireBackend {
     }
 
     fn devices(&self, lang: &str) -> Result<DeviceSet> {
-        let devices = VirtualAudioDevices::create(lang)?;
-
-        let set = devices.device_set();
-
-        std::mem::forget(devices);
-
-        Ok(set)
+        Ok(VirtualAudioDevices::names(lang))
     }
 
-    fn status(&self) -> Result<Vec<DeviceStatus>> {
-        todo!()
-    }
+    fn status(&self, lang: &str) -> Result<Vec<DeviceStatus>> {
+        let host = cpal::default_host();
 
+        let inputs = host
+            .input_devices()
+            .map_err(|e| CoreError::Other(anyhow!(e)))?
+            .collect::<Vec<_>>();
+
+        let outputs = host
+            .output_devices()
+            .map_err(|e| CoreError::Other(anyhow!(e)))?
+            .collect::<Vec<_>>();
+
+        let mut result = Vec::new();
+
+        // Пока проверяем только один язык.
+        // Позже это можно будет заменить на чтение State.
+        let devices = VirtualAudioDevices::names(lang);
+
+        result.push(DeviceStatus {
+            name: devices.to_meeting_microphone.clone(),
+            state: if has_device(inputs.iter().cloned(), &devices.to_meeting_microphone) {
+                DeviceState::Present
+            } else {
+                DeviceState::Missing
+            },
+        });
+
+        result.push(DeviceStatus {
+            name: devices.from_meeting_speaker.clone(),
+            state: if has_device(outputs.iter().cloned(), &devices.from_meeting_speaker) {
+                DeviceState::Present
+            } else {
+                DeviceState::Missing
+            },
+        });
+
+        result.push(DeviceStatus {
+            name: devices.internal_from_meeting_microphone.clone(),
+            state: if has_device(inputs.iter().cloned(), &devices.internal_from_meeting_microphone) {
+                DeviceState::Present
+            } else {
+                DeviceState::Missing
+            },
+        });
+
+        result.push(DeviceStatus {
+            name: devices.internal_to_meeting_speaker.clone(),
+            state: if has_device(outputs.iter().cloned(), &devices.internal_to_meeting_speaker) {
+                DeviceState::Present
+            } else {
+                DeviceState::Missing
+            },
+        });
+
+        Ok(result)
+    }
 
     fn doctor(&self) -> Result<DoctorReport> {
         todo!()
@@ -80,6 +128,24 @@ impl VirtualAudioDevices {
                 from: from_pair.clone(),
             }
         )
+    }
+
+    pub fn names(lang: &str) -> DeviceSet {
+        let lang = lang.to_uppercase();
+
+        DeviceSet {
+            to_meeting_microphone:
+            format!("Translator.{lang}.ToMeeting.Microphone"),
+
+            from_meeting_speaker:
+            format!("Translator.{lang}.FromMeeting.Speaker"),
+
+            internal_to_meeting_speaker:
+            format!("___internal.not_use.{lang}"),
+
+            internal_from_meeting_microphone:
+            format!("___internal.not_use.{lang}_"),
+        }
     }
 
     pub fn cleanup(lang: Option<&str>) -> Result<()> {
@@ -264,4 +330,19 @@ fn unload_module(id: u32) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn has_device<I>(
+    devices: I,
+    name: &str,
+) -> bool
+where
+    I: IntoIterator<Item = cpal::Device>,
+{
+    devices
+        .into_iter()
+        .filter_map(|d|
+            Some(d.to_string())
+        )
+        .any(|n| n == name)
 }

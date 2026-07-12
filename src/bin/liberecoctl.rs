@@ -33,10 +33,15 @@ enum Command {
     },
 
     /// List configured devices
-    List,
+    List {
+        language: String,
+    },
 
     /// Show device status
-    Status,
+    Status {
+        /// Language code (en, ru, de...)
+        language: String,
+    },
 
     /// Check system configuration
     Doctor,
@@ -57,11 +62,11 @@ fn main() -> Result<()> {
         Command::Repair { language } =>
             commands::repair::run(backend.as_ref(), &language),
 
-        Command::List =>
-            commands::list::run(backend.as_ref()),
+        Command::List { language } =>
+            commands::list::run(backend.as_ref(), &language),
 
-        Command::Status =>
-            commands::status::run(backend.as_ref()),
+        Command::Status { language } =>
+            commands::status::run(backend.as_ref(), &language),
 
         Command::Doctor =>
             commands::doctor::run(backend.as_ref()),

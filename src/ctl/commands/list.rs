@@ -3,12 +3,11 @@ use crate::ctl::backend::Backend;
 
 pub fn run(
     backend: &dyn Backend,
+    lang: &str,
 ) -> Result<()> {
-    let devices = backend.list()?;
+    let devices = backend.devices(lang)?;
 
-    for device in devices {
-        println!("{device}");
-    }
+    println!("{devices}");
 
     Ok(())
 }
