@@ -17,8 +17,6 @@ pub mod device;
 pub mod input;
 pub mod output;
 pub mod cpal;
-pub mod linux;
-pub use linux::pulseaudio::VirtualDevices;
 
 pub use audio_buffer::*;
 pub use frame::*;

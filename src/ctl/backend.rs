@@ -6,7 +6,7 @@ pub trait Backend {
 
     fn remove(&self, lang: &str) -> Result<()>;
 
-    fn list(&self) -> Result<Vec<DeviceInfo>>;
+    fn devices(&self, lang: &str) -> Result<DeviceSet>;
 
     fn status(&self) -> Result<Vec<DeviceStatus>>;
 
@@ -14,9 +14,7 @@ pub trait Backend {
 }
 
 #[derive(Debug, Clone)]
-pub struct DeviceInfo {
-    pub language: String,
-
+pub struct DeviceSet {
     pub to_meeting_microphone: String,
     pub from_meeting_speaker: String,
 
@@ -24,9 +22,8 @@ pub struct DeviceInfo {
     pub internal_from_meeting_microphone: String,
 }
 
-impl Display for DeviceInfo {
+impl Display for DeviceSet {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "Language: {}", self.language)?;
         writeln!(f, "  Public:")?;
         writeln!(f, "    ToMeeting.Microphone     : {}", self.to_meeting_microphone)?;
         writeln!(f, "    FromMeeting.Speaker      : {}", self.from_meeting_speaker)?;
