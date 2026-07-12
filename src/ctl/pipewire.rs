@@ -1,5 +1,5 @@
 use std::num::ParseIntError;
-use std::process::{Command, Output};
+use std::process::Command;
 use anyhow::anyhow;
 use cpal::traits::HostTrait;
 
@@ -18,17 +18,29 @@ impl Backend for PipewireBackend {
     fn init(&self, lang: &str) -> Result<()> {
         let status = self.status(lang)?;
 
-        if status.iter().all(|s| matches!(s.state, DeviceState::Present)) {
-            return Ok(());
+        let present = status
+            .iter()
+            .filter(|s| matches!(s.state, DeviceState::Present))
+            .count();
+
+        match present {
+            4 => return Ok(()),
+
+            0 => {
+                let devices = VirtualAudioDevices::create(lang)?;
+                std::mem::forget(devices);
+                Ok(())
+            }
+
+            _ => {
+                VirtualAudioDevices::cleanup(Some(lang))?;
+
+                let devices = VirtualAudioDevices::create(lang)?;
+                std::mem::forget(devices);
+
+                Ok(())
+            }
         }
-
-        let devices = VirtualAudioDevices::create(lang)?;
-
-        // "Забываем" о виртуальных устройствах, т.к. они должны сохраниться
-        // после выхода из приложения.
-        std::mem::forget(devices);
-
-        Ok(())
     }
 
     fn remove(&self, lang: &str) -> Result<()> {
@@ -325,6 +337,7 @@ fn load_module(module: &str, args: &[(&str, &str)]) -> Result<u32> {
     Ok(res)
 }
 
+#[allow(unused)]
 fn unload_module(id: u32) -> Result<()> {
     let status = Command::new("pactl")
         .args(["unload-module", &id.to_string()])
