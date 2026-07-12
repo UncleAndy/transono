@@ -16,6 +16,12 @@ impl PipewireBackend {
 
 impl Backend for PipewireBackend {
     fn init(&self, lang: &str) -> Result<()> {
+        let status = self.status(lang)?;
+
+        if status.iter().all(|s| matches!(s.state, DeviceState::Present)) {
+            return Ok(());
+        }
+
         let devices = VirtualAudioDevices::create(lang)?;
 
         // "Забываем" о виртуальных устройствах, т.к. они должны сохраниться
