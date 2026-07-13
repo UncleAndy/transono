@@ -1,11 +1,9 @@
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::audio::{Audio, AudioFormat, PcmAudio, PcmFormat, Endianness, AudioInput};
     use crate::runtime::Mixer;
     use tokio::sync::mpsc;
     use std::sync::Arc;
-    use symphonia::core::audio::{AudioSpec, Channels};
 
     fn create_test_format() -> AudioFormat {
         AudioFormat {
