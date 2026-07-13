@@ -56,7 +56,7 @@ impl Compressor {
             attack_time: config.attack_time,
             release_time: config.release_time,
             makeup_gain: config.makeup_gain,
-            envelope: Vec::new(),
+            envelope: Vec::with_capacity(8),
         }
     }
 
