@@ -7,10 +7,10 @@ use serde::{Deserialize, Serialize};
 use symphonia::core::audio::{AudioSpec, Channels, Position};
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::handshake::client::Request;
+
 use crate::audio::{AudioCodec, AudioContainer, BinaryEncoding, EncodedAudioFormat, Endianness, PcmFormat};
 use crate::core::error::{CoreError, ProtocolError, Result};
-use crate::providers::openai::realtime::AudioConfig;
-use crate::providers::openai::realtime::protocol::{AudioFormat, AudioInputConfig, AudioOutputConfig, OutputModality, SessionConfig, TurnDetection};
+use crate::providers::openai::realtime::protocol::TurnDetection;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct OpenAIRealtimeConfig {
@@ -121,29 +121,6 @@ impl OpenAIRealtimeConfig {
         Ok(request)
     }
 
-    pub fn session(&self) -> SessionConfig {
-        SessionConfig {
-            session_type: Some("realtime"),
-            model: self.model.clone(),
-            instructions: self.instructions.clone(),
-
-            audio: AudioConfig {
-                input: Some(AudioInputConfig {
-                    format: Some(AudioFormat::pcm_24khz()),
-                    turn_detection: Some(self.turn_mode.clone()),
-                }),
-
-                output: AudioOutputConfig {
-                    format: Some(AudioFormat::pcm_24khz()),
-                    voice: self.voice.clone(),
-                },
-            },
-
-            output_modalities: Some(vec![
-                OutputModality::Audio,
-            ]),
-        }
-    }
     pub fn audio_format(&self) -> EncodedAudioFormat {
         EncodedAudioFormat::new(
             AudioContainer::Raw,

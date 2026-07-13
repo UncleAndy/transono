@@ -1,20 +1,21 @@
-use anyhow::Result;
-use cpal::traits::{DeviceTrait, HostTrait};
-use std::sync::Arc;
-use std::process::Command;
-use std::time::Duration;
-use symphonia::core::audio::{AudioSpec, Channels, Position};
+use anyhow::{Context, Result, anyhow};
+use cpal::{
+    Device, Host,
+    traits::{DeviceTrait, HostTrait},
+};
 use libereco::audio::processors::channel_converter::ChannelConverter;
 use libereco::audio::processors::resampler::Resampler;
 use libereco::audio::{
     AudioDevicesCpal, AudioInput, AudioInputCpal, AudioOutput, AudioOutputCpal, Processor,
-    VirtualDevices,
 };
+use libereco::console::ConsoleApp;
+use libereco::ctl::create_backend;
 use libereco::providers::openai::translation::{
     OpenAITranslationConfig, OpenAITranslationProvider,
 };
 use libereco::runtime::TranslationLine;
-use libereco::console::ConsoleApp;
+use std::sync::Arc;
+use symphonia::core::audio::{AudioSpec, Channels, Position};
 use tokio::sync::mpsc;
 
 #[tokio::main]
@@ -25,32 +26,31 @@ async fn main() -> Result<()> {
         .install_default()
         .expect("failed to install rustls provider");
 
-    VirtualDevices::cleanup()?;
+    let language = "en";
+    let language_self = "ru";
 
-    let (virtual_devices, virtual_output_name, virtual_input_name) =
-        if let Ok(virtual_devices) = VirtualDevices::create("EN") {
-            virtual_devices
-        } else {
-            panic!("Error creating virtual devices.")
-        };
+    let backend = create_backend().context("failed to create audio control backend")?;
+    let virtual_devices = backend
+        .devices(language)
+        .context("failed to resolve virtual audio device names")?;
 
-    println!("Waiting...");
-
-    loop {
-        let out = Command::new("wpctl").arg("status").output()?;
-
-        let text = String::from_utf8_lossy(&out.stdout);
-
-        if text.contains("Translator") {
-            break;
-        }
-
-        tokio::time::sleep(Duration::from_millis(300)).await;
-    }
-
-    println!("Virtual devices created:");
-    println!("    input: {}", &virtual_input_name);
-    println!("    output: {}", &virtual_output_name);
+    println!("Virtual devices:");
+    println!(
+        "    meeting microphone: {}",
+        &virtual_devices.to_meeting_microphone
+    );
+    println!(
+        "    meeting speaker   : {}",
+        &virtual_devices.from_meeting_speaker
+    );
+    println!(
+        "    internal output   : {}",
+        &virtual_devices.internal_to_meeting_speaker
+    );
+    println!(
+        "    internal input    : {}",
+        &virtual_devices.internal_from_meeting_microphone
+    );
 
     let devices = AudioDevicesCpal::new();
 
@@ -59,26 +59,22 @@ async fn main() -> Result<()> {
 
     let host = devices.host();
 
-    let to_microphone = host
-        .output_devices()?
-        .find(|d| {
-            d.to_string().contains(&virtual_output_name)
-                && d.description().unwrap().supports_output()
-        })
-        .expect("virtual microphone not found");
+    let to_microphone =
+        find_virtual_output(host, &virtual_devices.internal_to_meeting_speaker, language)?;
 
-    let from_speaker = host
-        .input_devices()?
-        .find(|d| {
-            d.to_string().contains(&virtual_input_name) && d.description().unwrap().supports_input()
-        })
-        .expect("virtual speaker not found");
+    let from_speaker = find_virtual_input(
+        host,
+        &virtual_devices.internal_from_meeting_microphone,
+        language,
+    )?;
 
     println!("Translator App");
     println!("===========================");
     println!();
 
-    let config = OpenAITranslationConfig::from_env()?.with_lang("en").clone();
+    let config = OpenAITranslationConfig::from_env()?
+        .with_lang(language)
+        .clone();
 
     let remote = config.audio_format();
 
@@ -134,9 +130,13 @@ async fn main() -> Result<()> {
     //let mut line =
     //    TranslationLine::new(provider, Box::new(input_hw), Box::new(link_input)).await?;
 
-    let mut line =
-        TranslationLine::new(provider, Box::new(input_hw), Box::new(to_microphone_virt), stats_direct).await?;
-
+    let mut line = TranslationLine::new(
+        provider,
+        Box::new(input_hw),
+        Box::new(to_microphone_virt),
+        stats_direct,
+    )
+    .await?;
 
     // Input DSP
     {
@@ -168,7 +168,9 @@ async fn main() -> Result<()> {
         -----------------------------------------------------------------
     */
 
-    let config_back = OpenAITranslationConfig::from_env()?.with_lang("ru").clone();
+    let config_back = OpenAITranslationConfig::from_env()?
+        .with_lang(language_self)
+        .clone();
     let remote_back = config_back.audio_format();
     let remote_back_spec = remote_back.spec().clone();
     let provider_back = OpenAITranslationProvider::new(config_back);
@@ -181,11 +183,7 @@ async fn main() -> Result<()> {
     let input_back_sample_rate = from_speaker_virt.format().sample_rate;
     let output_back_sample_rate = output_hw.format().sample_rate;
 
-    // TranslationLine
-
-    // Для отладки - выход линка на вход Line
-    // let mut line_back =
-    //    TranslationLine::new(provider_back, Box::new(link_output), Box::new(output_hw)).await?;
+    // TranslationLine "en" -> "ru"
 
     let mut line_back = TranslationLine::new(
         provider_back,
@@ -227,7 +225,7 @@ async fn main() -> Result<()> {
 
     let (direct_tx, direct_rx) = mpsc::unbounded_channel();
     let (back_tx, back_rx) = mpsc::unbounded_channel();
-    
+
     line.set_event_sender(direct_tx);
     line_back.set_event_sender(back_tx);
 
@@ -257,14 +255,41 @@ async fn main() -> Result<()> {
     println!("\nBack Line Latency:");
     print_latency_stats(line_back.latency());
 
-    println!("\nRemove virtual devices...");
-    drop(virtual_devices);
-
-    VirtualDevices::cleanup()?;
-
     println!("Done.");
 
     Ok(())
+}
+
+fn find_virtual_output(host: &Host, name: &str, language: &str) -> Result<Device> {
+    host.output_devices()
+        .context("failed to list output devices")?
+        .find(|device| {
+            device.to_string().contains(name)
+                && device
+                    .description()
+                    .map(|description| description.supports_output())
+                    .unwrap_or(false)
+        })
+        .ok_or_else(|| missing_virtual_device("output", name, language))
+}
+
+fn find_virtual_input(host: &Host, name: &str, language: &str) -> Result<Device> {
+    host.input_devices()
+        .context("failed to list input devices")?
+        .find(|device| {
+            device.to_string().contains(name)
+                && device
+                    .description()
+                    .map(|description| description.supports_input())
+                    .unwrap_or(false)
+        })
+        .ok_or_else(|| missing_virtual_device("input", name, language))
+}
+
+fn missing_virtual_device(direction: &str, name: &str, language: &str) -> anyhow::Error {
+    anyhow!(
+        "virtual {direction} device '{name}' not found; run `liberecoctl init {language}` first"
+    )
 }
 
 fn print_latency_stats(snapshot: libereco::audio::LatencySnapshot) {
@@ -276,8 +301,10 @@ fn print_latency_stats(snapshot: libereco::audio::LatencySnapshot) {
     print_metric("Output Pipeline", snapshot.output_pipeline);
     print_metric("Output Total   ", snapshot.output_total);
     println!("---------------------------------------------------------------");
-    println!("Dropped: Input: {}, Network: {}, Output: {}", 
-             snapshot.dropped_input, snapshot.dropped_network, snapshot.dropped_output);
+    println!(
+        "Dropped: Input: {}, Network: {}, Output: {}",
+        snapshot.dropped_input, snapshot.dropped_network, snapshot.dropped_output
+    );
     println!("---------------------------------------------------------------");
 }
 

@@ -127,9 +127,6 @@ pub struct VirtualAudioDevicePair {
 
     pub output_name: String,
     pub input_name: String,
-
-    sink_module: u32,
-    source_module: u32,
 }
 
 impl VirtualAudioDevices {
@@ -270,7 +267,7 @@ fn create_pair(lang: &str, prefix: &str, hide_device: HiddenDevice) -> Result<Vi
         }
     };
     let sink_properties = &format!("device.description={output_name}");
-    let sink_module = load_module(
+    let _ = load_module(
         "module-null-sink",
         &[
             ("sink_name", &sink_name),
@@ -290,7 +287,7 @@ fn create_pair(lang: &str, prefix: &str, hide_device: HiddenDevice) -> Result<Vi
         }
     };
     let sink_properties = &format!("device.description={input_name}");
-    let source_module = load_module(
+    let _ = load_module(
         "module-remap-source",
         &[
             ("master", &format!("{sink_name}.monitor")),
@@ -307,8 +304,6 @@ fn create_pair(lang: &str, prefix: &str, hide_device: HiddenDevice) -> Result<Vi
         source_name,
         output_name,
         input_name,
-        sink_module,
-        source_module,
     })
 }
 
