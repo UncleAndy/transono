@@ -7,9 +7,7 @@ use libereco::audio::diagnost::indicator::Indicator;
 use libereco::audio::processors::channel_converter::ChannelConverter;
 use libereco::audio::processors::denoiser::Denoiser;
 use libereco::audio::processors::resampler::Resampler;
-use libereco::audio::{
-    AudioDevicesCpal, AudioInput, AudioInputCpal, AudioOutput, AudioOutputCpal, Processor,
-};
+use libereco::audio::{AudioDevicesCpal, AudioInput, AudioInputCpal, AudioOutput, AudioOutputCpal, EncodedAudioFormat, Processor};
 use libereco::console::ConsoleApp;
 use libereco::ctl::create_backend;
 use libereco::providers::openai::translation::{
@@ -83,7 +81,7 @@ async fn main() -> Result<()> {
 
     let remote_spec = remote.spec().clone();
 
-    let internal_spec = libereco::audio::EncodedAudioFormat::internal_format().spec();
+    let internal_spec = EncodedAudioFormat::internal_format().spec();
     let internal_channels = internal_spec.channels().clone();
     let stereo = Channels::Positioned(Position::FRONT_LEFT | Position::FRONT_RIGHT);
 
