@@ -1,9 +1,12 @@
-use crate::audio::{Audio, PcmAudio, Processor, AudioProcessor, DspProcessor, Pipeline as PipelineTrait};
-use crate::core::error::{Result, CoreError};
+use crate::audio::processors::channel_converter::ChannelConverter;
+use crate::audio::processors::resampler::Resampler;
+use crate::audio::{Audio, AudioFormat, AudioProcessor, DspProcessor, PcmAudio, Pipeline as PipelineTrait, Processor};
+use crate::core::error::{CoreError, Result};
 use anyhow::anyhow;
-use std::time::{Instant, Duration};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::time::{Duration, Instant};
+use symphonia::core::audio::{AudioSpec, Channels, Position};
 
 #[derive(Debug)]
 pub struct LatencyMetric {
@@ -39,7 +42,11 @@ impl LatencyMetric {
         let count = self.count.load(Ordering::Relaxed);
         let min = self.min_us.load(Ordering::Relaxed);
         MetricSnapshot {
-            min_ms: if min == u64::MAX { 0.0 } else { min as f64 / 1000.0 },
+            min_ms: if min == u64::MAX {
+                0.0
+            } else {
+                min as f64 / 1000.0
+            },
             max_ms: self.max_us.load(Ordering::Relaxed) as f64 / 1000.0,
             avg_ms: if count > 0 {
                 (self.sum_us.load(Ordering::Relaxed) as f64 / count as f64) / 1000.0
@@ -140,19 +147,68 @@ impl AudioPipeline {
         }
     }
 
-    pub fn add(
-        &mut self,
-        processor: Processor,
-    ) -> &mut Self
-    {
+    pub fn add(&mut self, processor: Processor) -> &mut Self {
         self.processors.push(processor);
         self
     }
 
-    pub fn process(
-        &mut self,
-        mut audio: Audio,
-    ) -> Result<Option<(Audio, Duration)>> {
+    /// Создает пайплайн для приведения аудио к формату F32 48000 Гц Моно.
+    pub fn convert_to_f32_48000_mono(input_format: AudioFormat) -> Result<Self> {
+        let mut pipeline = Self::new_standalone(true);
+
+        // Преобразование в моно
+        if input_format.channels != 1 {
+            pipeline.add(Processor::ChannelConverter(
+                ChannelConverter::new(
+                    Channels::Positioned(Position::FRONT_CENTER),
+                )
+            ));
+        }
+
+        // Ресемплирование до 48000 Гц
+        if input_format.sample_rate != 48000 {
+            pipeline.add(Processor::Resampler(
+                Resampler::new(
+                    AudioSpec::new(
+                        input_format.sample_rate,
+                        Channels::Discrete(input_format.channels),
+                    ),
+                    48000)?
+                )
+            );
+        }
+
+        Ok(pipeline)
+    }
+
+    /// Создает пайплайн для преобразования из формата F32 48000 Гц Моно в целевой формат.
+    pub fn convert_from_f32_48000_mono(output_format: AudioFormat) -> Result<Self> {
+        let mut pipeline = Self::new_standalone(false);
+
+        let input_spec = AudioSpec::new(
+            48000,
+            Channels::Positioned(Position::FRONT_CENTER),
+        );
+
+        // Ресемплирование из 48000 Гц в целевую частоту
+        if output_format.sample_rate != 48000 {
+            pipeline.add(Processor::Resampler(Resampler::new(
+                input_spec,
+                output_format.sample_rate,
+            )?));
+        }
+
+        // Преобразование в целевую конфигурацию каналов
+        if output_format.channels != 1 {
+            pipeline.add(Processor::ChannelConverter(ChannelConverter::new(
+                Channels::Discrete(output_format.channels),
+            )));
+        }
+
+        Ok(pipeline)
+    }
+
+    pub fn process(&mut self, mut audio: Audio) -> Result<Option<(Audio, Duration)>> {
         let start_time = Instant::now();
 
         if !self.process_audio(&mut audio)? {
@@ -164,10 +220,14 @@ impl AudioPipeline {
 
         if self.is_input {
             self.stats.input_pipeline.update(duration_us);
-            self.stats.input_total.update(audio.capture_timestamp().elapsed().as_micros() as u64);
+            self.stats
+                .input_total
+                .update(audio.capture_timestamp().elapsed().as_micros() as u64);
         } else {
             self.stats.output_pipeline.update(duration_us);
-            self.stats.output_total.update(audio.capture_timestamp().elapsed().as_micros() as u64);
+            self.stats
+                .output_total
+                .update(audio.capture_timestamp().elapsed().as_micros() as u64);
         }
 
         Ok(Some((audio, duration)))
@@ -188,7 +248,10 @@ impl AudioPipeline {
         for processor in &mut self.processors {
             if processor.is_audio() {
                 if in_scratch {
-                    let scratch = self.scratch_pcm.as_ref().ok_or_else(|| CoreError::Other(anyhow!("scratch_pcm missing")))?;
+                    let scratch = self
+                        .scratch_pcm
+                        .as_ref()
+                        .ok_or_else(|| CoreError::Other(anyhow!("scratch_pcm missing")))?;
                     *audio = Audio::from_pcm(scratch)?;
                     in_scratch = false;
                 }
@@ -206,7 +269,10 @@ impl AudioPipeline {
                     in_scratch = true;
                 }
 
-                let scratch = self.scratch_pcm.as_mut().ok_or_else(|| CoreError::Other(anyhow!("scratch_pcm missing")))?;
+                let scratch = self
+                    .scratch_pcm
+                    .as_mut()
+                    .ok_or_else(|| CoreError::Other(anyhow!("scratch_pcm missing")))?;
                 if !processor.process_dsp(scratch)? {
                     return Ok(false);
                 }
@@ -214,7 +280,10 @@ impl AudioPipeline {
         }
 
         if in_scratch {
-            let scratch = self.scratch_pcm.as_ref().ok_or_else(|| CoreError::Other(anyhow!("scratch_pcm missing")))?;
+            let scratch = self
+                .scratch_pcm
+                .as_ref()
+                .ok_or_else(|| CoreError::Other(anyhow!("scratch_pcm missing")))?;
             *audio = Audio::from_pcm(scratch)?;
         }
 
@@ -231,7 +300,7 @@ impl AudioPipeline {
                     current_audio = Some(Audio::from_pcm(pcm)?);
                     in_audio = true;
                 }
-                
+
                 if !processor.process_audio(current_audio.as_mut().unwrap())? {
                     return Ok(false);
                 }
@@ -298,7 +367,7 @@ impl Pipelines {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::audio::{Audio, PcmAudio, Processor, IdentityProcessor};
+    use crate::audio::{Audio, Endianness, IdentityProcessor, PcmAudio, PcmFormat, Processor};
     use symphonia::core::audio::{AudioSpec, Channels, Position};
 
     #[test]
@@ -309,11 +378,31 @@ mod tests {
         let mut outer = AudioPipeline::new_standalone(true);
         outer.add(Processor::Pipeline(Box::new(inner)));
 
-        let spec = AudioSpec::new(48000, Channels::Positioned(Position::FRONT_LEFT | Position::FRONT_RIGHT));
+        let spec = AudioSpec::new(
+            48000,
+            Channels::Positioned(Position::FRONT_LEFT | Position::FRONT_RIGHT),
+        );
         let pcm = PcmAudio::new(spec, 480);
         let audio = Audio::from_pcm(&pcm).unwrap();
 
         let result = outer.process(audio).unwrap();
         assert!(result.is_some());
+    }
+
+    #[test]
+    fn test_predefined_pipelines() {
+        let spec_44100_stereo = AudioFormat {
+            sample_rate: 44100,
+            channels: 2,
+            sample_format: PcmFormat::U32(Endianness::Little),
+        };
+
+        // Test TO_F32_48000_MONO
+        let to_mono = AudioPipeline::convert_to_f32_48000_mono(spec_44100_stereo.clone()).unwrap();
+        assert!(!to_mono.is_empty());
+
+        // Test FROM_F32_48000_MONO
+        let from_mono = AudioPipeline::convert_from_f32_48000_mono(spec_44100_stereo).unwrap();
+        assert!(!from_mono.is_empty());
     }
 }
