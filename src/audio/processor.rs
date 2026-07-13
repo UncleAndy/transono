@@ -3,6 +3,7 @@ use crate::audio::diagnost::wav_dump::WavDump;
 use crate::audio::processors::channel_converter::ChannelConverter;
 use crate::audio::processors::denoiser::Denoiser;
 use crate::audio::processors::resampler::Resampler;
+use crate::audio::processors::compressor::Compressor;
 use crate::audio::{Audio, PcmAudio};
 use crate::core::error::Result;
 
@@ -11,6 +12,7 @@ pub enum Processor {
     Denoiser(Denoiser),
     Resampler(Resampler),
     ChannelConverter(ChannelConverter),
+    Compressor(Compressor),
     IndicatorDiag(Indicator),
     WavDumpDiag(WavDump),
 }
@@ -28,6 +30,7 @@ impl Processor {
             Self::Denoiser(p) => p.process(pcm),
             Self::Resampler(p) => p.process(pcm),
             Self::ChannelConverter(p) => p.process(pcm),
+            Self::Compressor(p) => p.process(pcm),
             Self::IndicatorDiag(p) => p.process(pcm),
             Self::WavDumpDiag(p) => p.process(pcm),
             Self::Identity(_) => panic!("Expected DSP processor, got Audio processor"),
