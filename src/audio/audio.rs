@@ -100,18 +100,29 @@ impl Audio {
         let spec = buffer.spec().clone();
 
         if pcm.spec != spec || pcm.frames() != buffer.frames() {
-            *pcm = PcmAudio::new(spec, buffer.frames());
+            pcm.resize(buffer.frames(), spec.channels().count());
+            pcm.spec = spec.clone();
         }
 
         pcm.capture_timestamp = self.capture_timestamp;
         pcm.processing_timestamp = Instant::now();
 
         let frames = pcm.frames();
-        let mut slices: Vec<&mut [f32]> = pcm.data
-            .chunks_exact_mut(frames)
-            .collect();
+        let channel_count = spec.channels().count();
 
-        buffer.copy_to_slice_planar(&mut slices);
+        if channel_count == 1 {
+            let mut slices = [pcm.data.as_mut_slice()];
+            buffer.copy_to_slice_planar(&mut slices);
+        } else if channel_count == 2 {
+            let (s0, s1) = pcm.data.split_at_mut(frames);
+            let mut slices = [s0, s1];
+            buffer.copy_to_slice_planar(&mut slices);
+        } else {
+            let mut slices: Vec<&mut [f32]> = pcm.data
+                .chunks_exact_mut(frames)
+                .collect();
+            buffer.copy_to_slice_planar(&mut slices);
+        }
 
         Ok(())
     }
@@ -120,14 +131,21 @@ impl Audio {
         pcm: &PcmAudio,
     ) -> Result<Self> {
         let frames = pcm.frames();
-        let refs: Vec<&[f32]> = pcm.data
-            .chunks_exact(frames)
-            .collect();
+        let channel_count = pcm.channel_count();
 
-        let mut audio = Self::from_planar::<f32>(
-            pcm.spec.clone(),
-            &refs,
-        );
+        let mut audio = if channel_count == 1 {
+            let slices = [pcm.data.as_slice()];
+            Self::from_planar::<f32>(pcm.spec.clone(), &slices)
+        } else if channel_count == 2 {
+            let (s0, s1) = pcm.data.split_at(frames);
+            let slices = [s0, s1];
+            Self::from_planar::<f32>(pcm.spec.clone(), &slices)
+        } else {
+            let refs: Vec<&[f32]> = pcm.data
+                .chunks_exact(frames)
+                .collect();
+            Self::from_planar::<f32>(pcm.spec.clone(), &refs)
+        };
 
         audio.capture_timestamp = pcm.capture_timestamp;
 

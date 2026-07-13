@@ -1,4 +1,4 @@
-use crate::audio::{Audio, PcmAudio, Processor};
+use crate::audio::{Audio, PcmAudio, Processor, AudioProcessor, DspProcessor, Pipeline as PipelineTrait};
 use crate::core::error::{Result, CoreError};
 use anyhow::anyhow;
 use std::time::{Instant, Duration};
@@ -151,71 +151,26 @@ impl AudioPipeline {
 
     pub fn process(
         &mut self,
-        audio: Audio,
+        mut audio: Audio,
     ) -> Result<Option<(Audio, Duration)>> {
         let start_time = Instant::now();
 
-        if self.processors.is_empty() {
-            return Ok(Some((audio, Duration::from_secs(0))));
+        if !self.process_audio(&mut audio)? {
+            return Ok(None);
         }
-
-        let mut current_audio = Some(audio);
-
-        for processor in &mut self.processors {
-            if processor.is_audio() {
-                let mut audio = if let Some(a) = current_audio.take() {
-                    a
-                } else {
-                    Audio::from_pcm(self.scratch_pcm.as_ref().ok_or_else(|| CoreError::Other(anyhow!("scratch_pcm missing")))? )?
-                };
-
-                let ready = processor.process_audio(&mut audio)?;
-
-                if !ready {
-                    // Прерываем пайплайн если выходные данные еще не готовы.
-                    return Ok(None);
-                }
-
-                current_audio = Some(audio);
-            } else {
-                if let Some(audio) = current_audio.take() {
-                    if let Some(ref mut scratch) = self.scratch_pcm {
-                        audio.to_pcm_into(scratch)?;
-                    } else {
-                        self.scratch_pcm = Some(audio.to_pcm()?);
-                    }
-                }
-                let ready = processor.process_dsp(
-                    self.scratch_pcm
-                        .as_mut()
-                        .ok_or_else(|| CoreError::Other(anyhow!("scratch_pcm missing")))?,
-                )?;
-
-                if !ready {
-                    // Прерываем пайплайн если выходные данные еще не готовы.
-                    return Ok(None);
-                }
-            }
-        }
- 
-        let result_audio = if let Some(audio) = current_audio {
-            audio
-        } else {
-            Audio::from_pcm(self.scratch_pcm.as_ref().ok_or_else(|| CoreError::Other(anyhow!("scratch_pcm missing")))? )?
-        };
 
         let duration = start_time.elapsed();
         let duration_us = duration.as_micros() as u64;
 
         if self.is_input {
             self.stats.input_pipeline.update(duration_us);
-            self.stats.input_total.update(result_audio.capture_timestamp().elapsed().as_micros() as u64);
+            self.stats.input_total.update(audio.capture_timestamp().elapsed().as_micros() as u64);
         } else {
             self.stats.output_pipeline.update(duration_us);
-            self.stats.output_total.update(result_audio.capture_timestamp().elapsed().as_micros() as u64);
+            self.stats.output_total.update(audio.capture_timestamp().elapsed().as_micros() as u64);
         }
 
-        Ok(Some((result_audio, duration)))
+        Ok(Some((audio, duration)))
     }
 
     pub fn is_empty(&self) -> bool {
@@ -225,7 +180,94 @@ impl AudioPipeline {
     pub fn clear(&mut self) {
         self.processors.clear()
     }
+
+    /// Внутренний метод обработки, который можно вызывать из трейтов.
+    pub fn process_audio(&mut self, audio: &mut Audio) -> Result<bool> {
+        let mut in_scratch = false;
+
+        for processor in &mut self.processors {
+            if processor.is_audio() {
+                if in_scratch {
+                    let scratch = self.scratch_pcm.as_ref().ok_or_else(|| CoreError::Other(anyhow!("scratch_pcm missing")))?;
+                    *audio = Audio::from_pcm(scratch)?;
+                    in_scratch = false;
+                }
+
+                if !processor.process_audio(audio)? {
+                    return Ok(false);
+                }
+            } else {
+                if !in_scratch {
+                    if let Some(ref mut scratch) = self.scratch_pcm {
+                        audio.to_pcm_into(scratch)?;
+                    } else {
+                        self.scratch_pcm = Some(audio.to_pcm()?);
+                    }
+                    in_scratch = true;
+                }
+
+                let scratch = self.scratch_pcm.as_mut().ok_or_else(|| CoreError::Other(anyhow!("scratch_pcm missing")))?;
+                if !processor.process_dsp(scratch)? {
+                    return Ok(false);
+                }
+            }
+        }
+
+        if in_scratch {
+            let scratch = self.scratch_pcm.as_ref().ok_or_else(|| CoreError::Other(anyhow!("scratch_pcm missing")))?;
+            *audio = Audio::from_pcm(scratch)?;
+        }
+
+        Ok(true)
+    }
+
+    pub fn process_dsp(&mut self, pcm: &mut PcmAudio) -> Result<bool> {
+        let mut in_audio = false;
+        let mut current_audio: Option<Audio> = None;
+
+        for processor in &mut self.processors {
+            if processor.is_audio() {
+                if !in_audio {
+                    current_audio = Some(Audio::from_pcm(pcm)?);
+                    in_audio = true;
+                }
+                
+                if !processor.process_audio(current_audio.as_mut().unwrap())? {
+                    return Ok(false);
+                }
+            } else {
+                if in_audio {
+                    current_audio.take().unwrap().to_pcm_into(pcm)?;
+                    in_audio = false;
+                }
+
+                if !processor.process_dsp(pcm)? {
+                    return Ok(false);
+                }
+            }
+        }
+
+        if in_audio {
+            current_audio.unwrap().to_pcm_into(pcm)?;
+        }
+
+        Ok(true)
+    }
 }
+
+impl AudioProcessor for AudioPipeline {
+    fn process(&mut self, input: &mut Audio) -> Result<bool> {
+        self.process_audio(input)
+    }
+}
+
+impl DspProcessor for AudioPipeline {
+    fn process(&mut self, input: &mut PcmAudio) -> Result<bool> {
+        self.process_dsp(input)
+    }
+}
+
+impl PipelineTrait for AudioPipeline {}
 
 impl Default for AudioPipeline {
     fn default() -> Self {
@@ -250,5 +292,28 @@ impl Pipelines {
             output: AudioPipeline::new(stats.clone(), false),
             stats,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::audio::{Audio, PcmAudio, Processor, IdentityProcessor};
+    use symphonia::core::audio::{AudioSpec, Channels, Position};
+
+    #[test]
+    fn test_nested_pipeline() {
+        let mut inner = AudioPipeline::new_standalone(true);
+        inner.add(Processor::Identity(IdentityProcessor));
+
+        let mut outer = AudioPipeline::new_standalone(true);
+        outer.add(Processor::Pipeline(Box::new(inner)));
+
+        let spec = AudioSpec::new(48000, Channels::Positioned(Position::FRONT_LEFT | Position::FRONT_RIGHT));
+        let pcm = PcmAudio::new(spec, 480);
+        let audio = Audio::from_pcm(&pcm).unwrap();
+
+        let result = outer.process(audio).unwrap();
+        assert!(result.is_some());
     }
 }

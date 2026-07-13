@@ -78,9 +78,8 @@ impl PcmAudio {
 
         if channels != old_channels {
             // При изменении количества каналов планарная структура меняется.
-            // Пока просто пересоздаем данные.
+            // Просто меняем размер. fill(0.0) не нужен, так как данные будут перезаписаны.
             self.data.resize(frames * channels, 0.0);
-            self.data.fill(0.0);
         } else if frames != old_frames {
             if frames > old_frames {
                 // Увеличиваем: сначала ресайз, потом сдвиг в конец
