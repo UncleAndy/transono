@@ -22,6 +22,7 @@ pub struct Compressor {
     envelope: Vec<f32>,
 }
 
+#[derive(Debug, Clone)]
 pub struct CompressorConfig {
     pub threshold: f32,
     pub ratio: f32,
@@ -31,7 +32,7 @@ pub struct CompressorConfig {
 }
 
 #[allow(unused)]
-static NATURAL_VOICE: CompressorConfig = CompressorConfig {
+pub static NATURAL_VOICE: CompressorConfig = CompressorConfig {
     threshold: -20.0,
     ratio: 3.0,
     attack_time: 0.01,
@@ -40,7 +41,7 @@ static NATURAL_VOICE: CompressorConfig = CompressorConfig {
 };
 
 #[allow(unused)]
-static TIGHT_CONTROL: CompressorConfig = CompressorConfig {
+pub static TIGHT_CONTROL: CompressorConfig = CompressorConfig {
     threshold: -24.0,
     ratio: 4.0,
     attack_time: 0.005, // 5ms

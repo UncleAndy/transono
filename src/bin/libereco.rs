@@ -19,6 +19,7 @@ use libereco::runtime::TranslationLine;
 use std::sync::Arc;
 use symphonia::core::audio::{AudioSpec, Channels, Position};
 use tokio::sync::mpsc;
+use libereco::audio::processors::compressor::{Compressor, NATURAL_VOICE};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -109,28 +110,12 @@ async fn main() -> Result<()> {
     let to_microphone_virt = AudioOutputCpal::new(to_microphone, stats_direct.clone())?;
 
     /*
-       let link_format = AudioFormat {
-           sample_rate: output_sample_rate,
-           channels: stereo.count() as u16,
-           sample_format: PcmFormat::F32(Endianness::Little),
-       };
-
-       // Для тестирования - Link виртуального микрофона с виртуальным динамиком
-       let (link_input, link_output) =
-           AudioLink::new_ports(link_format, 32);
-    */
-
-    /*
         ------------------------------------------------------------------
         Линия для перевода с реального микрофона на виртуальный (RU -> EN)
         ------------------------------------------------------------------
     */
 
     // TranslationLine
-
-    // Для отладки
-    //let mut line =
-    //    TranslationLine::new(provider, Box::new(input_hw), Box::new(link_input)).await?;
 
     let (direct_input_indicator_tx, direct_input_indicator_rx) = mpsc::channel(8);
     let (direct_output_indicator_tx, direct_output_indicator_rx) = mpsc::channel(8);
@@ -158,6 +143,10 @@ async fn main() -> Result<()> {
             AudioSpec::new(input_sample_rate, mono.clone()),
             remote_spec.rate(),
         )?))?;
+
+        line.add_input_processor(Processor::Compressor(Compressor::new(
+            NATURAL_VOICE.clone(),
+        )))?;
 
         line.add_input_processor(Processor::IndicatorDiag(Indicator::new(
             direct_input_indicator_tx,
