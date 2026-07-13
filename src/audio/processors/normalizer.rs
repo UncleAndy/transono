@@ -95,3 +95,133 @@ impl DspProcessor for Normalizer {
         Ok(true)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::audio::pcm_audio::PcmAudio;
+    use symphonia::core::audio::{AudioSpec, Channels};
+
+    fn create_test_pcm(channels: usize, frames: usize, data: Vec<f32>) -> PcmAudio {
+        let spec = AudioSpec::new(44100, if channels == 1 {
+            Channels::Positioned(symphonia::core::audio::Position::FRONT_CENTER)
+        } else if channels == 2 {
+            Channels::Positioned(symphonia::core::audio::Position::FRONT_LEFT | symphonia::core::audio::Position::FRONT_RIGHT)
+        } else {
+            Channels::Positioned(symphonia::core::audio::Position::FRONT_CENTER) // Fallback for tests
+        });
+        
+        let mut pcm = PcmAudio::new(spec, frames);
+        pcm.data = data;
+        pcm
+    }
+
+    #[test]
+    fn test_peak_normalization_basic() {
+        // Input: max peak is 0.5. Target: 1.0. Gain should be 2.0.
+        let data = vec![0.1, 0.5, -0.3, 0.2];
+        let mut pcm = create_test_pcm(1, 4, data);
+        
+        let config = NormalizerConfig {
+            normalization_type: NormalizationType::Peak,
+            target_level: 1.0,
+        };
+        let mut normalizer = Normalizer::new(config);
+        
+        normalizer.process(&mut pcm).unwrap();
+        
+        assert_eq!(pcm.data[1], 1.0);
+        assert_eq!(pcm.data[0], 0.2);
+        assert_eq!(pcm.data[2], -0.6);
+    }
+
+    #[test]
+    fn test_peak_normalization_stereo_preservation() {
+        // Left peak: 0.1, Right peak: 0.5. Target: 1.0.
+        // Global gain should be 1.0 / 0.5 = 2.0.
+        // Left should become 0.2, Right should become 1.0.
+        let data = vec![
+            0.1, 0.0, // Left channel
+            0.5, 0.0  // Right channel
+        ];
+        let mut pcm = create_test_pcm(2, 2, data);
+        
+        let config = NormalizerConfig {
+            normalization_type: NormalizationType::Peak,
+            target_level: 1.0,
+        };
+        let mut normalizer = Normalizer::new(config);
+        
+        normalizer.process(&mut pcm).unwrap();
+        
+        assert_eq!(pcm.data[0], 0.2);
+        assert_eq!(pcm.data[2], 1.0);
+    }
+
+    #[test]
+    fn test_rms_normalization_basic() {
+        // Input: [0.5, 0.5]. RMS = sqrt((0.25 + 0.25)/2) = 0.5.
+        // Target: 1.0. Gain should be 2.0.
+        let data = vec![0.5, 0.5];
+        let mut pcm = create_test_pcm(1, 2, data);
+        
+        let config = NormalizerConfig {
+            normalization_type: NormalizationType::Rms,
+            target_level: 1.0,
+        };
+        let mut normalizer = Normalizer::new(config);
+        
+        normalizer.process(&mut pcm).unwrap();
+        
+        assert_eq!(pcm.data[0], 1.0);
+        assert_eq!(pcm.data[1], 1.0);
+    }
+
+    #[test]
+    fn test_rms_normalization_complex() {
+        // Input: [1.0, 0.0]. RMS = sqrt((1+0)/2) = sqrt(0.5) ≈ 0.7071.
+        // Target: 0.7071. Gain should be 1.0.
+        let data = vec![1.0, 0.0];
+        let mut pcm = create_test_pcm(1, 2, data);
+        
+        let config = NormalizerConfig {
+            normalization_type: NormalizationType::Rms,
+            target_level: 0.70710678,
+        };
+        let mut normalizer = Normalizer::new(config);
+        
+        normalizer.process(&mut pcm).unwrap();
+        
+        assert!((pcm.data[0] - 1.0).abs() < 1e-6);
+        assert!((pcm.data[1] - 0.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_normalization_silence() {
+        let data = vec![0.0, 0.0, 0.0];
+        let mut pcm = create_test_pcm(1, 3, data);
+        
+        let config = NormalizerConfig {
+            normalization_type: NormalizationType::Peak,
+            target_level: 1.0,
+        };
+        let mut normalizer = Normalizer::new(config);
+        
+        normalizer.process(&mut pcm).unwrap();
+        
+        // Should remain silence, no NaN or Inf
+        assert_eq!(pcm.data, vec![0.0, 0.0, 0.0]);
+    }
+
+    #[test]
+    fn test_empty_buffer() {
+        let data = vec![];
+        let mut pcm = create_test_pcm(1, 0, data);
+        
+        let config = NormalizerConfig::default();
+        let mut normalizer = Normalizer::new(config);
+        
+        let result = normalizer.process(&mut pcm);
+        assert!(result.is_ok());
+    }
+}
