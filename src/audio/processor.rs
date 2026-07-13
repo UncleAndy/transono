@@ -1,13 +1,17 @@
-use crate::core::error::Result;
-use crate::audio::{Audio, PcmAudio};
-use crate::audio::processors::resampler::Resampler;
-use crate::audio::processors::channel_converter::ChannelConverter;
+use crate::audio::diagnost::indicator::Indicator;
 use crate::audio::diagnost::wav_dump::WavDump;
+use crate::audio::processors::channel_converter::ChannelConverter;
+use crate::audio::processors::denoiser::Denoiser;
+use crate::audio::processors::resampler::Resampler;
+use crate::audio::{Audio, PcmAudio};
+use crate::core::error::Result;
 
 pub enum Processor {
     Identity(IdentityProcessor),
+    Denoiser(Denoiser),
     Resampler(Resampler),
     ChannelConverter(ChannelConverter),
+    IndicatorDiag(Indicator),
     WavDumpDiag(WavDump),
 }
 
@@ -21,8 +25,10 @@ impl Processor {
 
     pub fn process_dsp(&mut self, pcm: &mut PcmAudio) -> Result<bool> {
         match self {
+            Self::Denoiser(p) => p.process(pcm),
             Self::Resampler(p) => p.process(pcm),
             Self::ChannelConverter(p) => p.process(pcm),
+            Self::IndicatorDiag(p) => p.process(pcm),
             Self::WavDumpDiag(p) => p.process(pcm),
             Self::Identity(_) => panic!("Expected DSP processor, got Audio processor"),
         }
@@ -45,20 +51,13 @@ pub trait AudioProcessor: Send {
     /// - `Ok(true)`  — выходные данные готовы;
     /// - `Ok(false)` — требуется больше входных данных;
     /// - `Err(...)`  — ошибка обработки.
-    fn process(
-        &mut self,
-        input: &mut Audio
-    )
-    -> Result<bool>;
+    fn process(&mut self, input: &mut Audio) -> Result<bool>;
 }
 
 pub struct IdentityProcessor;
 
 impl AudioProcessor for IdentityProcessor {
-    fn process(
-        &mut self,
-        _audio: &mut Audio,
-    ) -> Result<bool> {
+    fn process(&mut self, _audio: &mut Audio) -> Result<bool> {
         Ok(true)
     }
 }
@@ -71,8 +70,5 @@ pub trait DspProcessor: Send {
     /// - `Ok(true)`  — выходные данные готовы;
     /// - `Ok(false)` — требуется больше входных данных;
     /// - `Err(...)`  — ошибка обработки.
-    fn process(
-        &mut self,
-        input: &mut PcmAudio
-    ) -> Result<bool>;
+    fn process(&mut self, input: &mut PcmAudio) -> Result<bool>;
 }

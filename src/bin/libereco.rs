@@ -3,7 +3,9 @@ use cpal::{
     Device, Host,
     traits::{DeviceTrait, HostTrait},
 };
+use libereco::audio::diagnost::indicator::Indicator;
 use libereco::audio::processors::channel_converter::ChannelConverter;
+use libereco::audio::processors::denoiser::Denoiser;
 use libereco::audio::processors::resampler::Resampler;
 use libereco::audio::{
     AudioDevicesCpal, AudioInput, AudioInputCpal, AudioOutput, AudioOutputCpal, Processor,
@@ -130,6 +132,9 @@ async fn main() -> Result<()> {
     //let mut line =
     //    TranslationLine::new(provider, Box::new(input_hw), Box::new(link_input)).await?;
 
+    let (direct_input_indicator_tx, direct_input_indicator_rx) = mpsc::channel(8);
+    let (direct_output_indicator_tx, direct_output_indicator_rx) = mpsc::channel(8);
+
     let mut line = TranslationLine::new(
         provider,
         Box::new(input_hw),
@@ -144,10 +149,19 @@ async fn main() -> Result<()> {
             mono.clone(),
         )))?;
 
+        line.add_input_processor(Processor::Denoiser(Denoiser::new(AudioSpec::new(
+            input_sample_rate,
+            mono.clone(),
+        ))))?;
+
         line.add_input_processor(Processor::Resampler(Resampler::new(
             AudioSpec::new(input_sample_rate, mono.clone()),
             remote_spec.rate(),
         )?))?;
+
+        line.add_input_processor(Processor::IndicatorDiag(Indicator::new(
+            direct_input_indicator_tx,
+        )))?;
     }
 
     // Output DSP
@@ -159,6 +173,10 @@ async fn main() -> Result<()> {
 
         line.add_output_processor(Processor::ChannelConverter(ChannelConverter::new(
             stereo.clone(),
+        )))?;
+
+        line.add_output_processor(Processor::IndicatorDiag(Indicator::new(
+            direct_output_indicator_tx,
         )))?;
     }
 
@@ -185,6 +203,9 @@ async fn main() -> Result<()> {
 
     // TranslationLine "en" -> "ru"
 
+    let (back_input_indicator_tx, back_input_indicator_rx) = mpsc::channel(8);
+    let (back_output_indicator_tx, back_output_indicator_rx) = mpsc::channel(8);
+
     let mut line_back = TranslationLine::new(
         provider_back,
         Box::new(from_speaker_virt),
@@ -203,6 +224,10 @@ async fn main() -> Result<()> {
             AudioSpec::new(input_back_sample_rate, mono.clone()),
             remote_back_spec.rate(),
         )?))?;
+
+        line_back.add_input_processor(Processor::IndicatorDiag(Indicator::new(
+            back_input_indicator_tx,
+        )))?;
     }
 
     // Output DSP
@@ -214,6 +239,10 @@ async fn main() -> Result<()> {
 
         line_back.add_output_processor(Processor::ChannelConverter(ChannelConverter::new(
             stereo.clone(),
+        )))?;
+
+        line_back.add_output_processor(Processor::IndicatorDiag(Indicator::new(
+            back_output_indicator_tx,
         )))?;
     }
 
@@ -237,6 +266,10 @@ async fn main() -> Result<()> {
         back_rx,
         line.latency_stats.clone(),
         line_back.latency_stats.clone(),
+        direct_input_indicator_rx,
+        direct_output_indicator_rx,
+        back_input_indicator_rx,
+        back_output_indicator_rx,
     );
 
     println!("Press 'q' to stop.");
