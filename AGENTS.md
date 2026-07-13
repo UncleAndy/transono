@@ -31,12 +31,6 @@ For audio processing, buffer management, and hot paths, optimize for low latency
 - **Concurrency**: Thread-safe audio handling (`Send + Sync`), atomic operations for state synchronization.
 - **Error Handling**: Use the project's internal custom error types and the internal `Result` type alias (e.g., `crate::error::Result`). Never use standard standard `unwrap()` or `panic!` in production code. Prefer leveraging the project's specific error variants for robust error propagation.
 
-## Audio Specifications & Formats
-- **Internal Sample Format**: Strictly `f32` (IEEE float).
-- **Internal Sample Rate**: Fixed at `48_000` Hz (48kHz).
-- **Channel Configuration**: Dynamic / Variable (the system must support mono, stereo, and multi-channel streams seamlessly).
-- **Processing Expectation**: When handling incoming or outgoing audio, enforce validation or conversion to `f32` / 48kHz on the pipeline borders. Hot paths must assume this format implicitly.
-
 # Expected Output Format
 
 When generating Rust code, ensure:
