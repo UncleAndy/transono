@@ -196,7 +196,7 @@ fn select_config(device: &Device) -> Result<(StreamConfig, SampleFormat)> {
 
     Ok((StreamConfig {
         channels: cfg.channels(),
-        sample_rate: 48_000,
+        sample_rate: cfg.sample_rate(),
         buffer_size: BufferSize::Default,
     }, cfg.sample_format()))
 }

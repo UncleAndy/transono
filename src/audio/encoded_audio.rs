@@ -1,8 +1,8 @@
 use audio_samples::ConvertTo;
 use i24::{I24, U24};
 use bytes::Bytes;
-use symphonia::core::audio::AudioSpec;
-
+use symphonia::core::audio::{AudioSpec, Channels, Position};
+use symphonia::core::audio::Channels::Positioned;
 use crate::audio::{Endianness};
 use crate::core::error::{CoreError, Result};
 
@@ -88,19 +88,31 @@ impl EncodedAudioFormat {
             spec,
         }
     }
+    pub fn internal_for_voice() -> Self {
+        Self {
+            container: AudioContainer::Raw,
+            codec: AudioCodec::Pcm(PcmFormat::F32(Endianness::Little)),
+            encoding: BinaryEncoding::Binary,
+            spec: AudioSpec::new(
+                48_000,
+                Positioned(Position::FRONT_CENTER),
+            ),
+        }
+    }
 
-    pub(crate) fn container(&self) -> AudioContainer {
+    pub fn container(&self) -> AudioContainer {
         self.container.clone()
     }
-    pub(crate) fn codec(&self) -> AudioCodec {
+    pub fn codec(&self) -> AudioCodec {
         self.codec.clone()
     }
-    pub(crate) fn encoding(&self) -> BinaryEncoding {
+    pub fn encoding(&self) -> BinaryEncoding {
         self.encoding.clone()
     }
     pub fn spec(&self) -> AudioSpec {
         self.spec.clone()
     }
+
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

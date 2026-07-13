@@ -1,12 +1,16 @@
-use crate::audio::processors::channel_converter::ChannelConverter;
-use crate::audio::processors::resampler::Resampler;
-use crate::audio::{Audio, AudioFormat, AudioProcessor, DspProcessor, PcmAudio, Pipeline as PipelineTrait, Processor};
-use crate::core::error::{CoreError, Result};
 use anyhow::anyhow;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
-use symphonia::core::audio::{AudioSpec, Channels, Position};
+use symphonia::core::audio::{AudioSpec, Channels};
+
+use crate::audio::processors::channel_converter::ChannelConverter;
+use crate::audio::processors::resampler::Resampler;
+use crate::audio::{
+    Audio, AudioFormat, AudioProcessor, DspProcessor, EncodedAudioFormat, PcmAudio,
+    Pipeline as PipelineTrait, Processor,
+};
+use crate::core::error::{CoreError, Result};
 
 #[derive(Debug)]
 pub struct LatencyMetric {
@@ -153,47 +157,40 @@ impl AudioPipeline {
     }
 
     /// Создает пайплайн для приведения аудио к формату F32 48000 Гц Моно.
-    pub fn convert_to_f32_48000_mono(input_format: AudioFormat) -> Result<Self> {
+    pub fn convert_to_internal_mono(input_format: AudioFormat) -> Result<Self> {
         let mut pipeline = Self::new_standalone(true);
+        let internal_spec = EncodedAudioFormat::internal_for_voice().spec();
 
         // Преобразование в моно
         if input_format.channels != 1 {
-            pipeline.add(Processor::ChannelConverter(
-                ChannelConverter::new(
-                    Channels::Positioned(Position::FRONT_CENTER),
-                )
-            ));
+            pipeline.add(Processor::ChannelConverter(ChannelConverter::new(
+                internal_spec.channels().clone(),
+            )));
         }
 
         // Ресемплирование до 48000 Гц
-        if input_format.sample_rate != 48000 {
-            pipeline.add(Processor::Resampler(
-                Resampler::new(
-                    AudioSpec::new(
-                        input_format.sample_rate,
-                        Channels::Discrete(input_format.channels),
-                    ),
-                    48000)?
-                )
-            );
+        if input_format.sample_rate != internal_spec.rate() {
+            pipeline.add(Processor::Resampler(Resampler::new(
+                AudioSpec::new(
+                    input_format.sample_rate,
+                    Channels::Discrete(input_format.channels),
+                ),
+                internal_spec.rate(),
+            )?));
         }
 
         Ok(pipeline)
     }
 
     /// Создает пайплайн для преобразования из формата F32 48000 Гц Моно в целевой формат.
-    pub fn convert_from_f32_48000_mono(output_format: AudioFormat) -> Result<Self> {
+    pub fn convert_from_internal_mono(output_format: AudioFormat) -> Result<Self> {
         let mut pipeline = Self::new_standalone(false);
-
-        let input_spec = AudioSpec::new(
-            48000,
-            Channels::Positioned(Position::FRONT_CENTER),
-        );
+        let internal_spec = EncodedAudioFormat::internal_for_voice().spec();
 
         // Ресемплирование из 48000 Гц в целевую частоту
-        if output_format.sample_rate != 48000 {
+        if output_format.sample_rate != internal_spec.rate() {
             pipeline.add(Processor::Resampler(Resampler::new(
-                input_spec,
+                internal_spec,
                 output_format.sample_rate,
             )?));
         }
@@ -398,11 +395,11 @@ mod tests {
         };
 
         // Test TO_F32_48000_MONO
-        let to_mono = AudioPipeline::convert_to_f32_48000_mono(spec_44100_stereo.clone()).unwrap();
+        let to_mono = AudioPipeline::convert_to_internal_mono(spec_44100_stereo.clone()).unwrap();
         assert!(!to_mono.is_empty());
 
         // Test FROM_F32_48000_MONO
-        let from_mono = AudioPipeline::convert_from_f32_48000_mono(spec_44100_stereo).unwrap();
+        let from_mono = AudioPipeline::convert_from_internal_mono(spec_44100_stereo).unwrap();
         assert!(!from_mono.is_empty());
     }
 }
