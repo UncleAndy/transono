@@ -83,7 +83,8 @@ async fn main() -> Result<()> {
 
     let remote_spec = remote.spec().clone();
 
-    let mono = Channels::Positioned(Position::FRONT_CENTER);
+    let internal_spec = libereco::audio::EncodedAudioFormat::internal_format().spec();
+    let internal_channels = internal_spec.channels().clone();
     let stereo = Channels::Positioned(Position::FRONT_LEFT | Position::FRONT_RIGHT);
 
     println!(
@@ -131,16 +132,16 @@ async fn main() -> Result<()> {
     // Input DSP
     {
         line.add_input_processor(Processor::ChannelConverter(ChannelConverter::new(
-            mono.clone(),
+            internal_channels.clone(),
         )))?;
 
         line.add_input_processor(Processor::Denoiser(Denoiser::new(AudioSpec::new(
             input_sample_rate,
-            mono.clone(),
+            internal_channels.clone(),
         ))))?;
 
         line.add_input_processor(Processor::Resampler(Resampler::new(
-            AudioSpec::new(input_sample_rate, mono.clone()),
+            AudioSpec::new(input_sample_rate, internal_channels.clone()),
             remote_spec.rate(),
         )?))?;
 
@@ -156,7 +157,7 @@ async fn main() -> Result<()> {
     // Output DSP
     {
         line.add_output_processor(Processor::Resampler(Resampler::new(
-            AudioSpec::new(remote_spec.rate(), mono.clone()),
+            AudioSpec::new(remote_spec.rate(), internal_channels.clone()),
             output_sample_rate,
         )?))?;
 
@@ -206,11 +207,11 @@ async fn main() -> Result<()> {
     // Input DSP
     {
         line_back.add_input_processor(Processor::ChannelConverter(ChannelConverter::new(
-            mono.clone(),
+            internal_channels.clone(),
         )))?;
 
         line_back.add_input_processor(Processor::Resampler(Resampler::new(
-            AudioSpec::new(input_back_sample_rate, mono.clone()),
+            AudioSpec::new(input_back_sample_rate, internal_channels.clone()),
             remote_back_spec.rate(),
         )?))?;
 
@@ -222,7 +223,7 @@ async fn main() -> Result<()> {
     // Output DSP
     {
         line_back.add_output_processor(Processor::Resampler(Resampler::new(
-            AudioSpec::new(remote_back_spec.rate(), mono.clone()),
+            AudioSpec::new(remote_back_spec.rate(), internal_channels.clone()),
             output_back_sample_rate,
         )?))?;
 

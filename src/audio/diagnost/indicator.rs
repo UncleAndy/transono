@@ -68,7 +68,6 @@ fn measure_samples(samples: &[f32]) -> VolumeIndicator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use symphonia::core::audio::{AudioSpec, Channels, Position};
 
     #[test]
     fn measure_samples_should_return_zero_values_when_input_is_empty() {
@@ -97,12 +96,14 @@ mod tests {
 
     #[tokio::test]
     async fn process_should_send_indicator_without_changing_audio() {
-        let spec = AudioSpec::new(
-            48_000,
-            Channels::Positioned(Position::FRONT_LEFT | Position::FRONT_RIGHT),
-        );
+        let spec = crate::audio::EncodedAudioFormat::internal_format().spec();
         let mut pcm = PcmAudio::new(spec, 2);
-        pcm.data.copy_from_slice(&[0.25, -0.25, 0.5, -0.5]);
+        let channels = pcm.channel_count();
+        let mut data = vec![0.25; 2 * channels];
+        if let Some(last) = data.last_mut() {
+            *last = 0.5;
+        }
+        pcm.data.copy_from_slice(&data);
         let original = pcm.data.clone();
         let (sender, mut receiver) = mpsc::channel(1);
         let mut indicator = Indicator::new(sender);

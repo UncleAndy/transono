@@ -1,7 +1,8 @@
 use audio_samples::ConvertTo;
+use std::sync::OnceLock;
 use i24::{I24, U24};
 use bytes::Bytes;
-use symphonia::core::audio::{AudioSpec, Channels, Position};
+use symphonia::core::audio::{AudioSpec, Position};
 use symphonia::core::audio::Channels::Positioned;
 use crate::audio::{Endianness};
 use crate::core::error::{CoreError, Result};
@@ -74,6 +75,8 @@ pub struct EncodedAudioFormat {
     spec: AudioSpec,
 }
 
+static INTERNAL_FORMAT: OnceLock<EncodedAudioFormat> = OnceLock::new();
+
 impl EncodedAudioFormat {
     pub fn new(
         container: AudioContainer,
@@ -88,16 +91,23 @@ impl EncodedAudioFormat {
             spec,
         }
     }
-    pub fn internal_for_voice() -> Self {
-        Self {
-            container: AudioContainer::Raw,
-            codec: AudioCodec::Pcm(PcmFormat::F32(Endianness::Little)),
-            encoding: BinaryEncoding::Binary,
-            spec: AudioSpec::new(
-                48_000,
-                Positioned(Position::FRONT_CENTER),
-            ),
-        }
+    
+    pub fn internal_format() -> Self {
+        INTERNAL_FORMAT.get_or_init(|| {
+            Self {
+                container: AudioContainer::Raw,
+                codec: AudioCodec::Pcm(PcmFormat::F32(Endianness::Little)),
+                encoding: BinaryEncoding::Binary,
+                spec: AudioSpec::new(
+                    48_000,
+                    Positioned(Position::FRONT_CENTER),
+                ),
+            }
+        }).clone()
+    }
+
+    pub fn init_internal_format(format: EncodedAudioFormat) -> Result<()> {
+        INTERNAL_FORMAT.set(format).map_err(|_| CoreError::Other(anyhow::anyhow!("Internal format already initialized")))
     }
 
     pub fn container(&self) -> AudioContainer {

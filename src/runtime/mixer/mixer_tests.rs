@@ -1,15 +1,20 @@
 #[cfg(test)]
 mod tests {
-    use crate::audio::{Audio, AudioFormat, PcmAudio, PcmFormat, Endianness, AudioInput};
+    use crate::audio::{Audio, AudioFormat, PcmAudio, AudioInput};
     use crate::runtime::Mixer;
     use tokio::sync::mpsc;
     use std::sync::Arc;
 
     fn create_test_format() -> AudioFormat {
+        let internal = crate::audio::EncodedAudioFormat::internal_format();
+        let spec = internal.spec();
         AudioFormat {
-            sample_rate: 48000,
-            channels: 2,
-            sample_format: PcmFormat::F32(Endianness::Little),
+            sample_rate: spec.rate(),
+            channels: spec.channels().count() as u16,
+            sample_format: match internal.codec() {
+                crate::audio::AudioCodec::Pcm(fmt) => fmt,
+                _ => crate::audio::PcmFormat::F32(crate::audio::Endianness::Little),
+            },
         }
     }
 
@@ -85,8 +90,8 @@ mod tests {
         mixer.add_input(&mut input2, 0.5).unwrap();
 
         // Total should be 0.5 * 1.0 + 0.2 * 0.5 = 0.5 + 0.1 = 0.6
-        let samples1 = vec![0.5f32; 480 * 2];
-        let samples2 = vec![0.2f32; 480 * 2];
+        let samples1 = vec![0.5f32; 480 * format.channels as usize];
+        let samples2 = vec![0.2f32; 480 * format.channels as usize];
         
         tx1.send(create_audio_with_samples(&format, samples1)).await.unwrap();
         tx2.send(create_audio_with_samples(&format, samples2)).await.unwrap();
@@ -120,8 +125,8 @@ mod tests {
         mixer.add_input(&mut input2, 1.0).unwrap();
 
         // 0.8 + 0.8 = 1.6 -> should clamp to 1.0
-        let samples1 = vec![0.8f32; 480 * 2];
-        let samples2 = vec![0.8f32; 480 * 2];
+        let samples1 = vec![0.8f32; 480 * format.channels as usize];
+        let samples2 = vec![0.8f32; 480 * format.channels as usize];
 
         tx1.send(create_audio_with_samples(&format, samples1)).await.unwrap();
         tx2.send(create_audio_with_samples(&format, samples2)).await.unwrap();

@@ -138,11 +138,11 @@ fn lerp(from: f32, to: f32, t: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use symphonia::core::audio::{AudioSpec, Channels, Position};
+    use crate::audio::EncodedAudioFormat;
 
     #[test]
     fn denoiser_should_preserve_loud_signal() {
-        let spec = AudioSpec::new(48_000, Channels::Positioned(Position::FRONT_CENTER));
+        let spec = EncodedAudioFormat::internal_format().spec();
         let mut pcm = PcmAudio::new(spec.clone(), 8);
         pcm.data.fill(0.6);
         let original = pcm.data.clone();
@@ -161,7 +161,7 @@ mod tests {
 
     #[test]
     fn denoiser_should_attenuate_low_noise() {
-        let spec = AudioSpec::new(48_000, Channels::Positioned(Position::FRONT_CENTER));
+        let spec = EncodedAudioFormat::internal_format().spec();
         let mut pcm = PcmAudio::new(spec.clone(), 8);
         pcm.data.fill(0.01);
         let mut denoiser = Denoiser::new(spec);

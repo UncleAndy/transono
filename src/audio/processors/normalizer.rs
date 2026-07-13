@@ -103,7 +103,8 @@ mod tests {
     use symphonia::core::audio::{AudioSpec, Channels};
 
     fn create_test_pcm(channels: usize, frames: usize, data: Vec<f32>) -> PcmAudio {
-        let spec = AudioSpec::new(44100, if channels == 1 {
+        let internal_spec = crate::audio::EncodedAudioFormat::internal_format().spec();
+        let spec = AudioSpec::new(internal_spec.rate(), if channels == 1 {
             Channels::Positioned(symphonia::core::audio::Position::FRONT_CENTER)
         } else if channels == 2 {
             Channels::Positioned(symphonia::core::audio::Position::FRONT_LEFT | symphonia::core::audio::Position::FRONT_RIGHT)

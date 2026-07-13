@@ -156,19 +156,19 @@ impl AudioPipeline {
         self
     }
 
-    /// Создает пайплайн для приведения аудио к формату F32 48000 Гц Моно.
+    /// Создает пайплайн для приведения аудио к внутреннему формату обработки.
     pub fn convert_to_internal_mono(input_format: AudioFormat) -> Result<Self> {
         let mut pipeline = Self::new_standalone(true);
-        let internal_spec = EncodedAudioFormat::internal_for_voice().spec();
+        let internal_spec = EncodedAudioFormat::internal_format().spec();
 
-        // Преобразование в моно
-        if input_format.channels != 1 {
+        // Преобразование каналов
+        if input_format.channels != internal_spec.channels().count() as u16 {
             pipeline.add(Processor::ChannelConverter(ChannelConverter::new(
                 internal_spec.channels().clone(),
             )));
         }
 
-        // Ресемплирование до 48000 Гц
+        // Ресемплирование
         if input_format.sample_rate != internal_spec.rate() {
             pipeline.add(Processor::Resampler(Resampler::new(
                 AudioSpec::new(
@@ -182,21 +182,21 @@ impl AudioPipeline {
         Ok(pipeline)
     }
 
-    /// Создает пайплайн для преобразования из формата F32 48000 Гц Моно в целевой формат.
+    /// Создает пайплайн для преобразования из внутреннего формата в целевой формат.
     pub fn convert_from_internal_mono(output_format: AudioFormat) -> Result<Self> {
         let mut pipeline = Self::new_standalone(false);
-        let internal_spec = EncodedAudioFormat::internal_for_voice().spec();
+        let internal_spec = EncodedAudioFormat::internal_format().spec();
 
-        // Ресемплирование из 48000 Гц в целевую частоту
+        // Ресемплирование
         if output_format.sample_rate != internal_spec.rate() {
             pipeline.add(Processor::Resampler(Resampler::new(
-                internal_spec,
+                internal_spec.clone(),
                 output_format.sample_rate,
             )?));
         }
 
         // Преобразование в целевую конфигурацию каналов
-        if output_format.channels != 1 {
+        if output_format.channels != internal_spec.channels().count() as u16 {
             pipeline.add(Processor::ChannelConverter(ChannelConverter::new(
                 Channels::Discrete(output_format.channels),
             )));
@@ -365,7 +365,6 @@ impl Pipelines {
 mod tests {
     use super::*;
     use crate::audio::{Audio, Endianness, IdentityProcessor, PcmAudio, PcmFormat, Processor};
-    use symphonia::core::audio::{AudioSpec, Channels, Position};
 
     #[test]
     fn test_nested_pipeline() {
@@ -375,10 +374,7 @@ mod tests {
         let mut outer = AudioPipeline::new_standalone(true);
         outer.add(Processor::Pipeline(Box::new(inner)));
 
-        let spec = AudioSpec::new(
-            48000,
-            Channels::Positioned(Position::FRONT_LEFT | Position::FRONT_RIGHT),
-        );
+        let spec = EncodedAudioFormat::internal_format().spec();
         let pcm = PcmAudio::new(spec, 480);
         let audio = Audio::from_pcm(&pcm).unwrap();
 
@@ -394,11 +390,11 @@ mod tests {
             sample_format: PcmFormat::U32(Endianness::Little),
         };
 
-        // Test TO_F32_48000_MONO
+        // Test TO_INTERNAL
         let to_mono = AudioPipeline::convert_to_internal_mono(spec_44100_stereo.clone()).unwrap();
         assert!(!to_mono.is_empty());
 
-        // Test FROM_F32_48000_MONO
+        // Test FROM_INTERNAL
         let from_mono = AudioPipeline::convert_from_internal_mono(spec_44100_stereo).unwrap();
         assert!(!from_mono.is_empty());
     }
