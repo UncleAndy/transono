@@ -449,11 +449,44 @@ fn calculate_scroll(text: &str, area: ratatui::layout::Rect) -> u16 {
 
     let mut visual_lines = 0;
     for line in text.split('\n') {
-        let line_width = line.chars().count();
-        if line_width == 0 {
+        if line.is_empty() {
             visual_lines += 1;
-        } else {
-            visual_lines += (line_width + width - 1) / width;
+            continue;
+        }
+
+        let mut current_line_width = 0;
+        for word in line.split_inclusive(' ') {
+            let word_width = word.chars().count();
+            if word_width == 0 {
+                continue;
+            }
+
+            if current_line_width == 0 {
+                visual_lines += 1;
+                if word_width > width {
+                    visual_lines += (word_width - 1) / width;
+                    current_line_width = word_width % width;
+                    if current_line_width == 0 {
+                        current_line_width = width;
+                    }
+                } else {
+                    current_line_width = word_width;
+                }
+            } else if current_line_width + word_width <= width {
+                current_line_width += word_width;
+            } else {
+                // Word doesn't fit in current line, move to next
+                visual_lines += 1;
+                if word_width > width {
+                    visual_lines += (word_width - 1) / width;
+                    current_line_width = word_width % width;
+                    if current_line_width == 0 {
+                        current_line_width = width;
+                    }
+                } else {
+                    current_line_width = word_width;
+                }
+            }
         }
     }
 
@@ -505,6 +538,18 @@ mod tests {
         
         // "l1\nl2\nl3\n" -> 4 lines -> scroll 1
         assert_eq!(calculate_scroll("l1\nl2\nl3\n", area), 1);
+
+        // Word wrapping test: multiple words that individually fit but their sum exceeds width
+        // Inner width is 8.
+        // "aaaaa " (6 chars)
+        // "bbbbb " (6 chars)
+        // "ccccc " (6 chars)
+        // Total 3 lines, each containing one word because 6+6=12 > 8.
+        assert_eq!(calculate_scroll("aaaaa bbbbb ccccc", area), 0); // 3 lines fits in 3 height
+        
+        // Add one more word to trigger scroll
+        // "aaaaa bbbbb ccccc ddddd", area), 1); // 4 lines -> scroll 1
+        assert_eq!(calculate_scroll("aaaaa bbbbb ccccc ddddd", area), 1);
     }
 
     #[test]
