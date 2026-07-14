@@ -8,7 +8,7 @@ use libereco::audio::processors::channel_converter::ChannelConverter;
 use libereco::audio::processors::resampler::Resampler;
 use libereco::audio::{AudioDevicesCpal, AudioInputCpal, AudioOutputCpal, LatencyStats, Processor};
 use libereco::providers::openai::translation::{OpenAITranslationConfig, OpenAITranslationProvider};
-use libereco::runtime::TranslationLine;
+use libereco::line::TranslationLine;
 
 #[tokio::main]
 async fn main() -> Result<()> {

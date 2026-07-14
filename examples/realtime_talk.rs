@@ -11,7 +11,7 @@ use libereco::providers::openai::realtime::{
     OpenAIRealtimeConfig,
     OpenAIRealtimeProvider,
 };
-use libereco::runtime::TranslationLine;
+use libereco::line::TranslationLine;
 
 #[tokio::main]
 async fn main() -> Result<()> {

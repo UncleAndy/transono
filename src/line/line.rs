@@ -5,7 +5,7 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 use crate::audio::{Processor, AudioInput, AudioOutput, Pipelines, LatencyStats};
 use crate::core::provider::{Provider, ProviderSession};
-use crate::runtime::LineState;
+use crate::line::LineState;
 use crate::core::error::{CoreError, Result};
 use crate::core::session_event::SessionEvent;
 
@@ -21,7 +21,7 @@ where
     audio_output: Option<Box<dyn AudioOutput>>,
 
     pipelines: Option<Pipelines>,
-    pub latency_stats: Arc<crate::audio::LatencyStats>,
+    pub latency_stats: Arc<LatencyStats>,
 
     session_task: Option<tokio::task::JoinHandle<Result<Pipelines>>>,
 

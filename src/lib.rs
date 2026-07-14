@@ -5,3 +5,4 @@ pub mod testing;
 pub mod runtime;
 pub mod console;
 pub mod ctl;
+pub mod line;

@@ -3,6 +3,12 @@ use cpal::{
     Device, Host,
     traits::{DeviceTrait, HostTrait},
 };
+use std::sync::Arc;
+use symphonia::core::audio::{AudioSpec, Channels, Position};
+use tokio::sync::mpsc;
+
+use libereco::audio::processors::compressor::{Compressor, NATURAL_VOICE};
+use libereco::line::TranslationLine;
 use libereco::audio::diagnost::indicator::Indicator;
 use libereco::audio::processors::channel_converter::ChannelConverter;
 use libereco::audio::processors::denoiser::Denoiser;
@@ -13,11 +19,6 @@ use libereco::ctl::create_backend;
 use libereco::providers::openai::translation::{
     OpenAITranslationConfig, OpenAITranslationProvider,
 };
-use libereco::runtime::TranslationLine;
-use std::sync::Arc;
-use symphonia::core::audio::{AudioSpec, Channels, Position};
-use tokio::sync::mpsc;
-use libereco::audio::processors::compressor::{Compressor, NATURAL_VOICE};
 
 #[tokio::main]
 async fn main() -> Result<()> {
