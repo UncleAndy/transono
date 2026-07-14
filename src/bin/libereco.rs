@@ -1,6 +1,6 @@
 use anyhow::{Context, Result, anyhow};
 use cpal::{
-    Device, Host, DeviceId,
+    Device, Host,
     traits::{DeviceTrait, HostTrait},
 };
 use std::sync::Arc;
@@ -234,21 +234,21 @@ async fn main() -> Result<()> {
 }
 
 fn find_virtual_output(host: &Host, name: &str, language: &str) -> Result<Device> {
-    let device_id = DeviceId::new(host.id(), name);
-    let device = host.device_by_id(&device_id);
-    match device {
-        None => Err(missing_virtual_device("output", name, language)),
-        Some(device) => Ok(device)
+    for device in host.output_devices()? {
+        if device.description().map(|d| d.to_string() == name).unwrap_or(false) {
+            return Ok(device);
+        }
     }
+    Err(missing_virtual_device("output", name, language))
 }
 
 fn find_virtual_input(host: &Host, name: &str, language: &str) -> Result<Device> {
-    let device_id = DeviceId::new(host.id(), name);
-    let device = host.device_by_id(&device_id);
-    match device {
-        None => Err(missing_virtual_device("input", name, language)),
-        Some(device) => Ok(device)
+    for device in host.input_devices()? {
+        if device.description().map(|d| d.to_string() == name).unwrap_or(false) {
+            return Ok(device);
+        }
     }
+    Err(missing_virtual_device("input", name, language))
 }
 
 fn missing_virtual_device(direction: &str, name: &str, language: &str) -> anyhow::Error {

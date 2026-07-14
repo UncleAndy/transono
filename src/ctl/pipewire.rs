@@ -1,6 +1,6 @@
 use std::num::ParseIntError;
 use std::process::Command;
-use cpal::traits::HostTrait;
+use cpal::traits::{DeviceTrait, HostTrait};
 
 use crate::core::error::{CoreError, Result};
 use crate::ctl::backend::{Backend, DeviceSet, DeviceState, DeviceStatus, DoctorReport};
@@ -352,8 +352,5 @@ where
 {
     devices
         .into_iter()
-        .filter_map(|d|
-            Some(d.to_string())
-        )
-        .any(|n| n == name)
+        .any(|d| d.description().map(|d| d.to_string() == name).unwrap_or(false))
 }
