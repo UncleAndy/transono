@@ -4,10 +4,10 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use symphonia::core::audio::conv::{ConvertibleSample, FromSample};
-use symphonia::core::audio::{AudioBuffer, AudioMut, AudioSpec, GenericAudioBuffer};
+use symphonia::core::audio::{AudioBuffer, AudioMut, AudioSpec, GenericAudioBuffer, Channels};
 use symphonia::core::audio::sample::{i24, u24, Sample};
 
-use crate::audio::{PcmAudio, PcmFormat};
+use crate::audio::{PcmAudio, PcmFormat, EncodedAudioFormat, AudioCodec, Endianness};
 use crate::core::error::Result;
 
 /// Universal audio container.
@@ -194,6 +194,26 @@ pub struct AudioFormat {
     pub channels: u16,
     /// Sample representation.
     pub sample_format: PcmFormat,
+}
+
+impl AudioFormat {
+    pub fn spec(&self) -> AudioSpec {
+        AudioSpec::new(self.sample_rate, Channels::Discrete(self.channels))
+    }
+}
+
+impl From<EncodedAudioFormat> for AudioFormat {
+    fn from(format: EncodedAudioFormat) -> Self {
+        let spec = format.spec();
+        Self {
+            sample_rate: spec.rate(),
+            channels: spec.channels().count() as u16,
+            sample_format: match format.codec() {
+                AudioCodec::Pcm(pcm) => pcm,
+                _ => PcmFormat::F32(Endianness::Little),
+            },
+        }
+    }
 }
 
 pub(crate) trait IntoGenericBuffer {

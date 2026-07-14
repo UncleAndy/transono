@@ -4,17 +4,16 @@ use cpal::{
     traits::{DeviceTrait, HostTrait},
 };
 use std::sync::Arc;
-use symphonia::core::audio::{AudioSpec, Channels, Position};
+// No imports needed from symphonia::core::audio here if not used
 use tokio::sync::mpsc;
 
 use libereco::audio::processors::compressor::{Compressor, NATURAL_VOICE};
 use libereco::line::TranslationLine;
 use libereco::audio::diagnost::indicator::Indicator;
-use libereco::audio::processors::channel_converter::ChannelConverter;
 use libereco::audio::processors::denoiser::Denoiser;
-use libereco::audio::processors::resampler::Resampler;
-use libereco::audio::{AudioDevicesCpal, AudioInput, AudioInputCpal, AudioOutput, AudioOutputCpal, EncodedAudioFormat, Processor};
+use libereco::audio::{AudioDevicesCpal, AudioFormat, AudioInputCpal, AudioOutputCpal, Processor};
 use libereco::console::ConsoleApp;
+use libereco::core::provider::Provider;
 use libereco::ctl::create_backend;
 use libereco::providers::openai::translation::{
     OpenAITranslationConfig, OpenAITranslationProvider,
@@ -78,18 +77,12 @@ async fn main() -> Result<()> {
         .with_lang(language)
         .clone();
 
-    let remote = config.audio_format();
-
-    let remote_spec = remote.spec().clone();
-
-    let internal_spec = EncodedAudioFormat::internal_format().spec();
-    let internal_channels = internal_spec.channels().clone();
-    let stereo = Channels::Positioned(Position::FRONT_LEFT | Position::FRONT_RIGHT);
+    let remote_spec = config.audio_format().spec().clone();
 
     println!(
         "OpenAI format: {} Hz, {} channel(s)",
-        remote.spec().rate(),
-        remote.spec().channels().count(),
+        remote_spec.rate(),
+        remote_spec.channels().count(),
     );
 
     println!();
@@ -128,21 +121,11 @@ async fn main() -> Result<()> {
     )
     .await?;
 
+    let remote_format = AudioFormat::from(line.provider().audio_format());
+
     // Input DSP
     {
-        line.add_input_processor(Processor::ChannelConverter(ChannelConverter::new(
-            internal_channels.clone(),
-        )))?;
-
-        line.add_input_processor(Processor::Denoiser(Denoiser::new(AudioSpec::new(
-            input_sample_rate,
-            internal_channels.clone(),
-        ))))?;
-
-        line.add_input_processor(Processor::Resampler(Resampler::new(
-            AudioSpec::new(input_sample_rate, internal_channels.clone()),
-            remote_spec.rate(),
-        )?))?;
+        line.add_input_processor(Processor::Denoiser(Denoiser::new(remote_format.spec())))?;
 
         line.add_input_processor(Processor::Compressor(Compressor::new(
             NATURAL_VOICE.clone(),
@@ -155,15 +138,6 @@ async fn main() -> Result<()> {
 
     // Output DSP
     {
-        line.add_output_processor(Processor::Resampler(Resampler::new(
-            AudioSpec::new(remote_spec.rate(), internal_channels.clone()),
-            output_sample_rate,
-        )?))?;
-
-        line.add_output_processor(Processor::ChannelConverter(ChannelConverter::new(
-            stereo.clone(),
-        )))?;
-
         line.add_output_processor(Processor::IndicatorDiag(Indicator::new(
             direct_output_indicator_tx,
         )))?;
@@ -178,17 +152,12 @@ async fn main() -> Result<()> {
     let config_back = OpenAITranslationConfig::from_env()?
         .with_lang(language_self)
         .clone();
-    let remote_back = config_back.audio_format();
-    let remote_back_spec = remote_back.spec().clone();
     let provider_back = OpenAITranslationProvider::new(config_back);
 
     let stats_back = Arc::new(libereco::audio::LatencyStats::default());
 
     let from_speaker_virt = AudioInputCpal::new(from_speaker, stats_back.clone())?;
     let output_hw = AudioOutputCpal::new(playback, stats_back.clone())?;
-
-    let input_back_sample_rate = from_speaker_virt.format().sample_rate;
-    let output_back_sample_rate = output_hw.format().sample_rate;
 
     // TranslationLine "en" -> "ru"
 
@@ -205,15 +174,6 @@ async fn main() -> Result<()> {
 
     // Input DSP
     {
-        line_back.add_input_processor(Processor::ChannelConverter(ChannelConverter::new(
-            internal_channels.clone(),
-        )))?;
-
-        line_back.add_input_processor(Processor::Resampler(Resampler::new(
-            AudioSpec::new(input_back_sample_rate, internal_channels.clone()),
-            remote_back_spec.rate(),
-        )?))?;
-
         line_back.add_input_processor(Processor::IndicatorDiag(Indicator::new(
             back_input_indicator_tx,
         )))?;
@@ -221,15 +181,6 @@ async fn main() -> Result<()> {
 
     // Output DSP
     {
-        line_back.add_output_processor(Processor::Resampler(Resampler::new(
-            AudioSpec::new(remote_back_spec.rate(), internal_channels.clone()),
-            output_back_sample_rate,
-        )?))?;
-
-        line_back.add_output_processor(Processor::ChannelConverter(ChannelConverter::new(
-            stereo.clone(),
-        )))?;
-
         line_back.add_output_processor(Processor::IndicatorDiag(Indicator::new(
             back_output_indicator_tx,
         )))?;

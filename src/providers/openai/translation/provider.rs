@@ -1,4 +1,5 @@
 use crate::core::{provider::Provider, error::Result};
+use crate::audio::EncodedAudioFormat;
 use crate::providers::openai::translation::{OpenAITranslationConfig, TranslationSession};
 
 pub struct OpenAITranslationProvider {
@@ -19,5 +20,9 @@ impl Provider for OpenAITranslationProvider {
         &self,
     ) -> Result<Self::Session> {
         TranslationSession::connect(&self.config).await
+    }
+
+    fn audio_format(&self) -> EncodedAudioFormat {
+        self.config.audio_format()
     }
 }

@@ -3,7 +3,7 @@ use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
-use crate::audio::{Audio, Pipelines};
+use crate::audio::{Audio, Pipelines, EncodedAudioFormat};
 use crate::core::error::Result;
 use crate::core::session_event::SessionEvent;
 
@@ -25,4 +25,6 @@ pub trait Provider {
     async fn create_session(
         &self,
     ) -> Result<Self::Session>;
+
+    fn audio_format(&self) -> EncodedAudioFormat;
 }

@@ -2,6 +2,7 @@ use crate::core::{
     provider::Provider,
     error::Result,
 };
+use crate::audio::EncodedAudioFormat;
 use crate::providers::openai::realtime::{
     session::RealtimeSession,
     config::OpenAIRealtimeConfig,
@@ -25,5 +26,9 @@ impl Provider for OpenAIRealtimeProvider {
         &self,
     ) -> Result<Self::Session> {
         RealtimeSession::connect(&self.config).await
+    }
+
+    fn audio_format(&self) -> EncodedAudioFormat {
+        self.config.audio_format()
     }
 }

@@ -3,7 +3,7 @@ use tokio_util::sync::CancellationToken;
 use std::sync::Arc;
 
 use tokio::sync::mpsc;
-use crate::audio::{Processor, AudioInput, AudioOutput, Pipelines, LatencyStats, Pipeline};
+use crate::audio::{Processor, AudioInput, AudioOutput, Pipelines, LatencyStats, Pipeline, AudioFormat, AudioPipeline};
 use crate::core::provider::{Provider, ProviderSession};
 use crate::line::LineState;
 use crate::core::error::{CoreError, Result};
@@ -40,7 +40,7 @@ impl<P: Provider> TranslationLine<P> {
         let pipelines = Pipelines::with_stats(stats.clone());
         let latency_stats = stats;
 
-        Ok(Self {
+        let mut line = Self {
             provider,
 
             cancel: CancellationToken::new(),
@@ -56,7 +56,11 @@ impl<P: Provider> TranslationLine<P> {
             state: LineState::Created,
 
             event_tx: None,
-        })
+        };
+
+        line.auto_configure()?;
+
+        Ok(line)
     }
 
     pub fn set_event_sender(&mut self, tx: mpsc::UnboundedSender<SessionEvent>) {
@@ -160,6 +164,34 @@ impl<P: Provider> TranslationLine<P> {
 
     pub fn latency(&self) -> crate::audio::LatencySnapshot {
         self.latency_stats.snapshot()
+    }
+
+    pub fn provider(&self) -> &P {
+        &self.provider
+    }
+
+    pub fn audio_input(&self) -> Option<&dyn AudioInput> {
+        self.audio_input.as_deref()
+    }
+
+    pub fn audio_output(&self) -> Option<&dyn AudioOutput> {
+        self.audio_output.as_deref()
+    }
+
+    pub fn auto_configure(&mut self) -> Result<()> {
+        let input_format = self.audio_input.as_ref().map(|i| i.format()).ok_or_else(|| CoreError::Other(anyhow!("audio input missing")))?;
+        let output_format = self.audio_output.as_ref().map(|o| o.format()).ok_or_else(|| CoreError::Other(anyhow!("audio output missing")))?;
+        let provider_format = AudioFormat::from(self.provider.audio_format());
+
+        // Configure Input Pipeline: HW -> Provider
+        let input_pipeline = AudioPipeline::new_input_pipeline(input_format, provider_format)?;
+        self.with_input_pipeline(input_pipeline);
+
+        // Configure Output Pipeline: Provider -> HW
+        let output_pipeline = AudioPipeline::new_output_pipeline(provider_format, output_format)?;
+        self.with_output_pipeline(output_pipeline);
+
+        Ok(())
     }
 
     pub async fn stop(&mut self) -> Result<()> {

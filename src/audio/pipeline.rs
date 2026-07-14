@@ -2,12 +2,12 @@ use anyhow::anyhow;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
-use symphonia::core::audio::{AudioSpec, Channels};
+use symphonia::core::audio::AudioSpec;
 
 use crate::audio::processors::channel_converter::ChannelConverter;
 use crate::audio::processors::resampler::Resampler;
 use crate::audio::{
-    Audio, AudioFormat, AudioProcessor, DspProcessor, EncodedAudioFormat, PcmAudio,
+    Audio, AudioFormat, AudioProcessor, DspProcessor, PcmAudio,
     Pipeline, Processor,
 };
 use crate::core::error::{CoreError, Result};
@@ -156,49 +156,47 @@ impl AudioPipeline {
         self
     }
 
-    /// Создает пайплайн для приведения аудио к внутреннему формату обработки.
-    pub fn convert_to_internal_mono(input_format: AudioFormat) -> Result<Box<Self>> {
+    /// Создает пайплайн для преобразования входного аудио между форматами.
+    pub fn new_input_pipeline(from: AudioFormat, to: AudioFormat) -> Result<Box<Self>> {
         let mut pipeline = Self::new_standalone(true);
-        let internal_spec = EncodedAudioFormat::internal_format().spec();
 
-        // Преобразование каналов
-        if input_format.channels != internal_spec.channels().count() as u16 {
+        let mut current_spec = from.spec();
+
+        // Преобразование каналов (делаем первым для оптимизации ресемплинга)
+        if from.channels != to.channels {
             pipeline.with(Processor::ChannelConverter(ChannelConverter::new(
-                internal_spec.channels().clone(),
+                to.spec().channels().clone(),
             )));
+            current_spec = AudioSpec::new(from.sample_rate, to.spec().channels().clone());
         }
 
         // Ресемплирование
-        if input_format.sample_rate != internal_spec.rate() {
+        if from.sample_rate != to.sample_rate {
             pipeline.with(Processor::Resampler(Resampler::new(
-                AudioSpec::new(
-                    input_format.sample_rate,
-                    Channels::Discrete(input_format.channels),
-                ),
-                internal_spec.rate(),
+                current_spec,
+                to.sample_rate,
             )?));
         }
 
         Ok(Box::new(pipeline))
     }
 
-    /// Создает пайплайн для преобразования из внутреннего формата в целевой формат.
-    pub fn convert_from_internal_mono(output_format: AudioFormat) -> Result<Box<Self>> {
+    /// Создает пайплайн для преобразования выходного аудио между форматами.
+    pub fn new_output_pipeline(from: AudioFormat, to: AudioFormat) -> Result<Box<Self>> {
         let mut pipeline = Self::new_standalone(false);
-        let internal_spec = EncodedAudioFormat::internal_format().spec();
 
         // Ресемплирование
-        if output_format.sample_rate != internal_spec.rate() {
+        if from.sample_rate != to.sample_rate {
             pipeline.with(Processor::Resampler(Resampler::new(
-                internal_spec.clone(),
-                output_format.sample_rate,
+                from.spec(),
+                to.sample_rate,
             )?));
         }
 
         // Преобразование в целевую конфигурацию каналов
-        if output_format.channels != internal_spec.channels().count() as u16 {
+        if from.channels != to.channels {
             pipeline.with(Processor::ChannelConverter(ChannelConverter::new(
-                Channels::Discrete(output_format.channels),
+                to.spec().channels().clone(),
             )));
         }
 
@@ -372,7 +370,7 @@ impl Pipelines {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::audio::{Audio, Endianness, IdentityProcessor, PcmAudio, PcmFormat, Processor};
+    use crate::audio::{Audio, Endianness, IdentityProcessor, PcmAudio, PcmFormat, Processor, EncodedAudioFormat};
 
     #[test]
     fn test_nested_pipeline() {
@@ -399,11 +397,12 @@ mod tests {
         };
 
         // Test TO_INTERNAL
-        let to_mono = AudioPipeline::convert_to_internal_mono(spec_44100_stereo.clone()).unwrap();
+        let internal_format = AudioFormat::from(EncodedAudioFormat::internal_format());
+        let to_mono = AudioPipeline::new_input_pipeline(spec_44100_stereo.clone(), internal_format).unwrap();
         assert!(!to_mono.is_empty());
 
         // Test FROM_INTERNAL
-        let from_mono = AudioPipeline::convert_from_internal_mono(spec_44100_stereo).unwrap();
+        let from_mono = AudioPipeline::new_output_pipeline(internal_format, spec_44100_stereo).unwrap();
         assert!(!from_mono.is_empty());
     }
 }
