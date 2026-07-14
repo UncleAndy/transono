@@ -269,26 +269,14 @@ impl ConsoleApp {
         let direct_input_para = Paragraph::new(self.direct_input_text.as_str())
             .block(direct_input_block)
             .wrap(Wrap { trim: false })
-            .scroll((
-                self.direct_input_text
-                    .lines()
-                    .count()
-                    .saturating_sub(input_chunks[0].height as usize - 2) as u16,
-                0,
-            ));
+            .scroll((calculate_scroll(&self.direct_input_text, input_chunks[0]), 0));
         f.render_widget(direct_input_para, input_chunks[0]);
 
         let back_input_block = Block::default().borders(Borders::ALL).title(" EN Input ");
         let back_input_para = Paragraph::new(self.back_input_text.as_str())
             .block(back_input_block)
             .wrap(Wrap { trim: false })
-            .scroll((
-                self.back_input_text
-                    .lines()
-                    .count()
-                    .saturating_sub(input_chunks[1].height as usize - 2) as u16,
-                0,
-            ));
+            .scroll((calculate_scroll(&self.back_input_text, input_chunks[1]), 0));
         f.render_widget(back_input_para, input_chunks[1]);
 
         let main_chunks = Layout::default()
@@ -326,26 +314,14 @@ impl ConsoleApp {
         let direct_para = Paragraph::new(self.direct_text.as_str())
             .block(direct_block)
             .wrap(Wrap { trim: false })
-            .scroll((
-                self.direct_text
-                    .lines()
-                    .count()
-                    .saturating_sub(direct_chunks[1].height as usize - 2) as u16,
-                0,
-            ));
+            .scroll((calculate_scroll(&self.direct_text, direct_chunks[1]), 0));
         f.render_widget(direct_para, direct_chunks[1]);
 
         let back_block = Block::default().borders(Borders::ALL).title(" EN -> RU ");
         let back_para = Paragraph::new(self.back_text.as_str())
             .block(back_block)
             .wrap(Wrap { trim: false })
-            .scroll((
-                self.back_text
-                    .lines()
-                    .count()
-                    .saturating_sub(back_chunks[1].height as usize - 2) as u16,
-                0,
-            ));
+            .scroll((calculate_scroll(&self.back_text, back_chunks[1]), 0));
         f.render_widget(back_para, back_chunks[1]);
 
         let status_text = format!(
@@ -450,7 +426,7 @@ fn dbfs_to_ratio(dbfs: f32) -> f64 {
         return 0.0;
     }
 
-    ((dbfs - SIGNAL_FLOOR_DBFS) / -SIGNAL_FLOOR_DBFS) as f64
+    (((dbfs - SIGNAL_FLOOR_DBFS) / -SIGNAL_FLOOR_DBFS) as f64).min(1.0)
 }
 
 fn signal_color(ratio: f64) -> Color {
@@ -460,5 +436,84 @@ fn signal_color(ratio: f64) -> Color {
         Color::Yellow
     } else {
         Color::Green
+    }
+}
+
+fn calculate_scroll(text: &str, area: ratatui::layout::Rect) -> u16 {
+    let width = area.width.saturating_sub(2) as usize;
+    let height = area.height.saturating_sub(2) as usize;
+
+    if width == 0 || height == 0 {
+        return 0;
+    }
+
+    let mut visual_lines = 0;
+    for line in text.split('\n') {
+        let line_width = line.chars().count();
+        if line_width == 0 {
+            visual_lines += 1;
+        } else {
+            visual_lines += (line_width + width - 1) / width;
+        }
+    }
+
+    visual_lines.saturating_sub(height) as u16
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::layout::Rect;
+
+    #[test]
+    fn test_calculate_scroll() {
+        // Area 10x5, inner 8x3
+        let area = Rect::new(0, 0, 10, 5);
+        
+        // No text
+        assert_eq!(calculate_scroll("", area), 0);
+        
+        // Single short line
+        assert_eq!(calculate_scroll("hello", area), 0);
+        
+        // Multiple short lines, no scroll
+        assert_eq!(calculate_scroll("l1\nl2\nl3", area), 0);
+        
+        // Multiple short lines, scroll 1
+        assert_eq!(calculate_scroll("l1\nl2\nl3\nl4", area), 1);
+        
+        // Long line, wraps once (8 chars inner width)
+        // "12345678" -> 1 line
+        // "123456789" -> 2 lines
+        assert_eq!(calculate_scroll("123456789", area), 0); // 2 visual lines < 3 height
+        
+        // Long line, wraps multiple times
+        // "12345678" (1) + "12345678" (2) + "12345678" (3) + "1" (4) = 4 visual lines
+        assert_eq!(calculate_scroll("1234567812345678123456781", area), 1);
+        
+        // Mix of newlines and wrapping
+        // "l1" (1)
+        // "123456789" (2, 3)
+        // "l3" (4)
+        // Total 4 -> scroll 1
+        assert_eq!(calculate_scroll("l1\n123456789\nl3", area), 1);
+        
+        // Ends with newline
+        // "l1" (1)
+        // "" (2)
+        assert_eq!(calculate_scroll("l1\n", area), 0);
+        
+        // "l1\nl2\nl3\n" -> 4 lines -> scroll 1
+        assert_eq!(calculate_scroll("l1\nl2\nl3\n", area), 1);
+    }
+
+    #[test]
+    fn test_dbfs_to_ratio() {
+        assert_eq!(dbfs_to_ratio(SIGNAL_FLOOR_DBFS), 0.0);
+        assert_eq!(dbfs_to_ratio(f32::NEG_INFINITY), 0.0);
+        assert_eq!(dbfs_to_ratio(0.0), 1.0);
+        
+        // This is where it fails currently (returns > 1.0)
+        assert!(dbfs_to_ratio(6.0) <= 1.0);
     }
 }
