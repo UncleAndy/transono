@@ -8,6 +8,6 @@ pub trait AudioInput {
     fn take_receiver(&mut self) -> Result<mpsc::Receiver<Audio>>;
     fn start(&self) -> Result<()>;
     fn stop(&self) -> Result<()>;
-    fn format(&self) -> &AudioFormat;
+    fn format(&self) -> AudioFormat;
     fn set_stats(&mut self, _stats: Arc<LatencyStats>) {}
 }

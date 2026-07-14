@@ -182,8 +182,8 @@ impl AudioInput for AudioInputCpal {
     }
 
     #[inline]
-    fn format(&self) -> &AudioFormat {
-        &self.format
+    fn format(&self) -> AudioFormat {
+        self.format.clone()
     }
 
     fn set_stats(&mut self, stats: Arc<LatencyStats>) {

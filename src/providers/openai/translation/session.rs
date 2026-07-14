@@ -96,7 +96,7 @@ impl ProviderSession for TranslationSession {
                             match audio {
                                 Some(audio) => {
                                     let capture_ts = audio.capture_timestamp();
-                                    let Some((audio, pipeline_duration)) = input_pipeline.process(audio)? else {
+                                    let Some((audio, pipeline_duration)) = input_pipeline.process_stream(audio)? else {
                                         // Если данные не готовы - продолжаем цикл
                                         continue;
                                     };
@@ -186,7 +186,7 @@ impl ProviderSession for TranslationSession {
                                 }
                             }
                             SessionEvent::Audio(audio) => {
-                                let Some((audio, pipeline_duration)) = output_pipeline.process(audio)? else {
+                                let Some((audio, pipeline_duration)) = output_pipeline.process_stream(audio)? else {
                                     continue
                                 };
 

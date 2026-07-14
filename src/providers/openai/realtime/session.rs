@@ -102,7 +102,7 @@ impl ProviderSession for RealtimeSession {
                             match audio {
                                 Some(audio) => {
                                     let capture_ts = audio.capture_timestamp();
-                                    let Some((audio, pipeline_duration)) = input_pipeline.process(audio)? else {
+                                    let Some((audio, pipeline_duration)) = input_pipeline.process_stream(audio)? else {
                                         continue
                                     };
 
@@ -183,7 +183,7 @@ impl ProviderSession for RealtimeSession {
                                 // println!("{}", msg)
                             }
                             SessionEvent::Audio(audio) => {
-                                let Some((audio, pipeline_duration)) = output_pipeline.process(audio)? else {
+                                let Some((audio, pipeline_duration)) = output_pipeline.process_stream(audio)? else {
                                     continue
                                 };
 

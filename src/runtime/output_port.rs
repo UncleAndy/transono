@@ -36,7 +36,7 @@ impl AudioInput for OutputPort {
         Ok(())
     }
 
-    fn format(&self) -> &AudioFormat {
-        &self.format
+    fn format(&self) -> AudioFormat {
+        self.format.clone()
     }
 }

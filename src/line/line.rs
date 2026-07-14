@@ -3,7 +3,7 @@ use tokio_util::sync::CancellationToken;
 use std::sync::Arc;
 
 use tokio::sync::mpsc;
-use crate::audio::{Processor, AudioInput, AudioOutput, Pipelines, LatencyStats};
+use crate::audio::{Processor, AudioInput, AudioOutput, Pipelines, LatencyStats, Pipeline};
 use crate::core::provider::{Provider, ProviderSession};
 use crate::line::LineState;
 use crate::core::error::{CoreError, Result};
@@ -79,6 +79,34 @@ impl<P: Provider> TranslationLine<P> {
         Ok(())
     }
 
+    pub fn with_input_proc(
+        &mut self,
+        processor: Processor,
+    ) -> &mut Self {
+        let res = self.add_input_processor(processor);
+
+        if let Err(e) = res {
+            panic!("Can not add input processor to line: {}", e)
+        }
+
+        self
+    }
+
+    pub fn with_input_pipeline(
+        &mut self,
+        pipeline: Box<dyn Pipeline>
+    ) -> &mut Self {
+        if self.state == LineState::Running {
+            panic!("TranslationLine is running");
+        }
+
+        if let Some(pipelines) = self.pipelines.as_mut() {
+            pipelines.input = pipeline;
+        }
+
+        self
+    }
+
     pub fn add_output_processor(
         &mut self,
         processor: Processor,
@@ -93,6 +121,35 @@ impl<P: Provider> TranslationLine<P> {
         }
 
         Ok(())
+    }
+
+
+    pub fn with_output_proc(
+        &mut self,
+        processor: Processor,
+    ) -> &mut Self {
+        let res = self.add_output_processor(processor);
+
+        if let Err(e) = res {
+            panic!("Can not add output processor to line: {}", e)
+        }
+
+        self
+    }
+
+    pub fn with_output_pipeline(
+        &mut self,
+        pipeline: Box<dyn Pipeline>
+    ) -> &mut Self {
+        if self.state == LineState::Running {
+            panic!("TranslationLine is running");
+        }
+
+        if let Some(pipelines) = self.pipelines.as_mut() {
+            pipelines.output = pipeline;
+        }
+
+        self
     }
 
     pub fn state(

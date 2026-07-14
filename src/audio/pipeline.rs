@@ -8,7 +8,7 @@ use crate::audio::processors::channel_converter::ChannelConverter;
 use crate::audio::processors::resampler::Resampler;
 use crate::audio::{
     Audio, AudioFormat, AudioProcessor, DspProcessor, EncodedAudioFormat, PcmAudio,
-    Pipeline as PipelineTrait, Processor,
+    Pipeline, Processor,
 };
 use crate::core::error::{CoreError, Result};
 
@@ -151,26 +151,26 @@ impl AudioPipeline {
         }
     }
 
-    pub fn add(&mut self, processor: Processor) -> &mut Self {
+    pub fn with(&mut self, processor: Processor) -> &mut Self {
         self.processors.push(processor);
         self
     }
 
     /// Создает пайплайн для приведения аудио к внутреннему формату обработки.
-    pub fn convert_to_internal_mono(input_format: AudioFormat) -> Result<Self> {
+    pub fn convert_to_internal_mono(input_format: AudioFormat) -> Result<Box<Self>> {
         let mut pipeline = Self::new_standalone(true);
         let internal_spec = EncodedAudioFormat::internal_format().spec();
 
         // Преобразование каналов
         if input_format.channels != internal_spec.channels().count() as u16 {
-            pipeline.add(Processor::ChannelConverter(ChannelConverter::new(
+            pipeline.with(Processor::ChannelConverter(ChannelConverter::new(
                 internal_spec.channels().clone(),
             )));
         }
 
         // Ресемплирование
         if input_format.sample_rate != internal_spec.rate() {
-            pipeline.add(Processor::Resampler(Resampler::new(
+            pipeline.with(Processor::Resampler(Resampler::new(
                 AudioSpec::new(
                     input_format.sample_rate,
                     Channels::Discrete(input_format.channels),
@@ -179,17 +179,17 @@ impl AudioPipeline {
             )?));
         }
 
-        Ok(pipeline)
+        Ok(Box::new(pipeline))
     }
 
     /// Создает пайплайн для преобразования из внутреннего формата в целевой формат.
-    pub fn convert_from_internal_mono(output_format: AudioFormat) -> Result<Self> {
+    pub fn convert_from_internal_mono(output_format: AudioFormat) -> Result<Box<Self>> {
         let mut pipeline = Self::new_standalone(false);
         let internal_spec = EncodedAudioFormat::internal_format().spec();
 
         // Ресемплирование
         if output_format.sample_rate != internal_spec.rate() {
-            pipeline.add(Processor::Resampler(Resampler::new(
+            pipeline.with(Processor::Resampler(Resampler::new(
                 internal_spec.clone(),
                 output_format.sample_rate,
             )?));
@@ -197,15 +197,15 @@ impl AudioPipeline {
 
         // Преобразование в целевую конфигурацию каналов
         if output_format.channels != internal_spec.channels().count() as u16 {
-            pipeline.add(Processor::ChannelConverter(ChannelConverter::new(
+            pipeline.with(Processor::ChannelConverter(ChannelConverter::new(
                 Channels::Discrete(output_format.channels),
             )));
         }
 
-        Ok(pipeline)
+        Ok(Box::new(pipeline))
     }
 
-    pub fn process(&mut self, mut audio: Audio) -> Result<Option<(Audio, Duration)>> {
+    pub fn process_stream(&mut self, mut audio: Audio) -> Result<Option<(Audio, Duration)>> {
         let start_time = Instant::now();
 
         if !self.process_audio(&mut audio)? {
@@ -333,7 +333,15 @@ impl DspProcessor for AudioPipeline {
     }
 }
 
-impl PipelineTrait for AudioPipeline {}
+impl Pipeline for AudioPipeline {
+    fn add(&mut self, processor: Processor) {
+        self.with(processor);
+    }
+
+    fn process_stream(&mut self, audio: Audio) -> Result<Option<(Audio, Duration)>> {
+        self.process_stream(audio)
+    }
+}
 
 impl Default for AudioPipeline {
     fn default() -> Self {
@@ -342,8 +350,8 @@ impl Default for AudioPipeline {
 }
 
 pub struct Pipelines {
-    pub input: AudioPipeline,
-    pub output: AudioPipeline,
+    pub input: Box<dyn Pipeline>,
+    pub output: Box<dyn Pipeline>,
     pub stats: Arc<LatencyStats>,
 }
 
@@ -354,8 +362,8 @@ impl Pipelines {
 
     pub fn with_stats(stats: Arc<LatencyStats>) -> Self {
         Self {
-            input: AudioPipeline::new(stats.clone(), true),
-            output: AudioPipeline::new(stats.clone(), false),
+            input: Box::new(AudioPipeline::new(stats.clone(), true)),
+            output: Box::new(AudioPipeline::new(stats.clone(), false)),
             stats,
         }
     }
@@ -369,16 +377,16 @@ mod tests {
     #[test]
     fn test_nested_pipeline() {
         let mut inner = AudioPipeline::new_standalone(true);
-        inner.add(Processor::Identity(IdentityProcessor));
+        inner.with(Processor::Identity(IdentityProcessor));
 
         let mut outer = AudioPipeline::new_standalone(true);
-        outer.add(Processor::Pipeline(Box::new(inner)));
+        outer.with(Processor::Pipeline(Box::new(inner)));
 
         let spec = EncodedAudioFormat::internal_format().spec();
         let pcm = PcmAudio::new(spec, 480);
         let audio = Audio::from_pcm(&pcm).unwrap();
 
-        let result = outer.process(audio).unwrap();
+        let result = outer.process_stream(audio).unwrap();
         assert!(result.is_some());
     }
 

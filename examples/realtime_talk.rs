@@ -4,7 +4,7 @@ use std::sync::Arc;
 use symphonia::core::audio::{AudioSpec, Channels, Position};
 use tokio::signal;
 
-use libereco::audio::{AudioDevicesCpal, AudioInputCpal, AudioOutputCpal, LatencyStats, Processor};
+use libereco::audio::{AudioCodec, AudioContainer, AudioDevicesCpal, AudioInput, AudioInputCpal, AudioOutput, AudioOutputCpal, AudioPipeline, BinaryEncoding, EncodedAudioFormat, Endianness, LatencyStats, PcmFormat, Processor};
 use libereco::audio::processors::channel_converter::ChannelConverter;
 use libereco::audio::processors::resampler::Resampler;
 use libereco::providers::openai::realtime::{
@@ -70,6 +70,21 @@ async fn main() -> Result<()> {
     let input = AudioInputCpal::new(capture, stats.clone())?;
     let output = AudioOutputCpal::new(playback, stats.clone())?;
 
+    let input_format = input.format();
+    let output_format = output.format();
+
+    EncodedAudioFormat::init_internal_format(
+        EncodedAudioFormat::new(
+            AudioContainer::Raw,
+            AudioCodec::Pcm(PcmFormat::I16(Endianness::Little)),
+            BinaryEncoding::Binary,
+            AudioSpec::new(
+                24_000,
+                Channels::Positioned(Position::FRONT_CENTER)
+            )
+        )
+    )?;
+
     // TranslationLine
     let mut line =
         TranslationLine::new(
@@ -79,47 +94,14 @@ async fn main() -> Result<()> {
             stats,
         ).await?;
 
-    // Input DSP
-    {
-        line.add_input_processor(
-            Processor::ChannelConverter(
-                ChannelConverter::new(mono.clone())
-            )
-        )?;
-
-        line.add_input_processor(
-            Processor::Resampler(
-                Resampler::new(
-                    AudioSpec::new(
-                        input_sample_rate,
-                        mono.clone(),
-                    ),
-                    remote_spec.rate()
-                )?
-            )
-        )?;
-    }
-
-    // Output DSP
-    {
-        line.add_output_processor(
-            Processor::Resampler(
-                Resampler::new(
-                    AudioSpec::new(
-                        remote_spec.rate(),
-                        mono.clone(),
-                    ),
-                    output_sample_rate,
-                )?
-            )
-        )?;
-
-        line.add_output_processor(
-            Processor::ChannelConverter(
-                ChannelConverter::new(stereo.clone())
-            )
-        )?;
-    }
+    // Input & Output DSP
+    line
+        .with_input_pipeline(
+            AudioPipeline::convert_to_internal_mono(input_format)?
+        )
+        .with_output_pipeline(
+            AudioPipeline::convert_from_internal_mono(output_format)?
+        );
 
     println!("Run...");
 

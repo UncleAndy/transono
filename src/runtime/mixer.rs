@@ -39,7 +39,7 @@ impl Mixer {
     /// Adds an input source to the mixer.
     /// The input must implement `AudioInput` so we can take its receiver.
     pub fn add_input(&self, input: &mut dyn AudioInput, weight: f32) -> Result<ChannelId> {
-        if input.format() != &self.format {
+        if input.format() != self.format {
             return Err(CoreError::Other(anyhow!(
                 "Incompatible audio format: expected {:?}, got {:?}",
                 self.format,
@@ -196,8 +196,8 @@ impl AudioOutput for Mixer {
         Ok(())
     }
 
-    fn format(&self) -> &AudioFormat {
-        &self.format
+    fn format(&self) -> AudioFormat {
+        self.format.clone()
     }
 }
 
@@ -215,8 +215,8 @@ impl AudioInput for Mixer {
         Ok(())
     }
 
-    fn format(&self) -> &AudioFormat {
-        &self.format
+    fn format(&self) -> AudioFormat {
+        self.format.clone()
     }
 }
 
@@ -271,7 +271,7 @@ mod tests {
         }
         fn start(&self) -> crate::core::error::Result<()> { Ok(()) }
         fn stop(&self) -> crate::core::error::Result<()> { Ok(()) }
-        fn format(&self) -> &AudioFormat { &self.format }
+        fn format(&self) -> AudioFormat { self.format.clone() }
     }
 
     #[tokio::test]
