@@ -1,4 +1,3 @@
-use anyhow::anyhow;
 use tokio_util::sync::CancellationToken;
 use std::sync::Arc;
 
@@ -73,7 +72,7 @@ impl<P: Provider> TranslationLine<P> {
     ) -> Result<()>
     {
         if self.state == LineState::Running {
-            return Err(CoreError::Other(anyhow::Error::msg("TranslationLine is running")));
+            return Err(CoreError::Internal("TranslationLine is running".to_string()));
         }
 
         if let Some(pipelines) = self.pipelines.as_mut() {
@@ -87,12 +86,10 @@ impl<P: Provider> TranslationLine<P> {
         &mut self,
         processor: Processor,
     ) -> &mut Self {
-        let res = self.add_input_processor(processor);
-
-        if let Err(e) = res {
-            panic!("Can not add input processor to line: {}", e)
+        if let Err(e) = self.add_input_processor(processor) {
+            eprintln!("Can not add input processor to line: {}", e);
         }
-
+ 
         self
     }
 
@@ -101,13 +98,14 @@ impl<P: Provider> TranslationLine<P> {
         pipeline: Box<dyn Pipeline>
     ) -> &mut Self {
         if self.state == LineState::Running {
-            panic!("TranslationLine is running");
+            eprintln!("TranslationLine is running");
+            return self;
         }
-
+ 
         if let Some(pipelines) = self.pipelines.as_mut() {
             pipelines.input = pipeline;
         }
-
+ 
         self
     }
 
@@ -117,7 +115,7 @@ impl<P: Provider> TranslationLine<P> {
     ) -> Result<()>
     {
         if self.state == LineState::Running {
-            return Err(CoreError::Other(anyhow::Error::msg("TranslationLine is running")));
+            return Err(CoreError::Internal("TranslationLine is running".to_string()));
         }
 
         if let Some(pipelines) = self.pipelines.as_mut() {
@@ -127,15 +125,36 @@ impl<P: Provider> TranslationLine<P> {
         Ok(())
     }
 
+    pub fn clear_input_processors(&mut self) -> Result<()> {
+        if self.state == LineState::Running {
+            return Err(CoreError::Internal("TranslationLine is running".to_string()));
+        }
+
+        if let Some(pipelines) = self.pipelines.as_mut() {
+            pipelines.input.clear();
+        }
+
+        Ok(())
+    }
+
+    pub fn clear_output_processors(&mut self) -> Result<()> {
+        if self.state == LineState::Running {
+            return Err(CoreError::Internal("TranslationLine is running".to_string()));
+        }
+
+        if let Some(pipelines) = self.pipelines.as_mut() {
+            pipelines.output.clear();
+        }
+
+        Ok(())
+    }
 
     pub fn with_output_proc(
         &mut self,
         processor: Processor,
     ) -> &mut Self {
-        let res = self.add_output_processor(processor);
-
-        if let Err(e) = res {
-            panic!("Can not add output processor to line: {}", e)
+        if let Err(e) = self.add_output_processor(processor) {
+            eprintln!("Can not add output processor to line: {}", e);
         }
 
         self
@@ -146,13 +165,14 @@ impl<P: Provider> TranslationLine<P> {
         pipeline: Box<dyn Pipeline>
     ) -> &mut Self {
         if self.state == LineState::Running {
-            panic!("TranslationLine is running");
+            eprintln!("TranslationLine is running");
+            return self;
         }
-
+ 
         if let Some(pipelines) = self.pipelines.as_mut() {
             pipelines.output = pipeline;
         }
-
+ 
         self
     }
 
@@ -179,8 +199,8 @@ impl<P: Provider> TranslationLine<P> {
     }
 
     pub fn auto_configure(&mut self) -> Result<()> {
-        let input_format = self.audio_input.as_ref().map(|i| i.format()).ok_or_else(|| CoreError::Other(anyhow!("audio input missing")))?;
-        let output_format = self.audio_output.as_ref().map(|o| o.format()).ok_or_else(|| CoreError::Other(anyhow!("audio output missing")))?;
+        let input_format = self.audio_input.as_ref().map(|i| i.format()).ok_or_else(|| CoreError::Internal("audio input missing".to_string()))?;
+        let output_format = self.audio_output.as_ref().map(|o| o.format()).ok_or_else(|| CoreError::Internal("audio output missing".to_string()))?;
         let provider_format = AudioFormat::from(self.provider.audio_format());
 
         // Configure Input Pipeline: HW -> Provider
@@ -205,9 +225,9 @@ impl<P: Provider> TranslationLine<P> {
             let res = task.await
                 .map_err(|e| {
                     if e.is_panic() {
-                        CoreError::Other(anyhow!("session task panicked"))
+                        CoreError::Internal("session task panicked".to_string())
                     } else {
-                        CoreError::Other(anyhow!("session task error: {}", e))
+                        CoreError::Internal(format!("session task error: {}", e))
                     }
                 })?;
  
@@ -252,19 +272,16 @@ impl<P: Provider> TranslationLine<P> {
         let session = self.provider.create_session().await?;
 
         let Some(mut playback) = self.audio_output.take() else {
-            return Err(CoreError::Other(anyhow!("audio output not found")));
+            return Err(CoreError::Internal("audio output not found".to_string()));
         };
-        let output_tx = playback.clone_sender()?;
+        let playback_sink = playback.sink()?;
         playback.start()?;
         self.audio_output = Some(playback);
 
         let Some(mut input) = self.audio_input.take() else {
-            return Err(CoreError::Other(anyhow!("audio input not found")));
+            return Err(CoreError::Internal("audio input not found".to_string()));
         };
-        let mut input_rx = input.take_receiver()?;
-
-        // Clear any stale audio data that might have been captured during initialization
-        while input_rx.try_recv().is_ok() {}
+        let input_stream = input.stream()?;
 
         input.start()?;
         self.audio_input = Some(input);
@@ -276,8 +293,8 @@ impl<P: Provider> TranslationLine<P> {
 
         self.session_task = Some(
             session.spawn(
-                input_rx,
-                output_tx,
+                input_stream,
+                playback_sink,
                 pipelines,
                 self.cancel.clone(),
                 self.event_tx.clone(),

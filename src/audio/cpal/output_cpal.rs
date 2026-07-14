@@ -1,11 +1,13 @@
 use std::sync::Arc;
-use anyhow::anyhow;
 use cpal::{
     traits::{DeviceTrait, StreamTrait},
     BufferSize, Device, SampleFormat, Stream, StreamConfig,
 };
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
+use tokio_util::sync::PollSender;
+use futures_util::SinkExt;
+use crate::audio::output::BoxSink;
 use crate::audio::{sample_to_pcm_format, Audio, AudioFormat, AudioOutput, LatencyStats};
 use crate::core::error::{CoreError, Result};
 
@@ -68,10 +70,10 @@ impl AudioOutputCpal {
             }
 
             _ => {
-                return Err(CoreError::Other(anyhow::anyhow!(
-                "Unsupported sample format"
-            )));
-            }
+                return Err(CoreError::Internal(
+                "Unsupported sample format".to_string()
+            ));
+        }
         };
 
         Ok(Self {
@@ -163,30 +165,32 @@ impl AudioOutputCpal {
             },
             None,
         )
-            .map_err(|e| CoreError::Other(anyhow::Error::from(e)))?;
+            .map_err(|e| CoreError::Cpal(e.to_string()))?;
 
         Ok(stream)
     }
 }
 
 impl AudioOutput for AudioOutputCpal {
-    fn clone_sender(&mut self) -> Result<Sender<Audio>> {
+    #[inline]
+    fn sink(&mut self) -> Result<BoxSink<'static, Audio, CoreError>> {
         let Some(sender) = self.sender.clone() else {
-            return Err(CoreError::Other(anyhow!("sender absent")))
+            return Err(CoreError::Internal("sender absent".to_string()))
         };
 
-        Ok(sender)
+        Ok(Box::pin(PollSender::new(sender)
+            .sink_map_err(|_| CoreError::Transport(crate::core::error::TransportError::ConnectionClosed))))
     }
 
     #[inline]
     fn start(&self) -> Result<()> {
-        self.stream.play().map_err(|e| CoreError::Other(anyhow::Error::from(e)))?;
+        self.stream.play().map_err(|e| CoreError::Cpal(e.to_string()))?;
         Ok(())
     }
-
+ 
     #[inline]
     fn stop(&self) -> Result<()> {
-        self.stream.pause().map_err(|e| CoreError::Other(anyhow::Error::from(e)))?;
+        self.stream.pause().map_err(|e| CoreError::Cpal(e.to_string()))?;
         Ok(())
     }
 
@@ -202,7 +206,7 @@ impl AudioOutput for AudioOutputCpal {
 
 fn select_config(device: &Device) -> Result<(StreamConfig, SampleFormat)> {
     let cfg = device.default_output_config()
-        .map_err(|e| CoreError::Other(anyhow::Error::from(e)))?;
+        .map_err(|e| CoreError::Cpal(e.to_string()))?;
 
     Ok((StreamConfig {
         channels: cfg.channels(),

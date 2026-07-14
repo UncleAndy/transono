@@ -2,11 +2,8 @@ use anyhow::Result;
 use std::sync::Arc;
 use tokio::signal;
 use cpal::traits::DeviceTrait;
-use symphonia::core::audio::{AudioSpec, Channels, Position};
 
-use libereco::audio::processors::channel_converter::ChannelConverter;
-use libereco::audio::processors::resampler::Resampler;
-use libereco::audio::{AudioDevicesCpal, AudioInputCpal, AudioOutputCpal, LatencyStats, Processor};
+use libereco::audio::{AudioDevicesCpal, AudioInputCpal, AudioOutputCpal, LatencyStats};
 use libereco::providers::openai::translation::{OpenAITranslationConfig, OpenAITranslationProvider};
 use libereco::line::TranslationLine;
 
@@ -39,10 +36,6 @@ async fn main() -> Result<()> {
     let remote = config.audio_format();
 
     let remote_spec = remote.spec().clone();
-    let mono = Channels::Positioned(Position::FRONT_CENTER);
-    let stereo = Channels::Positioned(
-        Position::FRONT_LEFT | Position::FRONT_RIGHT,
-    );
 
     println!(
         "OpenAI format: {} Hz, {} channel(s)",
@@ -76,47 +69,9 @@ async fn main() -> Result<()> {
             stats,
         ).await?;
 
-    // Input DSP
-    {
-        line.add_input_processor(
-            Processor::ChannelConverter(
-                ChannelConverter::new(mono.clone())
-            )
-        )?;
-
-        line.add_input_processor(
-            Processor::Resampler(
-                Resampler::new(
-                    AudioSpec::new(
-                        input_sample_rate,
-                        mono.clone(),
-                    ),
-                    remote_spec.rate()
-                )?
-            )
-        )?;
-    }
-
-    // Output DSP
-    {
-        line.add_output_processor(
-            Processor::Resampler(
-                Resampler::new(
-                    AudioSpec::new(
-                        remote_spec.rate(),
-                        mono.clone(),
-                    ),
-                    output_sample_rate,
-                )?
-            )
-        )?;
-
-        line.add_output_processor(
-            Processor::ChannelConverter(
-                ChannelConverter::new(stereo.clone())
-            )
-        )?;
-    }
+    // TranslationLine automatically configures converters and resamplers
+    // based on hardware and provider formats.
+    println!("Auto-configuring pipelines...");
 
     println!("Run...");
 

@@ -40,11 +40,11 @@ impl AudioEncoder for PcmBinaryEncoder {
         let mut data = Vec::new();
 
         self.encode_bytes(audio, &mut data)?;
-
-        Ok(EncodedAudio::new(
+ 
+        EncodedAudio::new(
             self.format.clone(),
             data.into(),
-        ))
+        )
     }
 
     fn encode_bytes(

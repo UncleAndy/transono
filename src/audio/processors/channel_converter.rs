@@ -1,4 +1,3 @@
-use anyhow::anyhow;
 use symphonia::core::audio::Channels;
 
 use crate::audio::{DspProcessor, PcmAudio};
@@ -68,12 +67,8 @@ impl DspProcessor for ChannelConverter {
             }
 
             (from, to) => {
-                return Err(CoreError::Other(
-                    anyhow!(
-                        "unsupported channel conversion: {} -> {}",
-                        from,
-                        to,
-                    ),
+                return Err(CoreError::Internal(
+                    format!("unsupported channel conversion: {} -> {}", from, to)
                 ));
             }
         }

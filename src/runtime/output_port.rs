@@ -1,6 +1,7 @@
-use anyhow::anyhow;
 use tokio::sync::mpsc::Receiver;
-
+use futures_util::stream::BoxStream;
+use tokio_stream::wrappers::ReceiverStream;
+use futures_util::StreamExt;
 use crate::audio::{Audio, AudioFormat, AudioInput};
 use crate::core::error::{CoreError, Result};
 
@@ -20,12 +21,12 @@ impl OutputPort {
 }
 
 impl AudioInput for OutputPort {
-    fn take_receiver(&mut self) -> Result<Receiver<Audio>> {
+    fn stream(&mut self) -> Result<BoxStream<'static, Audio>> {
         let Some(receiver) = self.receiver.take() else {
-            return Err(CoreError::Other(anyhow!("receiver already taken")))
+            return Err(CoreError::Internal("receiver already taken".to_string()))
         };
 
-        Ok(receiver)
+        Ok(ReceiverStream::new(receiver).boxed())
     }
 
     fn start(&self) -> Result<()> {

@@ -43,7 +43,7 @@ impl Resampler {
             channels,
             FixedSync::Input,
         )
-            .map_err(|e| CoreError::Other(anyhow::Error::from(e)))?;
+            .map_err(|e| CoreError::Internal(e.to_string()))?;
 
         let (fft_input, fft_output) = Self::create_fft_buffers(
             &fft,
@@ -87,19 +87,24 @@ impl Resampler {
     fn push_input(
         &mut self,
         pcm: &PcmAudio,
-    ) {
+    ) -> Result<()> {
         let channels_count = pcm.channel_count();
 
-        debug_assert_eq!(
-            channels_count,
-            self.input_buffer.channels(),
-        );
+        if channels_count != self.input_buffer.channels() {
+            return Err(CoreError::Internal(format!(
+                "Resampler channel count mismatch: input has {}, expected {}",
+                channels_count, self.input_buffer.channels()
+            )));
+        }
+
         for channel in 0..channels_count {
             self.input_buffer.push_channel(
                 channel,
                 pcm.channel(channel),
             );
         }
+
+        Ok(())
     }
     fn process_fft(
         &mut self,
@@ -134,7 +139,7 @@ impl Resampler {
                     &mut self.fft_output,
                     None,
                 )
-                .map_err(|e| CoreError::Other(e.into()))?;
+                .map_err(|e| CoreError::Internal(e.to_string()))?;
 
             // ---------- output ----------
             for channel in 0..channels_count {
@@ -163,19 +168,21 @@ impl Resampler {
     fn pop_output(
         &mut self,
         pcm: &mut PcmAudio,
-    ) -> bool {
+    ) -> Result<bool> {
         let frames = self.output_buffer.available();
 
         if frames == 0 {
-            return false;
+            return Ok(false);
         }
 
         let channels = pcm.channel_count();
 
-        debug_assert_eq!(
-            channels,
-            self.output_buffer.channels(),
-        );
+        if channels != self.output_buffer.channels() {
+            return Err(CoreError::Internal(format!(
+                "Resampler channel count mismatch: output has {}, expected {}",
+                channels, self.output_buffer.channels()
+            )));
+        }
 
         pcm.resize(frames, channels);
 
@@ -183,7 +190,7 @@ impl Resampler {
             let samples = self
                 .output_buffer
                 .read_channel(channel, frames)
-                .unwrap();
+                .ok_or_else(|| CoreError::Internal("failed to read from output buffer".to_string()))?;
 
             pcm.channel_mut(channel).copy_from_slice(samples);
         }
@@ -197,19 +204,17 @@ impl Resampler {
             );
         }
 
-        true
+        Ok(true)
     }
 }
 
 impl DspProcessor for Resampler {
     fn process(&mut self, input: &mut PcmAudio) -> Result<bool> {
-        self.push_input(input);
+        self.push_input(input)?;
 
         self.process_fft()?;
 
-        let ready =  self.pop_output(input);
-
-        Ok(ready)
+        self.pop_output(input)
     }
 }
 

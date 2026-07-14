@@ -1,5 +1,5 @@
 use crate::audio::{DspProcessor, PcmAudio};
-use crate::core::error::Result;
+use crate::core::error::{CoreError, Result};
 use symphonia::core::audio::AudioSpec;
 
 const SIGNAL_FLOOR_DBFS: f32 = -60.0;
@@ -100,7 +100,12 @@ impl Denoiser {
 
 impl DspProcessor for Denoiser {
     fn process(&mut self, pcm: &mut PcmAudio) -> Result<bool> {
-        debug_assert_eq!(self.channels, pcm.channel_count());
+        if self.channels != pcm.channel_count() {
+            return Err(CoreError::Internal(format!(
+                "Denoiser channel count mismatch: expected {}, got {}",
+                self.channels, pcm.channel_count()
+            )));
+        }
 
         let block_dbfs = self.measure_block_dbfs(pcm);
         let attenuation_db = self.compute_target_attenuation(block_dbfs);

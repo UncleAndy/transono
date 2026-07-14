@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::env;
-use anyhow::anyhow;
 use http::{HeaderName, HeaderValue};
 use http::header::AUTHORIZATION;
 use serde::{Deserialize, Serialize};
@@ -33,7 +32,7 @@ impl OpenAITranslationConfig {
 
         cfg.api_key = match env::var("OPENAI_API_KEY") {
             Ok(key) => key,
-            Err(_) => return Err(CoreError::Other(anyhow!("OPENAI_API_KEY environment variable required!"))),
+            Err(_) => return Err(CoreError::Internal("OPENAI_API_KEY environment variable required!".to_string())),
         };
 
         Ok(cfg)

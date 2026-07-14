@@ -12,8 +12,26 @@ pub enum CoreError {
     #[error(transparent)]
     Protocol(#[from] ProtocolError),
 
+    #[error("Audio processing error: {0}")]
+    Processing(String),
+
+    #[error("Internal error: {0}")]
+    Internal(String),
+
     #[error(transparent)]
-    Other(#[from] anyhow::Error),
+    Io(#[from] std::io::Error),
+
+    #[error("CPAL error: {0}")]
+    Cpal(String),
+
+    #[error(transparent)]
+    Symphonia(#[from] symphonia::core::errors::Error),
+
+    #[error(transparent)]
+    Hound(#[from] hound::Error),
+
+    #[error("Audio buffer full")]
+    AudioBufferFull,
 
     #[error("Unsupported audio format")]
     UnsupportedAudioFormat(EncodedAudioFormat),
@@ -24,8 +42,13 @@ pub enum CoreError {
 
 impl From<&str> for CoreError {
     fn from(err: &str) -> Self {
-        let msg = err.to_string();
-        CoreError::Other(anyhow::Error::msg(msg))
+        CoreError::Internal(err.to_string())
+    }
+}
+
+impl From<String> for CoreError {
+    fn from(err: String) -> Self {
+        CoreError::Internal(err)
     }
 }
 

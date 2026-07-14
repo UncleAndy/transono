@@ -33,11 +33,11 @@ impl AudioEncoder for PcmBase64Encoder {
         let mut data = Vec::new();
 
         self.encode_bytes(pcm, &mut data)?;
-
-        Ok(EncodedAudio::new(
+ 
+        EncodedAudio::new(
             self.format.clone(),
             data.into(),
-        ))
+        )
     }
 
     fn encode_bytes(
@@ -106,7 +106,7 @@ impl AudioDecoder for PcmBase64Decoder {
 
         let decoded_len = base64_simd::STANDARD
             .decoded_length(input)
-            .map_err(|e| CoreError::Other(e.into()))?;
+            .map_err(|e| CoreError::Internal(e.to_string()))?;
 
         self.scratch.resize(decoded_len, 0);
 
@@ -115,7 +115,7 @@ impl AudioDecoder for PcmBase64Decoder {
                 input,
                 base64_simd::Out::from_slice(&mut self.scratch),
             )
-            .map_err(|e| CoreError::Other(e.into()))?;
+            .map_err(|e| CoreError::Internal(e.to_string()))?;
 
         debug_assert_eq!(decoded.len(), decoded_len);
 

@@ -7,7 +7,7 @@ use crate::audio::processors::resampler::Resampler;
 use crate::audio::processors::compressor::Compressor;
 use crate::audio::processors::normalizer::Normalizer;
 use crate::audio::{Audio, PcmAudio};
-use crate::core::error::Result;
+use crate::core::error::{CoreError, Result};
 
 pub enum Processor {
     Identity(IdentityProcessor),
@@ -24,23 +24,23 @@ pub enum Processor {
 impl Processor {
     pub fn process_audio(&mut self, audio: &mut Audio) -> Result<bool> {
         match self {
-            Self::Identity(p) => p.process(audio),
+            Self::Identity(p) => AudioProcessor::process(p, audio),
             Self::Pipeline(p) => AudioProcessor::process(p.as_mut(), audio),
-            _ => panic!("Expected AudioProcessor, got DSP processor"),
+            _ => Err(CoreError::Processing("Expected AudioProcessor, got DSP processor".to_string())),
         }
     }
 
     pub fn process_dsp(&mut self, pcm: &mut PcmAudio) -> Result<bool> {
         match self {
-            Self::Denoiser(p) => p.process(pcm),
-            Self::Resampler(p) => p.process(pcm),
-            Self::ChannelConverter(p) => p.process(pcm),
-            Self::Compressor(p) => p.process(pcm),
-            Self::Normalizer(p) => p.process(pcm),
+            Self::Denoiser(p) => DspProcessor::process(p, pcm),
+            Self::Resampler(p) => DspProcessor::process(p, pcm),
+            Self::ChannelConverter(p) => DspProcessor::process(p, pcm),
+            Self::Compressor(p) => DspProcessor::process(p, pcm),
+            Self::Normalizer(p) => DspProcessor::process(p, pcm),
             Self::Pipeline(p) => DspProcessor::process(p.as_mut(), pcm),
-            Self::IndicatorDiag(p) => p.process(pcm),
-            Self::WavDumpDiag(p) => p.process(pcm),
-            Self::Identity(_) => panic!("Expected DSP processor, got Audio processor"),
+            Self::IndicatorDiag(p) => DspProcessor::process(p, pcm),
+            Self::WavDumpDiag(p) => DspProcessor::process(p, pcm),
+            Self::Identity(_) => Err(CoreError::Processing("Expected DSP processor, got Audio processor".to_string())),
         }
     }
 
@@ -90,6 +90,9 @@ pub trait DspProcessor: Send {
 pub trait Pipeline: AudioProcessor + DspProcessor + Send {
     /// Добавляет процессор в цепочку.
     fn add(&mut self, processor: Processor);
+
+    /// Очищает цепочку процессоров.
+    fn clear(&mut self);
 
     /// Обрабатывает блок аудио как часть потока, возвращая результат и время обработки.
     fn process_stream(&mut self, audio: Audio) -> Result<Option<(Audio, Duration)>>;

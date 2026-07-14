@@ -41,9 +41,16 @@ impl Audio {
         self.capture_timestamp
     }
 
+    pub fn set_capture_timestamp(&mut self, timestamp: Instant) {
+        self.capture_timestamp = timestamp;
+    }
+
     pub fn duration(&self) -> std::time::Duration {
         let frames = self.buffer.frames() as u64;
         let rate = self.buffer.spec().rate() as u64;
+        if rate == 0 {
+            return std::time::Duration::from_secs(0);
+        }
         std::time::Duration::from_nanos(frames * 1_000_000_000 / rate)
     }
 
@@ -110,16 +117,21 @@ impl Audio {
         let frames = pcm.frames();
         let channel_count = spec.channels().count();
 
+        if frames == 0 || channel_count == 0 {
+            return Ok(());
+        }
+
         if channel_count == 1 {
-            let mut slices = [pcm.data.as_mut_slice()];
+            let mut slices = [&mut pcm.data[..frames]];
             buffer.copy_to_slice_planar(&mut slices);
         } else if channel_count == 2 {
             let (s0, s1) = pcm.data.split_at_mut(frames);
-            let mut slices = [s0, s1];
+            let mut slices = [s0, &mut s1[..frames]];
             buffer.copy_to_slice_planar(&mut slices);
         } else {
             let mut slices: Vec<&mut [f32]> = pcm.data
                 .chunks_exact_mut(frames)
+                .take(channel_count)
                 .collect();
             buffer.copy_to_slice_planar(&mut slices);
         }
@@ -133,16 +145,21 @@ impl Audio {
         let frames = pcm.frames();
         let channel_count = pcm.channel_count();
 
+        if frames == 0 || channel_count == 0 {
+            return Ok(Self::new(GenericAudioBuffer::F32(AudioBuffer::new(pcm.spec.clone(), 0))));
+        }
+
         let mut audio = if channel_count == 1 {
-            let slices = [pcm.data.as_slice()];
+            let slices = [&pcm.data[..frames]];
             Self::from_planar::<f32>(pcm.spec.clone(), &slices)
         } else if channel_count == 2 {
             let (s0, s1) = pcm.data.split_at(frames);
-            let slices = [s0, s1];
+            let slices = [s0, &s1[..frames]];
             Self::from_planar::<f32>(pcm.spec.clone(), &slices)
         } else {
             let refs: Vec<&[f32]> = pcm.data
                 .chunks_exact(frames)
+                .take(channel_count)
                 .collect();
             Self::from_planar::<f32>(pcm.spec.clone(), &refs)
         };

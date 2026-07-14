@@ -1,4 +1,3 @@
-use anyhow::anyhow;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
@@ -8,7 +7,7 @@ use crate::audio::processors::channel_converter::ChannelConverter;
 use crate::audio::processors::resampler::Resampler;
 use crate::audio::{
     Audio, AudioFormat, AudioProcessor, DspProcessor, PcmAudio,
-    Pipeline, Processor,
+    Pipeline, Processor, SharedPcmPool, PcmPool,
 };
 use crate::core::error::{CoreError, Result};
 
@@ -130,6 +129,7 @@ pub struct AudioPipeline {
     scratch_pcm: Option<PcmAudio>,
     stats: Arc<LatencyStats>,
     is_input: bool,
+    pool: SharedPcmPool,
 }
 
 impl AudioPipeline {
@@ -139,15 +139,27 @@ impl AudioPipeline {
             scratch_pcm: None,
             stats,
             is_input,
+            pool: Arc::new(PcmPool::new()),
         }
     }
-
+ 
+    pub fn with_pool(stats: Arc<LatencyStats>, is_input: bool, pool: SharedPcmPool) -> Self {
+        Self {
+            processors: Vec::new(),
+            scratch_pcm: None,
+            stats,
+            is_input,
+            pool,
+        }
+    }
+ 
     pub fn new_standalone(is_input: bool) -> Self {
         Self {
             processors: Vec::new(),
             scratch_pcm: None,
             stats: Arc::new(LatencyStats::default()),
             is_input,
+            pool: Arc::new(PcmPool::new()),
         }
     }
 
@@ -239,18 +251,18 @@ impl AudioPipeline {
     /// Внутренний метод обработки, который можно вызывать из трейтов.
     pub fn process_audio(&mut self, audio: &mut Audio) -> Result<bool> {
         let mut in_scratch = false;
-
+ 
         for processor in &mut self.processors {
             if processor.is_audio() {
                 if in_scratch {
                     let scratch = self
                         .scratch_pcm
                         .as_ref()
-                        .ok_or_else(|| CoreError::Other(anyhow!("scratch_pcm missing")))?;
+                        .ok_or_else(|| CoreError::Internal("scratch_pcm missing".to_string()))?;
                     *audio = Audio::from_pcm(scratch)?;
                     in_scratch = false;
                 }
-
+ 
                 if !processor.process_audio(audio)? {
                     return Ok(false);
                 }
@@ -259,29 +271,31 @@ impl AudioPipeline {
                     if let Some(ref mut scratch) = self.scratch_pcm {
                         audio.to_pcm_into(scratch)?;
                     } else {
-                        self.scratch_pcm = Some(audio.to_pcm()?);
+                        let mut scratch = self.pool.acquire(audio.buffer().spec().clone(), audio.buffer().frames());
+                        audio.to_pcm_into(&mut scratch)?;
+                        self.scratch_pcm = Some(scratch);
                     }
                     in_scratch = true;
                 }
-
+ 
                 let scratch = self
                     .scratch_pcm
                     .as_mut()
-                    .ok_or_else(|| CoreError::Other(anyhow!("scratch_pcm missing")))?;
+                    .ok_or_else(|| CoreError::Internal("scratch_pcm missing".to_string()))?;
                 if !processor.process_dsp(scratch)? {
                     return Ok(false);
                 }
             }
         }
-
+ 
         if in_scratch {
             let scratch = self
                 .scratch_pcm
                 .as_ref()
-                .ok_or_else(|| CoreError::Other(anyhow!("scratch_pcm missing")))?;
+                .ok_or_else(|| CoreError::Internal("scratch_pcm missing".to_string()))?;
             *audio = Audio::from_pcm(scratch)?;
         }
-
+ 
         Ok(true)
     }
 
@@ -296,12 +310,12 @@ impl AudioPipeline {
                     in_audio = true;
                 }
 
-                if !processor.process_audio(current_audio.as_mut().unwrap())? {
+                if !processor.process_audio(current_audio.as_mut().ok_or_else(|| CoreError::Internal("current_audio missing".to_string()))?)? {
                     return Ok(false);
                 }
             } else {
                 if in_audio {
-                    current_audio.take().unwrap().to_pcm_into(pcm)?;
+                    current_audio.take().ok_or_else(|| CoreError::Internal("current_audio missing".to_string()))?.to_pcm_into(pcm)?;
                     in_audio = false;
                 }
 
@@ -312,7 +326,7 @@ impl AudioPipeline {
         }
 
         if in_audio {
-            current_audio.unwrap().to_pcm_into(pcm)?;
+            current_audio.ok_or_else(|| CoreError::Internal("current_audio missing".to_string()))?.to_pcm_into(pcm)?;
         }
 
         Ok(true)
@@ -336,6 +350,10 @@ impl Pipeline for AudioPipeline {
         self.with(processor);
     }
 
+    fn clear(&mut self) {
+        self.processors.clear();
+    }
+
     fn process_stream(&mut self, audio: Audio) -> Result<Option<(Audio, Duration)>> {
         self.process_stream(audio)
     }
@@ -351,18 +369,21 @@ pub struct Pipelines {
     pub input: Box<dyn Pipeline>,
     pub output: Box<dyn Pipeline>,
     pub stats: Arc<LatencyStats>,
+    pub pool: SharedPcmPool,
 }
-
+ 
 impl Pipelines {
     pub fn new() -> Self {
         Self::with_stats(Arc::new(LatencyStats::default()))
     }
-
+ 
     pub fn with_stats(stats: Arc<LatencyStats>) -> Self {
+        let pool = Arc::new(PcmPool::new());
         Self {
-            input: Box::new(AudioPipeline::new(stats.clone(), true)),
-            output: Box::new(AudioPipeline::new(stats.clone(), false)),
+            input: Box::new(AudioPipeline::with_pool(stats.clone(), true, pool.clone())),
+            output: Box::new(AudioPipeline::with_pool(stats.clone(), false, pool.clone())),
             stats,
+            pool,
         }
     }
 }

@@ -1,12 +1,14 @@
-use anyhow::anyhow;
 use async_trait::async_trait;
+use futures_util::stream::BoxStream;
+use crate::audio::output::BoxSink;
+use futures_util::{StreamExt, SinkExt};
 use tokio::io;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
-use crate::audio::{Audio, AudioCodecs, AudioDecoder, AudioEncoder, EncodedAudio, Pipelines};
+use crate::audio::{Audio, AudioCodecs, AudioDecoder, AudioEncoder, EncodedAudio, Pipelines, Pipeline};
 use crate::core::error::CoreError;
 use crate::core::protocol::Protocol;
 use crate::core::session::Session;
@@ -67,8 +69,8 @@ impl RealtimeSender {
 impl ProviderSession for RealtimeSession {
     fn spawn(
         mut self,
-        mut capture_rx: mpsc::Receiver<Audio>,
-        playback_tx: mpsc::Sender<Audio>,
+        mut capture_stream: BoxStream<'static, Audio>,
+        mut playback_sink: BoxSink<'static, Audio, CoreError>,
         pipelines: Pipelines,
         cancel: CancellationToken,
         _event_tx: Option<mpsc::UnboundedSender<SessionEvent>>,
@@ -94,26 +96,16 @@ impl ProviderSession for RealtimeSession {
 
             let cancel_input = cancel.clone();
             let stats_input = stats.clone();
-            let input_task = tokio::spawn(async move {
+            let input_task: JoinHandle<Result<Box<dyn Pipeline>>> = tokio::spawn(async move {
                 loop {
                     tokio::select! {
                         _ = cancel_input.cancelled() => break,
-                        audio = capture_rx.recv() => {
+                        audio = capture_stream.next() => {
                             match audio {
                                 Some(audio) => {
-                                    let capture_ts = audio.capture_timestamp();
-                                    let Some((audio, pipeline_duration)) = input_pipeline.process_stream(audio)? else {
+                                    let Some((audio, _)) = input_pipeline.process_stream(audio)? else {
                                         continue
                                     };
-
-                                    let processing_latency = capture_ts.elapsed();
-                                    if processing_latency > std::time::Duration::from_millis(100) {
-                                        eprintln!(
-                                            "High input latency: total={:?}, pipeline={:?}",
-                                            processing_latency,
-                                            pipeline_duration
-                                        );
-                                    }
 
                                     // Отправляем аудио напрямую из input_task
                                     tokio::select! {
@@ -206,8 +198,8 @@ impl ProviderSession for RealtimeSession {
                                         for a in jitter_buffer.drain(..) {
                                             tokio::select! {
                                                 _ = cancel.cancelled() => break 'main_loop,
-                                                res = playback_tx.send(a) => {
-                                                    res.map_err(|_| CoreError::Other(anyhow!("playback channel closed")))?;
+                                                res = playback_sink.send(a) => {
+                                                    res.map_err(|e| CoreError::Internal(format!("playback sink error: {}", e)))?;
                                                 }
                                             }
                                         }
@@ -215,8 +207,8 @@ impl ProviderSession for RealtimeSession {
                                 } else {
                                     tokio::select! {
                                         _ = cancel.cancelled() => break 'main_loop,
-                                        res = playback_tx.send(audio) => {
-                                            res.map_err(|_| CoreError::Other(anyhow!("playback channel closed")))?;
+                                        res = playback_sink.send(audio) => {
+                                            res.map_err(|e| CoreError::Internal(format!("playback sink error: {}", e)))?;
                                         }
                                     }
                                 }
@@ -224,9 +216,9 @@ impl ProviderSession for RealtimeSession {
 
                             SessionEvent::Text(delta) => {
                                 stdout.write_all(delta.as_bytes()).await
-                                    .map_err(|e| CoreError::Other(anyhow!(e)))?;
+                                    .map_err(CoreError::Io)?;
                                 stdout.flush().await
-                                    .map_err(|e| CoreError::Other(anyhow!(e)))?;
+                                    .map_err(CoreError::Io)?;
                             }
 
                             SessionEvent::RequestStarted => {}
@@ -245,8 +237,8 @@ impl ProviderSession for RealtimeSession {
                                 for a in jitter_buffer.drain(..) {
                                     tokio::select! {
                                         _ = cancel.cancelled() => break 'main_loop,
-                                        res = playback_tx.send(a) => {
-                                            res.map_err(|_| CoreError::Other(anyhow!("playback channel closed")))?;
+                                        res = playback_sink.send(a) => {
+                                            res.map_err(|e| CoreError::Internal(format!("playback sink error: {}", e)))?;
                                         }
                                     }
                                 }
@@ -263,13 +255,13 @@ impl ProviderSession for RealtimeSession {
 
             // Собираем пайплайны обратно
             let input_pipeline = input_task.await
-                .map_err(|e| CoreError::Other(anyhow!("input task panicked: {}", e)))?
-                .map_err(|e: CoreError| CoreError::Other(anyhow!("input task error: {}", e)))?;
+                .map_err(|e| CoreError::Internal(format!("input task panicked: {}", e)))??;
 
             Ok(Pipelines {
                 input: input_pipeline,
                 output: output_pipeline,
                 stats,
+                pool: pipelines.pool,
             })
         })
     }
@@ -279,10 +271,10 @@ impl ProviderSession for RealtimeSession {
 impl Session for RealtimeSession {
     async fn send_audio(&mut self, audio: Audio) -> Result<()> {
         if self.closed {
-            return Err(CoreError::Other(anyhow::Error::msg("session closed")));
+            return Err(CoreError::Internal("session closed".to_string()));
         }
 
-        let encoder = self.encoder.as_mut().ok_or_else(|| CoreError::Other(anyhow!("encoder taken")))?;
+        let encoder = self.encoder.as_mut().ok_or_else(|| CoreError::Internal("encoder taken".to_string()))?;
 
         let pcm = audio.to_pcm()?;
 
@@ -296,7 +288,7 @@ impl Session for RealtimeSession {
 
     async fn next_event(&mut self) -> Result<SessionEvent> {
         if self.closed {
-            return Err(CoreError::Other(anyhow::Error::msg("session closed")));
+            return Err(CoreError::Internal("session closed".to_string()));
         }
 
         loop {
@@ -312,7 +304,7 @@ impl Session for RealtimeSession {
 
     async fn close(&mut self) -> Result<()> {
         if self.closed {
-            return Err(CoreError::Other(anyhow::Error::msg("session closed")));
+            return Err(CoreError::Internal("session closed".to_string()));
         }
 
         self.closed = true;
@@ -347,7 +339,7 @@ impl RealtimeSession {
     }
 
     fn map_audio(&mut self, delta: String) -> Result<SessionEvent> {
-        let encoded = EncodedAudio::new(self.decoder.format().clone(), delta.into_bytes().into());
+        let encoded = EncodedAudio::new(self.decoder.format().clone(), delta.into_bytes().into())?;
 
         let pcm = self.decoder.decode(&encoded)?;
 

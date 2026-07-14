@@ -24,7 +24,7 @@ impl WavDump {
         };
 
         let writer = WavWriter::create(path, wav_spec)
-            .map_err(|e| CoreError::Other(e.into()))?;
+            .map_err(|e| CoreError::Hound(e))?;
 
         Ok(Self {
             writer: Some(writer)
@@ -51,7 +51,7 @@ impl DspProcessor for WavDump {
                     .as_mut()
                     .unwrap()
                     .write_sample(sample)
-                    .map_err(|e| CoreError::Other(e.into()))?;
+                    .map_err(|e| CoreError::Hound(e))?;
             }
         }
 

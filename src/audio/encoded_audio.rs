@@ -17,15 +17,15 @@ impl EncodedAudio {
     pub(crate) fn new(
         format: EncodedAudioFormat,
         data: Bytes
-    ) -> EncodedAudio {
+    ) -> Result<EncodedAudio> {
         if !matches!(format.codec(), AudioCodec::Pcm(_)) {
-            panic!("UnsupportedAudioFormat: {:?}", format);
+            return Err(CoreError::UnsupportedAudioFormat(format));
         }
 
-        Self {
+        Ok(Self {
             format,
             data,
-        }
+        })
     }
 
     pub fn container(&self) -> &AudioContainer {
@@ -47,12 +47,10 @@ impl EncodedAudio {
         match self.encoding() {
             BinaryEncoding::Base64 => {
                 std::str::from_utf8(self.data.as_ref())
-                    .map_err(|e| CoreError::Other(anyhow::Error::from(e)))
+                    .map_err(|e| CoreError::Internal(e.to_string()))
             }
 
-            _ => Err(CoreError::Other(anyhow::anyhow!(
-            "EncodedAudio is not text"
-        ))),
+            _ => Err(CoreError::Internal("EncodedAudio is not text".to_string())),
         }
     }
     pub fn into_string(self) -> Result<String> {
@@ -60,9 +58,9 @@ impl EncodedAudio {
             BinaryEncoding::Base64 => {
                 let bytes = self.data.to_vec();
                 String::from_utf8(bytes)
-                    .map_err(|e| CoreError::Other(anyhow::Error::from(e)))
+                    .map_err(|e| CoreError::Internal(e.to_string()))
             }
-            _ => Err(CoreError::Other(anyhow::anyhow!("EncodedAudio is not text"))),
+            _ => Err(CoreError::Internal("EncodedAudio is not text".to_string())),
         }
     }
 }
@@ -107,7 +105,7 @@ impl EncodedAudioFormat {
     }
 
     pub fn init_internal_format(format: EncodedAudioFormat) -> Result<()> {
-        INTERNAL_FORMAT.set(format).map_err(|_| CoreError::Other(anyhow::anyhow!("Internal format already initialized")))
+        INTERNAL_FORMAT.set(format).map_err(|_| CoreError::Internal("Internal format already initialized".to_string()))
     }
 
     pub fn container(&self) -> AudioContainer {

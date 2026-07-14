@@ -13,7 +13,8 @@ categories = ["multimedia::audio", "api-bindings"]
 
 [dependencies]
 tokio = { version = "1.52", features = ["rt-multi-thread", "macros", "signal", "sync", "time", "io-std"] }
-tokio-util = "0.7"
+tokio-util = { version = "0.7", features = ["codec"] }
+tokio-stream = "0.1"
 cpal = { version = "0.18", features = ["pipewire", "realtime"] }
 rtrb = "0.3"
 rubato = { version = "3.0", features = ["fft_resampler"] }

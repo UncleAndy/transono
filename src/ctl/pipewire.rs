@@ -1,6 +1,5 @@
 use std::num::ParseIntError;
 use std::process::Command;
-use anyhow::anyhow;
 use cpal::traits::HostTrait;
 
 use crate::core::error::{CoreError, Result};
@@ -56,12 +55,12 @@ impl Backend for PipewireBackend {
 
         let inputs = host
             .input_devices()
-            .map_err(|e| CoreError::Other(anyhow!(e)))?
+            .map_err(|e| CoreError::Internal(e.to_string()))?
             .collect::<Vec<_>>();
 
         let outputs = host
             .output_devices()
-            .map_err(|e| CoreError::Other(anyhow!(e)))?
+            .map_err(|e| CoreError::Internal(e.to_string()))?
             .collect::<Vec<_>>();
 
         let mut result = Vec::new();
@@ -169,13 +168,13 @@ impl VirtualAudioDevices {
             .output();
 
         if !output.is_ok() {
-            return Err(CoreError::Other(anyhow!("failed to execute 'pactl list short modules'")));
+            return Err(CoreError::Internal("failed to execute 'pactl list short modules'".to_string()));
         };
 
         let stdout = String::from_utf8(output.unwrap().stdout);
         let stdout = match stdout {
             Ok(stdout) => stdout,
-            Err(e) => return Err(CoreError::Other(anyhow!(e)))
+            Err(e) => return Err(CoreError::Internal(e.to_string()))
         };
 
         // Сначала собираем id, потом удаляем.
@@ -218,9 +217,7 @@ impl VirtualAudioDevices {
             let status = Command::new("pactl")
                 .args(["unload-module", &id.to_string()])
                 .status()
-                .map_err(|e| {
-                    CoreError::Other(anyhow!(e))
-                })?;
+                .map_err(|e| CoreError::Internal(e.to_string()))?;
 
             if !status.success() {
                 eprintln!("Failed to unload PulseAudio module {}", id);
@@ -318,16 +315,16 @@ fn load_module(module: &str, args: &[(&str, &str)]) -> Result<u32> {
     }
 
     let out = cmd.output()
-        .map_err(|e| { CoreError::Other(anyhow!(e)) })?;
+        .map_err(|e| CoreError::Internal(e.to_string()))?;
 
     if !out.status.success() {
-        return Err(CoreError::Other(anyhow!("{}", String::from_utf8_lossy(&out.stderr))));
+        return Err(CoreError::Internal(format!("{}", String::from_utf8_lossy(&out.stderr))));
     }
 
     let res = String::from_utf8(out.stdout)
-        .map_err(|e| CoreError::Other(anyhow!(e)))?
+        .map_err(|e| CoreError::Internal(e.to_string()))?
         .trim().parse()
-        .map_err(|e: ParseIntError| CoreError::Other(anyhow!(e)))?;
+        .map_err(|e: ParseIntError| CoreError::Internal(e.to_string()))?;
 
     Ok(res)
 }
@@ -337,10 +334,10 @@ fn unload_module(id: u32) -> Result<()> {
     let status = Command::new("pactl")
         .args(["unload-module", &id.to_string()])
         .status()
-        .map_err(|e| CoreError::Other(anyhow!(e)))?;
+        .map_err(|e| CoreError::Internal(e.to_string()))?;
 
     if !status.success() {
-        return Err(CoreError::Other(anyhow!("pactl unload-module failed")));
+        return Err(CoreError::Internal("pactl unload-module failed".to_string()));
     }
 
     Ok(())

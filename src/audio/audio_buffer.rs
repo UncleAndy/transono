@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use anyhow::Result;
+use crate::core::error::Result;
 use rtrb::{Consumer, Producer, RingBuffer};
 use symphonia::core::audio::GenericAudioBuffer;
 use crate::audio::{
@@ -28,14 +28,14 @@ pub struct AudioBuffer;
 impl AudioBuffer {
     pub fn new(frame_count: usize) -> Result<(FrameProducer, FrameConsumer)> {
         let pool = Arc::new(FramePool::new(frame_count));
-
+ 
         let (mut free_tx, free_rx) = RingBuffer::<FrameId>::new(frame_count);
         let (filled_tx, filled_rx) = RingBuffer::<FrameId>::new(frame_count);
-
+ 
         for id in 0..frame_count {
             free_tx
                 .push(id as FrameId)
-                .map_err(|_| anyhow::anyhow!("failed to initialize free queue"))?;
+                .map_err(|_| "failed to initialize free queue")?;
         }
 
         Ok((
@@ -77,25 +77,25 @@ impl FrameProducer {
     pub fn commit(&mut self, id: FrameId) -> Result<()> {
         self.filled
             .push(id)
-            .map_err(|_| anyhow::anyhow!("filled queue overflow"))
+            .map_err(|_| "filled queue overflow".into())
     }
-
-    pub fn send(&mut self, data: &[f32]) -> bool {
+ 
+    pub fn send(&mut self, data: &[f32]) -> Result<bool> {
         let Some(id) = self.acquire() else {
             eprintln!("PLAYBACK BUFFER UNDERRUN");
-            return false;
+            return Ok(false);
         };
-
+ 
         if !self.write(id, data) {
-            panic!(
+            return Err(format!(
                 "frame too large: {} samples (capacity {})",
                 data.len(),
                 FRAME_CAPACITY
-            );
+            ).into());
         }
-        self.commit(id).expect("filled queue overflow");
-
-        true
+        self.commit(id)?;
+ 
+        Ok(true)
     }
 }
 
@@ -114,10 +114,10 @@ impl FrameConsumer {
     #[inline(always)]
     pub fn release(&mut self, id: FrameId) -> Result<()> {
         self.pool.get_mut(id).clear();
-
+ 
         self.free
             .push(id)
-            .map_err(|_| anyhow::anyhow!("free queue overflow"))
+            .map_err(|_| "free queue overflow".into())
     }
 
     #[inline(always)]

@@ -1,5 +1,9 @@
 use tokio::sync::mpsc::Sender;
+use tokio_util::sync::PollSender;
+use futures_util::SinkExt;
+use crate::audio::output::BoxSink;
 use crate::audio::{Audio, AudioFormat, AudioOutput};
+use crate::core::error::{CoreError, Result, TransportError};
 
 #[derive(Clone)]
 pub struct InputPort {
@@ -18,8 +22,9 @@ impl InputPort {
 }
 
 impl AudioOutput for InputPort {
-    fn clone_sender(&mut self) -> crate::core::error::Result<Sender<Audio>> {
-        Ok(self.sender.clone())
+    fn sink(&mut self) -> Result<BoxSink<'static, Audio, CoreError>> {
+        Ok(Box::pin(PollSender::new(self.sender.clone())
+            .sink_map_err(|_| CoreError::Transport(TransportError::ConnectionClosed))))
     }
 
     fn start(&self) -> crate::core::error::Result<()> {

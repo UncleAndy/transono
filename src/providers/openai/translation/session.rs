@@ -1,10 +1,12 @@
-use anyhow::anyhow;
 use async_trait::async_trait;
-use tokio::sync::mpsc::{self, Receiver, Sender};
+use futures_util::stream::BoxStream;
+use futures_util::{StreamExt, SinkExt};
+use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
-use crate::audio::{Audio, AudioCodecs, AudioDecoder, AudioEncoder, EncodedAudio, Pipelines};
+use crate::audio::output::BoxSink;
+use crate::audio::{Audio, AudioCodecs, AudioDecoder, AudioEncoder, EncodedAudio, Pipelines, Pipeline};
 use crate::core::error::CoreError;
 use crate::core::protocol::Protocol;
 use crate::core::session::Session;
@@ -68,8 +70,8 @@ impl TranslationSender {
 impl ProviderSession for TranslationSession {
     fn spawn(
         mut self,
-        mut capture_rx: Receiver<Audio>,
-        playback_tx: Sender<Audio>,
+        mut capture_stream: BoxStream<'static, Audio>,
+        mut playback_sink: BoxSink<'static, Audio, CoreError>,
         pipelines: Pipelines,
         cancel: CancellationToken,
         event_tx: Option<mpsc::UnboundedSender<SessionEvent>>,
@@ -79,36 +81,26 @@ impl ProviderSession for TranslationSession {
             let stats = pipelines.stats.clone();
             let mut input_pipeline = pipelines.input;
             let mut output_pipeline = pipelines.output;
-
+ 
             // Создаем Sender для input_task
             let mut sender = TranslationSender {
                 encoder: self.encoder.take().expect("encoder missing"),
                 writer_tx: self.transport.clone_sender(),
                 protocol: self.protocol.clone(),
             };
-
+ 
             let cancel_input = cancel.clone();
-            let input_task = tokio::spawn(async move {
+            let input_task: JoinHandle<Result<Box<dyn Pipeline>>> = tokio::spawn(async move {
                 loop {
                     tokio::select! {
                         _ = cancel_input.cancelled() => break,
-                        audio = capture_rx.recv() => {
+                        audio = capture_stream.next() => {
                             match audio {
                                 Some(audio) => {
-                                    let capture_ts = audio.capture_timestamp();
-                                    let Some((audio, pipeline_duration)) = input_pipeline.process_stream(audio)? else {
+                                    let Some((audio, _)) = input_pipeline.process_stream(audio)? else {
                                         // Если данные не готовы - продолжаем цикл
                                         continue;
                                     };
-
-                                    let processing_latency = capture_ts.elapsed();
-                                    if processing_latency > std::time::Duration::from_millis(100) {
-                                        eprintln!(
-                                            "High input latency: total={:?}, pipeline={:?}",
-                                            processing_latency,
-                                            pipeline_duration
-                                        );
-                                    }
 
                                     // Отправляем аудио напрямую из input_task
                                     tokio::select! {
@@ -206,8 +198,8 @@ impl ProviderSession for TranslationSession {
 
                                 tokio::select! {
                                     _ = cancel.cancelled() => break,
-                                    res = playback_tx.send(audio) => {
-                                        res.map_err(|_| CoreError::Other(anyhow!("playback channel closed")))?;
+                                    res = playback_sink.send(audio) => {
+                                        res.map_err(|e| CoreError::Internal(format!("playback sink error: {}", e)))?;
                                     }
                                 }
 
@@ -258,13 +250,13 @@ impl ProviderSession for TranslationSession {
 
             // Собираем пайплайны обратно
             let input_pipeline = input_task.await
-                .map_err(|e| CoreError::Other(anyhow!("input task panicked: {}", e)))?
-                .map_err(|e: CoreError| CoreError::Other(anyhow!("input task error: {}", e)))?;
+                .map_err(|e| CoreError::Internal(format!("input task panicked: {}", e)))??;
 
             Ok(Pipelines {
                 input: input_pipeline,
                 output: output_pipeline,
                 stats,
+                pool: pipelines.pool,
             })
         })
     }
@@ -295,7 +287,7 @@ impl TranslationSession {
     }
 
     fn map_audio(&mut self, delta: String) -> Result<SessionEvent> {
-        let encoded = EncodedAudio::new(self.decoder.format().clone(), delta.into_bytes().into());
+        let encoded = EncodedAudio::new(self.decoder.format().clone(), delta.into_bytes().into())?;
 
         let pcm = self.decoder.decode(&encoded)?;
 
@@ -321,7 +313,7 @@ impl TranslationSession {
             }
             ProtocolEvent::Error(e) => {
                 println!("Error: {}", e);
-                Err(CoreError::Other(anyhow!(e)))
+                Err(CoreError::Internal(e.to_string()))
             }
             ProtocolEvent::Unknown => Ok(None),
         }
@@ -332,10 +324,10 @@ impl TranslationSession {
 impl Session for TranslationSession {
     async fn send_audio(&mut self, audio: Audio) -> Result<()> {
         if self.closed {
-            return Err(CoreError::Other(anyhow::Error::msg("session closed")));
+            return Err(CoreError::Internal("session closed".to_string()));
         }
 
-        let encoder = self.encoder.as_mut().ok_or_else(|| CoreError::Other(anyhow!("encoder taken")))?;
+        let encoder = self.encoder.as_mut().ok_or_else(|| CoreError::Internal("encoder taken".to_string()))?;
 
         let pcm = audio.to_pcm()?;
 
@@ -354,7 +346,7 @@ impl Session for TranslationSession {
 
     async fn next_event(&mut self) -> Result<SessionEvent> {
         if self.closed {
-            return Err(CoreError::Other(anyhow::Error::msg("session closed")));
+            return Err(CoreError::Internal("session closed".to_string()));
         }
 
         loop {
@@ -372,7 +364,7 @@ impl Session for TranslationSession {
 
     async fn close(&mut self) -> Result<()> {
         if self.closed {
-            return Err(CoreError::Other(anyhow::Error::msg("session closed")));
+            return Err(CoreError::Internal("session closed".to_string()));
         }
 
         self.closed = true;
