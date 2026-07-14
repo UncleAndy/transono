@@ -169,8 +169,8 @@ impl AudioPipeline {
     }
 
     /// Создает пайплайн для преобразования входного аудио между форматами.
-    pub fn new_input_pipeline(from: AudioFormat, to: AudioFormat) -> Result<Box<Self>> {
-        let mut pipeline = Self::new_standalone(true);
+    pub fn new_input_pipeline(stats: Arc<LatencyStats>, from: AudioFormat, to: AudioFormat) -> Result<Box<Self>> {
+        let mut pipeline = Self::new(stats, true);
 
         let mut current_spec = from.spec();
 
@@ -194,8 +194,8 @@ impl AudioPipeline {
     }
 
     /// Создает пайплайн для преобразования выходного аудио между форматами.
-    pub fn new_output_pipeline(from: AudioFormat, to: AudioFormat) -> Result<Box<Self>> {
-        let mut pipeline = Self::new_standalone(false);
+    pub fn new_output_pipeline(stats: Arc<LatencyStats>, from: AudioFormat, to: AudioFormat) -> Result<Box<Self>> {
+        let mut pipeline = Self::new(stats, false);
 
         // Ресемплирование
         if from.sample_rate != to.sample_rate {
@@ -419,11 +419,12 @@ mod tests {
 
         // Test TO_INTERNAL
         let internal_format = AudioFormat::from(EncodedAudioFormat::internal_format());
-        let to_mono = AudioPipeline::new_input_pipeline(spec_44100_stereo.clone(), internal_format).unwrap();
+        let stats = Arc::new(LatencyStats::default());
+        let to_mono = AudioPipeline::new_input_pipeline(stats.clone(), spec_44100_stereo.clone(), internal_format).unwrap();
         assert!(!to_mono.is_empty());
 
         // Test FROM_INTERNAL
-        let from_mono = AudioPipeline::new_output_pipeline(internal_format, spec_44100_stereo).unwrap();
+        let from_mono = AudioPipeline::new_output_pipeline(stats, internal_format, spec_44100_stereo).unwrap();
         assert!(!from_mono.is_empty());
     }
 }

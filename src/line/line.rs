@@ -204,11 +204,11 @@ impl<P: Provider> TranslationLine<P> {
         let provider_format = AudioFormat::from(self.provider.audio_format());
 
         // Configure Input Pipeline: HW -> Provider
-        let input_pipeline = AudioPipeline::new_input_pipeline(input_format, provider_format)?;
+        let input_pipeline = AudioPipeline::new_input_pipeline(self.latency_stats.clone(), input_format, provider_format)?;
         self.with_input_pipeline(input_pipeline);
 
         // Configure Output Pipeline: Provider -> HW
-        let output_pipeline = AudioPipeline::new_output_pipeline(provider_format, output_format)?;
+        let output_pipeline = AudioPipeline::new_output_pipeline(self.latency_stats.clone(), provider_format, output_format)?;
         self.with_output_pipeline(output_pipeline);
 
         Ok(())
