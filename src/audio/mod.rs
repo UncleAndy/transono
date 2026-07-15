@@ -18,6 +18,7 @@ pub mod device;
 pub mod input;
 pub mod output;
 pub mod cpal;
+pub mod pipewire;
 
 pub use audio_buffer::*;
 pub use frame::*;

@@ -38,6 +38,9 @@ pub enum CoreError {
 
     #[error("Unsupported channel layout")]
     UnsupportedChannelLayout(),
+
+    #[error(transparent)]
+    Pipewire(#[from] pipewire::Error),
 }
 
 impl From<&str> for CoreError {
