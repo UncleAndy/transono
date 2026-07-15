@@ -31,10 +31,12 @@ rustls = { version = "0.23", default-features = false, features = ["ring", "std"
 async-trait = "0.1"
 http = "1.4"
 dotenvy = "0.15"
-symphonia = "0.6.0"
+symphonia = "0.6"
 base64-simd = "=0.8.0"
-hound = "3.5.1"
-audio_samples = { version="2.0.0", features = ["full"] }
-i24 = "2.3.4"
-ratatui = "0.29"
+hound = "3.5"
+audio_samples = { version="2.0", features = ["full"] }
+i24 = "2.3"
+ratatui = "0.30"
 crossterm = { version = "0.28", features = ["event-stream"] }
+pipewire = "0.10"
+dirs = "6.0"
