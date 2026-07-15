@@ -1,8 +1,6 @@
+use std::str::FromStr;
 use anyhow::{Context, Result, anyhow};
-use cpal::{
-    Device, Host,
-    traits::{DeviceTrait, HostTrait},
-};
+use cpal::{Device, Host, traits::{DeviceTrait, HostTrait}, DeviceId};
 use std::sync::Arc;
 // No imports needed from symphonia::core::audio here if not used
 use tokio::sync::mpsc;
@@ -234,20 +232,34 @@ async fn main() -> Result<()> {
 }
 
 fn find_virtual_output(host: &Host, name: &str, language: &str) -> Result<Device> {
+    let device_id = DeviceId::from_str(format!("{}:{}", host.id(), name).as_str())?;
+    let device = host.device_by_id(&device_id);
+    if let Some(device) = device {
+        return Ok(device)
+    }
+    /*
     for device in host.output_devices()? {
         if device.description().map(|d| d.to_string() == name).unwrap_or(false) {
             return Ok(device);
         }
     }
+     */
     Err(missing_virtual_device("output", name, language))
 }
 
 fn find_virtual_input(host: &Host, name: &str, language: &str) -> Result<Device> {
+    let device_id = DeviceId::from_str(format!("{}:{}", host.id(), name).as_str())?;
+    let device = host.device_by_id(&device_id);
+    if let Some(device) = device {
+        return Ok(device)
+    }
+    /*
     for device in host.input_devices()? {
         if device.description().map(|d| d.to_string() == name).unwrap_or(false) {
             return Ok(device);
         }
     }
+     */
     Err(missing_virtual_device("input", name, language))
 }
 

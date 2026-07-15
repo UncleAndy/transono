@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Result};
 use clap::Parser;
+use libereco::ctl::pipewire::VirtualAudioDevices;
 use pipewire::main_loop::MainLoopRc;
 use pipewire::context::ContextRc;
 use std::ffi::CString;
@@ -84,6 +85,8 @@ fn main() -> Result<()> {
 
             println!("Запуск виртуальных устройств для языка: {}", language);
 
+            let names = VirtualAudioDevices::names(&language);
+
             pipewire::init();
             let main_loop = MainLoopRc::new(None).map_err(|e| anyhow!("Не удалось создать Main Loop: {}", e))?;
             let context = ContextRc::new(&main_loop, None).map_err(|e| anyhow!("Не удалось создать Context: {}", e))?;
@@ -91,29 +94,43 @@ fn main() -> Result<()> {
 
             let dev1_args = format!("\
                 capture.props = {{ \
-                    node.name = \"user_speaker_{}\" \
-                    node.description = \"Виртуальные Динамики Приложения ({})\" \
+                    node.name = \"{}\" \
+                    node.description = \"{}\" \
                     media.class = \"Audio/Sink\" \
                 }} \
                 playback.props = {{ \
-                    node.name = \"app_capture_hidden_{}\" \
+                    node.name = \"{}\" \
+                    node.description = \"{}\" \
+                    media.class = \"Stream/Output/Audio\" \
                     node.passive = true \
-                    node.dont-reconnect = true \
                     node.always-process = true \
-                }}", language, language, language);
+                    node.dont-reconnect = true \
+                }}",
+                names.from_meeting_speaker,
+                names.from_meeting_speaker,
+                names.internal_from_meeting_microphone,
+                names.internal_from_meeting_microphone
+            );
 
             let dev2_args = format!("\
                 capture.props = {{ \
-                    node.name = \"app_playback_hidden_{}\" \
+                    node.name = \"{}\" \
+                    node.description = \"{}\" \
+                    media.class = \"Stream/Input/Audio\" \
                     node.passive = true \
-                    node.dont-reconnect = true \
                     node.always-process = true \
+                    node.dont-reconnect = true \
                 }} \
                 playback.props = {{ \
-                    node.name = \"user_microphone_{}\" \
-                    node.description = \"Виртуальный Микрофон Приложения ({})\" \
+                    node.name = \"{}\" \
+                    node.description = \"{}\" \
                     media.class = \"Audio/Source\" \
-                }}", language, language, language);
+                }}",
+                names.internal_to_meeting_speaker,
+                names.internal_to_meeting_speaker,
+                names.to_meeting_microphone,
+                names.to_meeting_microphone
+            );
 
             let _dev1_module = unsafe {
                 let name = CString::new("libpipewire-module-loopback").unwrap();
