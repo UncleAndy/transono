@@ -180,8 +180,17 @@ impl PipeWireSession {
                     new
                 );
             })
-            .register()?;
+            .process(|stream, state| {
+                println!("process()");
 
+                if let Some(buffer) = stream.dequeue_buffer() {
+                    // Пока ничего не делаем.
+                    // Просто возвращаем буфер обратно в PipeWire.
+                    drop(buffer);
+                }
+            })
+            .register()?;
+        
         // bytes должны жить, пока существует Pod.
         let pod_bytes =
             Self::create_audio_params(&config.format)?;
