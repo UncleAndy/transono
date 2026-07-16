@@ -33,7 +33,7 @@ fn main() -> Result<()> {
         sample_format: SampleFormat::Float,
     };
 
-    let mut writer = WavWriter::create("capture.wav", spec)?;
+    let mut writer = WavWriter::create("../capture.wav", spec)?;
 
     let started = Instant::now();
 
