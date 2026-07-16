@@ -82,7 +82,6 @@ impl FrameProducer {
  
     pub fn send(&mut self, data: &[f32]) -> Result<bool> {
         let Some(id) = self.acquire() else {
-            eprintln!("PLAYBACK BUFFER UNDERRUN");
             return Ok(false);
         };
  

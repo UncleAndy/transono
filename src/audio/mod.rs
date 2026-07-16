@@ -38,3 +38,4 @@ pub use device::*;
 pub use input::*;
 pub use output::*;
 pub use cpal::*;
+pub use pipewire::*;
