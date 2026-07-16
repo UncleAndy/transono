@@ -13,7 +13,7 @@ use pipewire::spa::pod::{Pod, Value};
 use pipewire::spa::pod::serialize::PodSerializer;
 use pipewire::stream::{StreamFlags, StreamListener, StreamRc};
 
-use crate::audio::{AudioFormat, FrameConsumer, FrameId};
+use crate::audio::{AudioFormat, FrameConsumer, FrameId, FrameProducer};
 use crate::core::error::Result;
 
 pub struct PipeWireWorker {
@@ -36,8 +36,21 @@ impl FrameReader {
     }
 }
 
-struct OutputState {
-    reader: FrameReader
+enum WorkerState {
+    Output(FrameReader),
+    Input(FrameWriter),
+}
+
+struct FrameWriter {
+    producer: FrameProducer,
+}
+
+impl FrameWriter {
+    pub fn write(&mut self, input: &[f32]) {
+        println!("FrameWriter::write: {} samples", input.len());
+
+        let _ = self.producer.send(input);
+    }
 }
 
 // Эти поля не используются напрямую.
@@ -48,7 +61,7 @@ struct PipeWireSession {
     _core: CoreRc,
 
     _stream: StreamRc,
-    _listener: StreamListener<OutputState>,
+    _stream_listener: StreamListener<WorkerState>,
 
     _format: AudioFormat,
     _node_name: String,
@@ -56,10 +69,15 @@ struct PipeWireSession {
     _pod_bytes: Vec<u8>,
 }
 
+pub enum WorkerEndpoint {
+    Output(FrameConsumer),
+    Input(FrameProducer),
+}
+
 pub struct WorkerConfig {
     pub node_name: String,
     pub format: AudioFormat,
-    pub consumer: FrameConsumer,
+    pub endpoint: WorkerEndpoint,
 }
 
 impl PipeWireWorker {
@@ -72,12 +90,13 @@ impl PipeWireWorker {
         let thread_shutdown = shutdown.clone();
 
         let thread = std::thread::spawn(move || {
-            if let Err(e) = Self::run_output(
-                thread_shutdown,
-                consumer,
-                format,
+            let config = WorkerConfig {
                 node_name,
-            ) {
+                format,
+                endpoint: WorkerEndpoint::Output(consumer),
+            };
+
+            if let Err(e) = Self::run(thread_shutdown, config) {
                 eprintln!("PipeWire worker failed: {e}");
             }
         });
@@ -87,24 +106,45 @@ impl PipeWireWorker {
         })
     }
 
-    fn run_output(
-        shutdown: Arc<AtomicBool>,
-        consumer: FrameConsumer,
+    pub fn spawn_input(
+        producer: FrameProducer,
         format: AudioFormat,
         node_name: String,
+    ) -> Result<Self> {
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let thread_shutdown = shutdown.clone();
+
+        let thread = std::thread::spawn(move || {
+            let config = WorkerConfig {
+                node_name,
+                format,
+                endpoint: WorkerEndpoint::Input(producer),
+            };
+
+            if let Err(e) = Self::run(thread_shutdown, config) {
+                eprintln!("PipeWire worker failed: {e}");
+            }
+        });
+
+        Ok(Self {
+            _thread: Some(thread),
+        })
+    }
+
+    fn run(
+        shutdown: Arc<AtomicBool>,
+        config: WorkerConfig,
     ) -> Result<()> {
-        let config = WorkerConfig {
-            consumer,
-            format,
-            node_name,
-        };
 
         let ctx = PipeWireSession::new(config)?;
 
         while !shutdown.load(Ordering::Acquire) {
+
             ctx._main_loop
                 .loop_()
-                .iterate(Timeout::Finite(Duration::from_millis(10)));
+                .iterate(
+                    Timeout::Finite(Duration::from_millis(10))
+                );
         }
 
         Ok(())
@@ -167,9 +207,19 @@ impl PipeWireSession {
         let context = ContextRc::new(&main_loop, None)?;
         let core = context.connect_rc(None)?;
 
+        let direction = match &config.endpoint {
+            WorkerEndpoint::Output(_) => spa::utils::Direction::Output,
+            WorkerEndpoint::Input(_) => spa::utils::Direction::Input,
+        };
+
+        let media_category = match &config.endpoint {
+            WorkerEndpoint::Output(_) => "Playback",
+            WorkerEndpoint::Input(_) => "Capture",
+        };
+
         let properties = properties! {
             *keys::MEDIA_TYPE        => "Audio",
-            *keys::MEDIA_CATEGORY    => "Playback",
+            *keys::MEDIA_CATEGORY    => media_category,
             *keys::MEDIA_ROLE        => "Communication",
             *keys::NODE_NAME         => config.node_name.clone(),
             *keys::NODE_DESCRIPTION  => config.node_name.clone(),
@@ -184,59 +234,145 @@ impl PipeWireSession {
         let frame_stride =
             config.format.frame_size() as i32;
 
-        let listener = stream
-            .add_local_listener_with_user_data(OutputState {
-                reader: FrameReader {
-                    consumer: config.consumer,
-                    current: None,
-                    offset: 0,
-                }
-            })
-            .state_changed(|stream, _, old, new| {
-                println!(
-                    "{}: {:?} -> {:?}",
-                    stream.name(),
-                    old,
-                    new
-                );
-            })
-            .process(move |stream, state| {
-                let Some(mut buffer) = stream.dequeue_buffer() else {
-                    return;
-                };
-
-                let datas = buffer.datas_mut();
-
-                if datas.is_empty() {
-                    return;
-                }
-
-                let data = &mut datas[0];
-
-                let size = {
-                    let Some(bytes) = data.data() else {
-                        return;
-                    };
-
-                    let samples: &mut [f32] = unsafe {
-                        std::slice::from_raw_parts_mut(
-                            bytes.as_mut_ptr() as *mut f32,
-                            bytes.len() / std::mem::size_of::<f32>(),
+        let stream_listener = match config.endpoint {
+            WorkerEndpoint::Output(consumer) => {
+                stream
+                    .add_local_listener_with_user_data(
+                        WorkerState::Output(
+                            FrameReader {
+                                consumer,
+                                current: None,
+                                offset: 0,
+                            }
                         )
-                    };
+                    )
+                    .state_changed(|stream, _, old, new| {
+                        println!(
+                            "{}: {:?} -> {:?}",
+                            stream.name(),
+                            old,
+                            new
+                        );
+                    })
+                    .process(move |stream, state| {
+                        let WorkerState::Output(reader) = state else {
+                            return;
+                        };
 
-                    state.reader.fill(samples);
+                        let Some(mut buffer) =
+                            stream.dequeue_buffer()
+                        else {
+                            return;
+                        };
 
-                    bytes.len()
-                };
+                        let datas = buffer.datas_mut();
 
-                let chunk = data.chunk_mut();
+                        if datas.is_empty() {
+                            return;
+                        }
 
-                *chunk.offset_mut() = 0;
-                *chunk.stride_mut() = frame_stride;
-                *chunk.size_mut() = size as u32;
-            })
-            .register()?;
+                        let data = &mut datas[0];
+
+                        let size = {
+                            let Some(bytes) = data.data() else {
+                                return;
+                            };
+
+                            let samples: &mut [f32] = unsafe {
+
+                                std::slice::from_raw_parts_mut(
+                                    bytes.as_mut_ptr() as *mut f32,
+                                    bytes.len()
+                                        / size_of::<f32>(),
+                                )
+                            };
+
+                            reader.fill(samples);
+
+                            bytes.len()
+                        };
+
+                        let chunk = data.chunk_mut();
+
+                        *chunk.offset_mut() = 0;
+                        *chunk.stride_mut() = frame_stride;
+                        *chunk.size_mut() = size as u32;
+                    })
+                    .register()?
+            }
+            WorkerEndpoint::Input(producer) => {
+                stream
+                    .add_local_listener_with_user_data(
+                        WorkerState::Input(
+                            FrameWriter {
+                                producer,
+                            }
+                        )
+                    )
+                    .state_changed(|stream, _, old, new| {
+                        println!(
+                            "{}: {:?} -> {:?}",
+                            stream.name(),
+                            old,
+                            new
+                        );
+                    })
+                    .process(move |stream, state| {
+                        let WorkerState::Input(writer) = state else {
+                            return;
+                        };
+
+                        let Some(mut buffer) =
+                            stream.dequeue_buffer()
+                        else {
+                            return;
+                        };
+
+                        let datas = buffer.datas_mut();
+
+                        if datas.is_empty() {
+                            return;
+                        }
+
+                        let data = &datas[0];
+
+                        let size = {
+                            let chunk = data.chunk();
+
+                            println!(
+                                "chunk.size={} offset={} stride={}",
+                                chunk.size(),
+                                chunk.offset(),
+                                chunk.stride(),
+                            );
+
+                            chunk.size() as usize
+                        };
+
+                        let data = &mut datas[0];
+
+                        let Some(bytes) = data.data() else {
+                            return;
+                        };
+
+                        let samples: &[f32] = unsafe {
+                            std::slice::from_raw_parts(
+                                bytes.as_ptr() as *const f32,
+                                size / size_of::<f32>(),
+                            )
+                        };
+
+                        println!(
+                            "bytes={}, samples={}",
+                            bytes.len(),
+                            samples.len()
+                        );
+
+                        writer.write(samples);
+                    })
+                    .register()?
+            }
+        };
 
         // bytes должны жить, пока существует Pod.
         let pod_bytes =
@@ -247,7 +383,7 @@ impl PipeWireSession {
         ];
 
         stream.connect(
-            spa::utils::Direction::Output,
+            direction,
             None,
             StreamFlags::AUTOCONNECT | StreamFlags::MAP_BUFFERS,
             &mut params,
@@ -258,7 +394,7 @@ impl PipeWireSession {
             _context: context,
             _core: core,
             _stream: stream,
-            _listener: listener,
+            _stream_listener: stream_listener,
 
             _format: config.format,
             _node_name: config.node_name,
