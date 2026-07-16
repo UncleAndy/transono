@@ -11,7 +11,6 @@ use libereco::audio::{AudioBuffer, AudioFormat, Endianness, PcmFormat, FRAME_CAP
 use libereco::audio::pipewire::PipeWireWorker;
 
 fn main() -> Result<()> {
-
     let filename = env::args()
         .nth(1)
         .unwrap_or_else(|| "sample.wav".to_string());
@@ -94,7 +93,9 @@ fn main() -> Result<()> {
 
     println!("Waiting for playback...");
 
-    loop {
+    while !producer.is_empty() {
         thread::sleep(Duration::from_secs(1));
     }
+
+    Ok(())
 }

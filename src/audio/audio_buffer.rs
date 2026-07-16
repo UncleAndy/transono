@@ -1,7 +1,7 @@
 //! Lock-free обмен аудиокадрами между потоками.
 
 use std::sync::Arc;
-
+use std::sync::atomic::{AtomicUsize, Ordering};
 use crate::core::error::Result;
 use rtrb::{Consumer, Producer, RingBuffer};
 use symphonia::core::audio::GenericAudioBuffer;
@@ -15,15 +15,19 @@ pub struct FrameProducer {
     pool: Arc<FramePool>,
     free: Consumer<FrameId>,
     filled: Producer<FrameId>,
+    inner: Arc<AudioBuffer>,
 }
 
 pub struct FrameConsumer {
     pool: Arc<FramePool>,
     free: Producer<FrameId>,
     filled: Consumer<FrameId>,
+    inner: Arc<AudioBuffer>,
 }
 
-pub struct AudioBuffer;
+pub struct AudioBuffer {
+    ready_count: AtomicUsize,
+}
 
 impl AudioBuffer {
     pub fn new(frame_count: usize) -> Result<(FrameProducer, FrameConsumer)> {
@@ -38,16 +42,22 @@ impl AudioBuffer {
                 .map_err(|_| "failed to initialize free queue")?;
         }
 
+        let inner = Arc::new(AudioBuffer {
+            ready_count: AtomicUsize::new(0),
+        });
+
         Ok((
             FrameProducer {
                 pool: Arc::clone(&pool),
                 free: free_rx,
                 filled: filled_tx,
+                inner: inner.clone(),
             },
             FrameConsumer {
                 pool,
                 free: free_tx,
                 filled: filled_rx,
+                inner,
             },
         ))
     }
@@ -75,9 +85,15 @@ impl FrameProducer {
 
     #[inline(always)]
     pub fn commit(&mut self, id: FrameId) -> Result<()> {
-        self.filled
+        let pushed = self.filled
             .push(id)
-            .map_err(|_| "filled queue overflow".into())
+            .map_err(|_| "filled queue overflow".into());
+
+        if pushed.is_ok() {
+            self.inner.ready_count.fetch_add(1, Ordering::SeqCst);
+        }
+
+        pushed
     }
  
     pub fn send(&mut self, data: &[f32]) -> Result<bool> {
@@ -96,12 +112,40 @@ impl FrameProducer {
  
         Ok(true)
     }
+
+    /// Нет свободных кадров для записи.
+    #[inline(always)]
+    pub fn is_full(&self) -> bool {
+        self.free.slots() == 0
+    }
+
+    #[inline(always)]
+    pub fn is_empty(&self) -> bool {
+        self.inner.ready_count.load(Ordering::SeqCst) == 0
+    }
+
+    #[inline(always)]
+    pub fn has_frame(&self) -> bool {
+        self.inner.ready_count.load(Ordering::SeqCst) != 0
+    }
+
+    /// Есть хотя бы один свободный кадр.
+    #[inline(always)]
+    pub fn has_free_frame(&self) -> bool {
+        self.free.slots() > 0
+    }
 }
 
 impl FrameConsumer {
     #[inline(always)]
     pub fn receive(&mut self) -> Option<FrameId> {
-        self.filled.pop().ok()
+        let id = self.filled.pop().ok();
+
+        if id.is_some() {
+            self.inner.ready_count.fetch_sub(1, Ordering::SeqCst);
+        }
+
+        id
     }
 
     #[inline(always)]
@@ -219,6 +263,18 @@ impl FrameConsumer {
                 }
             }
         }
+    }
+
+    /// Нет готовых кадров.
+    #[inline(always)]
+    pub fn is_empty(&self) -> bool {
+        self.inner.ready_count.load(Ordering::SeqCst) == 0
+    }
+
+    /// Есть готовый кадр.
+    #[inline(always)]
+    pub fn has_frame(&self) -> bool {
+        self.inner.ready_count.load(Ordering::SeqCst) != 0
     }
 }
 
