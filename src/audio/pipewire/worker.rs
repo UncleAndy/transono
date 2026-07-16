@@ -47,8 +47,6 @@ struct FrameWriter {
 
 impl FrameWriter {
     pub fn write(&mut self, input: &[f32]) {
-        println!("FrameWriter::write: {} samples", input.len());
-
         let _ = self.producer.send(input);
     }
 }
@@ -338,14 +336,6 @@ impl PipeWireSession {
 
                         let size = {
                             let chunk = data.chunk();
-
-                            println!(
-                                "chunk.size={} offset={} stride={}",
-                                chunk.size(),
-                                chunk.offset(),
-                                chunk.stride(),
-                            );
-
                             chunk.size() as usize
                         };
 
@@ -361,12 +351,6 @@ impl PipeWireSession {
                                 size / size_of::<f32>(),
                             )
                         };
-
-                        println!(
-                            "bytes={}, samples={}",
-                            bytes.len(),
-                            samples.len()
-                        );
 
                         writer.write(samples);
                     })
