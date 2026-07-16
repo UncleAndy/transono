@@ -27,14 +27,15 @@ pub trait AudioDeviceFactory {
 }
 
 pub struct VirtualDeviceConfig {
+    pub id: AudioDeviceId,
     pub name: String,
     pub sample_rate: SampleRate,
     pub channels: u16,
 }
 
 pub struct HardwareDeviceConfig {
-    pub input: Option<String>,
-    pub output: Option<String>,
+    pub input: Option<AudioDeviceId>,
+    pub output: Option<AudioDeviceId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
