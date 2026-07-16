@@ -22,6 +22,7 @@ fn main() -> Result<()> {
         producer,
         format,
         "capture-smoke".into(),
+        None,
     )?;
 
     println!("Recording for 5 seconds...");

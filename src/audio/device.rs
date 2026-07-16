@@ -37,8 +37,15 @@ pub struct HardwareDeviceConfig {
     pub output: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum AudioDeviceId {
+    Numeric(u64),
+    Text(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct AudioDeviceInfo {
-    pub id: String,
+    pub id: AudioDeviceId,
     pub name: String,
     pub direction: AudioDirection,
     pub formats: Vec<AudioFormat>,
@@ -47,6 +54,7 @@ pub struct AudioDeviceInfo {
     pub virtual_device: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum AudioDirection {
     Input,
     Output,

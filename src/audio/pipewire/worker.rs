@@ -76,6 +76,9 @@ pub struct WorkerConfig {
     pub node_name: String,
     pub format: AudioFormat,
     pub endpoint: WorkerEndpoint,
+
+    /// PipeWire node id.
+    pub node_id: Option<u32>,
 }
 
 impl PipeWireWorker {
@@ -83,6 +86,7 @@ impl PipeWireWorker {
         consumer: FrameConsumer,
         format: AudioFormat,
         node_name: String,
+        node_id: Option<u32>,
     ) -> Result<Self> {
         let shutdown = Arc::new(AtomicBool::new(false));
         let thread_shutdown = shutdown.clone();
@@ -92,6 +96,7 @@ impl PipeWireWorker {
                 node_name,
                 format,
                 endpoint: WorkerEndpoint::Output(consumer),
+                node_id,
             };
 
             if let Err(e) = Self::run(thread_shutdown, config) {
@@ -108,6 +113,7 @@ impl PipeWireWorker {
         producer: FrameProducer,
         format: AudioFormat,
         node_name: String,
+        node_id: Option<u32>,
     ) -> Result<Self> {
         let shutdown = Arc::new(AtomicBool::new(false));
         let thread_shutdown = shutdown.clone();
@@ -117,6 +123,7 @@ impl PipeWireWorker {
                 node_name,
                 format,
                 endpoint: WorkerEndpoint::Input(producer),
+                node_id,
             };
 
             if let Err(e) = Self::run(thread_shutdown, config) {
@@ -368,7 +375,7 @@ impl PipeWireSession {
 
         stream.connect(
             direction,
-            None,
+            config.node_id,
             StreamFlags::AUTOCONNECT | StreamFlags::MAP_BUFFERS,
             &mut params,
         )?;

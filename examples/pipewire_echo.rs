@@ -23,6 +23,7 @@ fn main() -> Result<()> {
         producer,
         format,
         "echo-input".into(),
+        None,
     )?;
 
     // Вывод в колонки.
@@ -30,6 +31,7 @@ fn main() -> Result<()> {
         consumer,
         format,
         "echo-output".into(),
+        None,
     )?;
 
     println!("Echo is running.");

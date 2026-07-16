@@ -41,6 +41,7 @@ fn main() -> Result<()> {
         consumer,
         format,
         "wav-smoke".into(),
+        None,
     )?;
 
     match (spec.sample_format, spec.bits_per_sample) {
