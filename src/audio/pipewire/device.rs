@@ -4,6 +4,7 @@ use std::rc::Rc;
 use std::time::Duration;
 use pipewire as pw;
 use pipewire::loop_::Timeout;
+use pipewire::proxy::{Listener, ProxyListener, ProxyT};
 use pipewire::registry::GlobalObject;
 use pipewire::spa::utils::dict::DictRef;
 use pipewire::types::ObjectType;
@@ -13,7 +14,55 @@ use crate::audio::{AudioDeviceFactory, AudioDeviceId, AudioDeviceInfo, AudioDevi
 #[derive(Debug, Clone)]
 struct NodeInfo {
     id: u32,
-    properties: std::collections::HashMap<String, String>,
+    properties: HashMap<String, String>,
+}
+
+struct BoundObjects {
+    proxies: HashMap<u32, Box<dyn ProxyT>>,
+    listeners: HashMap<u32, Vec<Box<dyn Listener>>>,
+}
+
+impl BoundObjects {
+    fn new() -> Self {
+        Self {
+            proxies: HashMap::new(),
+            listeners: HashMap::new(),
+        }
+    }
+
+    fn add(
+        &mut self,
+        proxy: Box<dyn ProxyT>,
+        listener: Box<dyn Listener>,
+    ) {
+        let id = proxy.upcast_ref().id();
+
+        self.proxies.insert(id, proxy);
+
+        self.listeners
+            .entry(id)
+            .or_default()
+            .push(listener);
+    }
+
+    fn add_proxy_listener(
+        &mut self,
+        proxy_id: u32,
+        listener: ProxyListener,
+    ) {
+        self.listeners
+            .entry(proxy_id)
+            .or_default()
+            .push(Box::new(listener));
+    }
+
+    fn remove(
+        &mut self,
+        proxy_id: u32,
+    ) {
+        self.proxies.remove(&proxy_id);
+        self.listeners.remove(&proxy_id);
+    }
 }
 
 pub struct PipeWireDeviceFactory;
@@ -77,16 +126,28 @@ impl AudioDeviceFactory for PipeWireDeviceFactory {
 fn enumerate_nodes() -> Result<Vec<NodeInfo>> {
     let main_loop = pw::main_loop::MainLoopRc::new(None)?;
     let context = pw::context::ContextRc::new(&main_loop, None)?;
-    let core = context.connect(None)?;
-    let registry = core.get_registry()?;
+    let core = context.connect_rc(None)?;
+    let registry = core.get_registry_rc()?;
+    let registry_weak = registry.downgrade();
 
-    let nodes = Rc::new(RefCell::new(Vec::<NodeInfo>::new()));
+    let nodes = Rc::new(
+        RefCell::new(Vec::<NodeInfo>::new())
+    );
+
+    let bound = Rc::new(
+        RefCell::new(BoundObjects::new())
+    );
+    let bound_ref = bound.clone();
 
     let nodes_ref = nodes.clone();
 
     let _listener = registry
         .add_listener_local()
         .global(move |obj: &GlobalObject<&DictRef>| {
+            let Some(registry) = registry_weak.upgrade() else {
+                return;
+            };
+            
             /*
             if obj.type_ != ObjectType::Node {
                 return;
@@ -95,6 +156,46 @@ fn enumerate_nodes() -> Result<Vec<NodeInfo>> {
 
             println!("-------------------------------");
             println!("Node {} - {:?}", obj.id, obj.type_);
+
+            if obj.type_ == ObjectType::Node {
+                let node: pw::node::Node = match registry.bind(obj) {
+                    Ok(node) => node,
+                    Err(err) => {
+                        eprintln!("bind failed: {err}");
+                        return;
+                    }
+                };
+
+                let node_listener = node
+                    .add_listener_local()
+                    .info(|info| {
+
+                        println!("====================");
+                        println!("NODE INFO");
+
+                        for param in info.params() {
+                            println!("{param:#?}");
+                        }
+
+                    })
+                    .param(|seq, id, index, next, param| {
+                        println!("--------------------");
+                        println!("seq   = {seq}");
+                        println!("id    = {:?}", id);
+                        println!("index = {index}");
+                        println!("next  = {next}");
+
+                        if let Some(param) = param {
+                            println!("bytes = {:?}", param.as_bytes());
+                        }
+                    })
+                    .register();
+
+                bound_ref.borrow_mut().add(
+                    Box::new(node),
+                    Box::new(node_listener),
+                );
+            }
 
             if let Some(props) = &obj.props {
                 for (k, v) in props.iter() {
@@ -117,7 +218,6 @@ fn enumerate_nodes() -> Result<Vec<NodeInfo>> {
                 id: obj.id,
                 properties: props,
             });
-
         })
         .register();
 
