@@ -84,7 +84,7 @@ impl PipeWireWorker {
             node_name,
         };
 
-        let mut ctx = PipeWireSession::new(config)?;
+        let ctx = PipeWireSession::new(config)?;
 
         while !shutdown.load(Ordering::Acquire) {
             ctx.main_loop
@@ -189,7 +189,7 @@ impl PipeWireSession {
         let mut params = [
             Pod::from_bytes(&pod_bytes).unwrap()
         ];
-        
+
         stream.connect(
             spa::utils::Direction::Output,
             None,
