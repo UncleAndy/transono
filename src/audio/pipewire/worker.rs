@@ -20,11 +20,14 @@ pub struct PipeWireWorker {
     thread: Option<JoinHandle<()>>,
 }
 
-struct OutputState {
+pub struct FrameReader {
     consumer: FrameConsumer,
+    current: Option<FrameId>,
+    offset: usize,
+}
 
-    current_frame: Option<FrameId>,
-    current_offset: usize,
+struct OutputState {
+    reader: FrameReader
 }
 
 struct PipeWireSession {
@@ -166,11 +169,16 @@ impl PipeWireSession {
             properties,
         )?;
 
+        let frame_stride =
+            config.format.frame_size() as i32;
+
         let listener = stream
             .add_local_listener_with_user_data(OutputState {
-                consumer: config.consumer,
-                current_frame: None,
-                current_offset: 0,
+                reader: FrameReader {
+                    consumer: config.consumer,
+                    current: None,
+                    offset: 0,
+                }
             })
             .state_changed(|stream, _, old, new| {
                 println!(
@@ -180,17 +188,48 @@ impl PipeWireSession {
                     new
                 );
             })
-            .process(|stream, state| {
-                println!("process()");
+            .process(move |stream, state| {
+                let Some(mut buffer) = stream.dequeue_buffer() else {
+                    return;
+                };
 
-                if let Some(buffer) = stream.dequeue_buffer() {
-                    // Пока ничего не делаем.
-                    // Просто возвращаем буфер обратно в PipeWire.
-                    drop(buffer);
+                let datas = buffer.datas_mut();
+
+                if datas.is_empty() {
+                    return;
                 }
+
+                let data = &mut datas[0];
+
+                let size = {
+                    let Some(bytes) = data.data() else {
+                        return;
+                    };
+
+                    let samples: &mut [f32] = unsafe {
+                        std::slice::from_raw_parts_mut(
+                            bytes.as_mut_ptr() as *mut f32,
+                            bytes.len() / std::mem::size_of::<f32>(),
+                        )
+                    };
+
+                    state.reader.consumer.fill_buffer(
+                        &mut state.reader.current,
+                        &mut state.reader.offset,
+                        samples,
+                    );
+
+                    bytes.len()
+                };
+
+                let chunk = data.chunk_mut();
+
+                *chunk.offset_mut() = 0;
+                *chunk.stride_mut() = frame_stride;
+                *chunk.size_mut() = size as u32;
             })
             .register()?;
-        
+
         // bytes должны жить, пока существует Pod.
         let pod_bytes =
             Self::create_audio_params(&config.format)?;

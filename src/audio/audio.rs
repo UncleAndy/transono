@@ -217,6 +217,10 @@ impl AudioFormat {
     pub fn spec(&self) -> AudioSpec {
         AudioSpec::new(self.sample_rate, Channels::Discrete(self.channels))
     }
+
+    pub fn frame_size(&self) -> usize {
+        self.channels as usize * self.sample_format.sample_size()
+    }
 }
 
 impl From<EncodedAudioFormat> for AudioFormat {

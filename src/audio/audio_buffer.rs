@@ -137,6 +137,90 @@ impl FrameConsumer {
             *offset >= frame.len
         })
     }
+
+    #[inline(always)]
+    pub fn receive_frame(
+        &mut self,
+        current: &mut Option<FrameId>,
+        offset: &mut usize,
+        output: &mut [f32],
+    ) {
+        loop {
+            if current.is_none() {
+                *current = self.receive();
+
+                if current.is_none() {
+                    output.fill(0.0);
+                    return;
+                }
+
+                *offset = 0;
+            }
+
+            let finished = self.read_frame(
+                current.unwrap(),
+                offset,
+                output,
+            );
+
+            if finished {
+                if let Some(id) = current.take() {
+                    let _ = self.release(id);
+                }
+            }
+
+            return;
+        }
+    }
+
+    #[inline(always)]
+    pub fn fill_buffer(
+        &mut self,
+        current: &mut Option<FrameId>,
+        offset: &mut usize,
+        output: &mut [f32],
+    ) {
+        let mut written = 0;
+
+        while written < output.len() {
+
+            if current.is_none() {
+                *current = self.receive();
+
+                if current.is_none() {
+                    output[written..].fill(0.0);
+                    return;
+                }
+
+                *offset = 0;
+            }
+
+            let id = current.unwrap();
+
+            let (copied, finished) = self.read(id, |frame| {
+
+                let available = frame.len.saturating_sub(*offset);
+                let count = available.min(output.len() - written);
+
+                output[written..written + count]
+                    .copy_from_slice(
+                        &frame.samples[*offset..*offset + count]
+                    );
+
+                (count, *offset + count >= frame.len)
+            });
+
+            written += copied;
+            *offset += copied;
+
+            if finished {
+                *offset = 0;
+                if let Some(id) = current.take() {
+                    let _ = self.release(id);
+                }
+            }
+        }
+    }
 }
 
 #[allow(unused)]
