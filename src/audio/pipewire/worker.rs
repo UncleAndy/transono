@@ -17,7 +17,7 @@ use crate::audio::{AudioFormat, FrameConsumer, FrameId};
 use crate::core::error::Result;
 
 pub struct PipeWireWorker {
-    thread: Option<JoinHandle<()>>,
+    _thread: Option<JoinHandle<()>>,
 }
 
 pub struct FrameReader {
@@ -26,22 +26,34 @@ pub struct FrameReader {
     offset: usize,
 }
 
+impl FrameReader {
+    pub fn fill(&mut self, output: &mut [f32]) {
+        self.consumer.fill_buffer(
+            &mut self.current,
+            &mut self.offset,
+            output,
+        );
+    }
+}
+
 struct OutputState {
     reader: FrameReader
 }
 
+// Эти поля не используются напрямую.
+// Они удерживают PipeWire-объекты живыми до конца жизни сессии.
 struct PipeWireSession {
-    main_loop: MainLoopRc,
-    context: ContextRc,
-    core: CoreRc,
+    _main_loop: MainLoopRc,
+    _context: ContextRc,
+    _core: CoreRc,
 
-    stream: StreamRc,
-    listener: StreamListener<OutputState>,
+    _stream: StreamRc,
+    _listener: StreamListener<OutputState>,
 
-    format: AudioFormat,
-    node_name: String,
+    _format: AudioFormat,
+    _node_name: String,
 
-    pod_bytes: Vec<u8>,
+    _pod_bytes: Vec<u8>,
 }
 
 pub struct WorkerConfig {
@@ -71,7 +83,7 @@ impl PipeWireWorker {
         });
 
         Ok(Self {
-            thread: Some(thread),
+            _thread: Some(thread),
         })
     }
 
@@ -90,7 +102,7 @@ impl PipeWireWorker {
         let ctx = PipeWireSession::new(config)?;
 
         while !shutdown.load(Ordering::Acquire) {
-            ctx.main_loop
+            ctx._main_loop
                 .loop_()
                 .iterate(Timeout::Finite(Duration::from_millis(10)));
         }
@@ -213,11 +225,7 @@ impl PipeWireSession {
                         )
                     };
 
-                    state.reader.consumer.fill_buffer(
-                        &mut state.reader.current,
-                        &mut state.reader.offset,
-                        samples,
-                    );
+                    state.reader.fill(samples);
 
                     bytes.len()
                 };
@@ -246,16 +254,16 @@ impl PipeWireSession {
         )?;
 
         Ok(Self {
-            main_loop,
-            context,
-            core,
-            stream,
-            listener,
+            _main_loop: main_loop,
+            _context: context,
+            _core: core,
+            _stream: stream,
+            _listener: listener,
 
-            format: config.format,
-            node_name: config.node_name,
+            _format: config.format,
+            _node_name: config.node_name,
 
-            pod_bytes,
+            _pod_bytes: pod_bytes,
         })
     }
 }
