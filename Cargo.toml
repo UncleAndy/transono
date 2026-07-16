@@ -40,3 +40,4 @@ ratatui = "0.30"
 crossterm = { version = "0.28", features = ["event-stream"] }
 pipewire = "0.10"
 dirs = "6.0"
+cookie-factory = "0.3.3"

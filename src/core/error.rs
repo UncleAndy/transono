@@ -41,6 +41,9 @@ pub enum CoreError {
 
     #[error(transparent)]
     Pipewire(#[from] pipewire::Error),
+
+    #[error(transparent)]
+    PodSerialize(#[from] cookie_factory::GenError),
 }
 
 impl From<&str> for CoreError {
