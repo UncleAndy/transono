@@ -41,3 +41,4 @@ crossterm = { version = "0.28", features = ["event-stream"] }
 pipewire = "0.10"
 dirs = "6.0"
 cookie-factory = "0.3.3"
+libspa-sys = "0.10"

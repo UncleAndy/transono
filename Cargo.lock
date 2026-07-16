@@ -1436,6 +1436,7 @@ dependencies = [
  "hound",
  "http",
  "i24",
+ "libspa-sys",
  "pipewire",
  "ratatui",
  "rtrb",
