@@ -1,13 +1,19 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::ptr::NonNull;
 use std::rc::Rc;
 use std::time::Duration;
 use pipewire as pw;
 use pipewire::loop_::Timeout;
 use pipewire::proxy::{Listener, ProxyListener, ProxyT};
 use pipewire::registry::GlobalObject;
+use pipewire::spa::param::audio::AudioInfoRaw;
+use pipewire::spa::pod::deserialize::PodDeserializer;
+use pipewire::spa::pod::{ChoiceValue, Pod, Value};
+use pipewire::spa::utils::Choice;
 use pipewire::spa::utils::dict::DictRef;
 use pipewire::types::ObjectType;
+use symphonia::core::audio::conv::IntoSample;
 use crate::core::error::Result;
 use crate::audio::{AudioDeviceFactory, AudioDeviceId, AudioDeviceInfo, AudioDevices, AudioDirection, AudioFormat, Endianness, HardwareDeviceConfig, PcmFormat, VirtualDeviceConfig};
 
@@ -147,7 +153,7 @@ fn enumerate_nodes() -> Result<Vec<NodeInfo>> {
             let Some(registry) = registry_weak.upgrade() else {
                 return;
             };
-            
+
             /*
             if obj.type_ != ObjectType::Node {
                 return;
@@ -178,18 +184,42 @@ fn enumerate_nodes() -> Result<Vec<NodeInfo>> {
                         }
 
                     })
-                    .param(|seq, id, index, next, param| {
+                    .param(|seq, id, index, next, pod| {
                         println!("--------------------");
                         println!("seq   = {seq}");
                         println!("id    = {:?}", id);
                         println!("index = {index}");
                         println!("next  = {next}");
 
-                        if let Some(param) = param {
-                            println!("bytes = {:?}", param.as_bytes());
+                        let Some(pod) = pod else {
+                            return;
+                        };
+
+                        if let Ok((_, Value::Object(obj))) = PodDeserializer::deserialize_from(pod.as_bytes()) {
+                            // 2. Итерируемся по свойствам объекта (они уже полностью распарсены компилятором)
+                            for prop in obj.properties {
+                                println!("key={} value={:#?}", prop.key, prop.value);
+                                match prop.value {
+                                    Value::Choice(choice_value) => {
+                                        // Здесь вы получаете готовый ChoiceValue со всеми вариантами
+                                        println!("Choice: ID свойства: {}, Варианты Choice: {:?}", prop.key, choice_value);
+                                    }
+                                    _ => {
+                                        // Другие типы свойств
+                                        println!("Другие: ID свойства: {}, Варианты Choice: {:?}", prop.key, prop.value);
+                                    }
+                                }
+                            }
                         }
                     })
                     .register();
+
+                node.enum_params(
+                    1,
+                    Some(pw::spa::param::ParamType::EnumFormat),
+                    0,
+                    u32::MAX,
+                );
 
                 bound_ref.borrow_mut().add(
                     Box::new(node),
