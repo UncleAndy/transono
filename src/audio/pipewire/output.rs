@@ -19,9 +19,14 @@ impl Sink<Audio> for PipeWireSink {
 
     fn poll_ready(
         self: Pin<&mut Self>,
-        _cx: &mut Context<'_>,
+        cx: &mut Context<'_>,
     ) -> Poll<std::result::Result<(), Self::Error>> {
-        Poll::Ready(Ok(()))
+        if !self.producer.is_full() {
+            Poll::Ready(Ok(()))
+        } else {
+            cx.waker().wake_by_ref();
+            Poll::Pending
+        }
     }
 
     fn start_send(self: Pin<&mut Self>, item: Audio) -> std::result::Result<(), Self::Error> {
@@ -29,11 +34,8 @@ impl Sink<Audio> for PipeWireSink {
 
         this.scratch.clear();
 
-        let ok = this.producer.send_audio(item, &mut this.scratch)?;
-
-        if !ok {
-            // Потеря кадра
-        }
+        let ok = this.producer.send_audio(&item, &mut this.scratch)?;
+        debug_assert!(ok, "output queue overflow");
 
         Ok(())
     }

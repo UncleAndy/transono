@@ -113,7 +113,7 @@ impl FrameProducer {
     #[inline(always)]
     pub fn send_audio(
         &mut self,
-        audio: Audio,
+        audio: &Audio,
         scratch: &mut Vec<f32>,
     ) -> Result<bool> {
         let pcm = audio.to_pcm()?;
