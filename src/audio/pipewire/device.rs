@@ -1,6 +1,8 @@
+use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::str::FromStr;
 use std::time::Duration;
 use pipewire as pw;
 use pipewire::loop_::Timeout;
@@ -16,6 +18,12 @@ use libspa_sys::*;
 
 use crate::core::error::Result;
 use crate::audio::{AudioDeviceFactory, AudioDeviceId, AudioDeviceInfo, AudioDevices, AudioDirection, AudioFormat, Endianness, HardwareDeviceConfig, PcmFormat, VirtualDeviceConfig};
+
+const DEFAULT_AUDIO_FORMAT: AudioFormat = AudioFormat {
+    sample_rate: 48_000,
+    channels: 2,
+    sample_format: PcmFormat::F32(Endianness::Little),
+};
 
 #[derive(Debug, Clone)]
 struct PipeWireNodeInfo {
@@ -90,10 +98,16 @@ impl AudioDeviceFactory for PipeWireDeviceFactory {
             };
 
             let direction = match media_class.as_str() {
-                "Audio/Source" => AudioDirection::Input,
-                "Audio/Sink" => AudioDirection::Output,
+                "Audio/Source" | "Stream/Input/Audio" => AudioDirection::Input,
+                "Audio/Sink" | "Stream/Output/Audio" => AudioDirection::Output,
                 _ => continue,
             };
+
+            let device_id = node
+                .properties
+                .get("device.id");
+
+            let is_virtual = device_id.is_none();
 
             let name = node
                 .properties
@@ -103,18 +117,16 @@ impl AudioDeviceFactory for PipeWireDeviceFactory {
                 .cloned()
                 .unwrap_or_else(|| format!("Node {}", node.id));
 
+            let default_format = node.default_format.unwrap_or(DEFAULT_AUDIO_FORMAT);
+
             devices.push(AudioDeviceInfo {
                 id: AudioDeviceId::Numeric(node.id as u64),
                 name,
                 direction,
                 formats: Vec::new(),
-                default_format: AudioFormat {
-                    sample_rate: 48_000,
-                    channels: 2,
-                    sample_format: PcmFormat::F32(Endianness::Little),
-                },
+                default_format,
                 default: false,
-                virtual_device: false,
+                virtual_device: is_virtual,
             });
         }
 
@@ -187,7 +199,7 @@ fn enumerate_nodes() -> Result<Vec<PipeWireNodeInfo>> {
                 obj.id,
                 PipeWireNodeInfo {
                     id: obj.id,
-                    properties: props,
+                    properties: props.clone(),
                     default_format: None,
                 },
             );
@@ -238,11 +250,13 @@ fn enumerate_nodes() -> Result<Vec<PipeWireNodeInfo>> {
                                     }
 
                                     (_, value) => {
+                                        /*
                                         println!(
                                             "Unhandled property {:?}: {:?}",
                                             FormatProperties::from_raw(prop.key),
-                                            value
+                                            value,
                                         );
+                                         */
                                     }
                                 }
                             }
