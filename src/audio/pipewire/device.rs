@@ -8,6 +8,7 @@ use pipewire::loop_::Timeout;
 use pipewire::proxy::{Listener, ProxyListener, ProxyT};
 use pipewire::registry::GlobalObject;
 use pipewire::spa::param::audio::AudioInfoRaw;
+use pipewire::spa::param::format::FormatProperties;
 use pipewire::spa::pod::deserialize::PodDeserializer;
 use pipewire::spa::pod::{ChoiceValue, Pod, Value};
 use pipewire::spa::utils::Choice;
@@ -198,15 +199,37 @@ fn enumerate_nodes() -> Result<Vec<NodeInfo>> {
                         if let Ok((_, Value::Object(obj))) = PodDeserializer::deserialize_from(pod.as_bytes()) {
                             // 2. Итерируемся по свойствам объекта (они уже полностью распарсены компилятором)
                             for prop in obj.properties {
-                                println!("key={} value={:#?}", prop.key, prop.value);
-                                match prop.value {
+                                let key = FormatProperties::from_raw(prop.key);
+                                match key {
+                                    FormatProperties::AudioFormat => {
+                                        println!("AudioFormat")
+                                    }
+
+                                    FormatProperties::AudioRate => {
+                                        println!("AudioRate")
+                                    }
+
+                                    FormatProperties::AudioChannels => {
+                                        println!("AudioCannels")
+                                    }
+
+                                    FormatProperties::AudioPosition => {
+                                        println!("AudioPosition")
+                                    }
+
+                                    _ => {
+                                        println!("Other")
+                                    }
+                                }
+
+                                match &prop.value {
                                     Value::Choice(choice_value) => {
                                         // Здесь вы получаете готовый ChoiceValue со всеми вариантами
                                         println!("Choice: ID свойства: {}, Варианты Choice: {:?}", prop.key, choice_value);
                                     }
                                     _ => {
                                         // Другие типы свойств
-                                        println!("Другие: ID свойства: {}, Варианты Choice: {:?}", prop.key, prop.value);
+                                        println!("ID свойства: {}, Значение: {:?}", prop.key, prop.value);
                                     }
                                 }
                             }
