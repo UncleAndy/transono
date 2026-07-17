@@ -17,7 +17,8 @@ use crate::audio::{AudioFormat, FrameConsumer, FrameId, FrameProducer};
 use crate::core::error::Result;
 
 pub struct PipeWireWorker {
-    _thread: Option<JoinHandle<()>>,
+    shutdown: Arc<AtomicBool>,
+    thread: Option<JoinHandle<()>>,
 }
 
 pub struct FrameReader {
@@ -105,7 +106,8 @@ impl PipeWireWorker {
         });
 
         Ok(Self {
-            _thread: Some(thread),
+            shutdown,
+            thread: Some(thread),
         })
     }
 
@@ -132,7 +134,8 @@ impl PipeWireWorker {
         });
 
         Ok(Self {
-            _thread: Some(thread),
+            shutdown,
+            thread: Some(thread),
         })
     }
 
@@ -392,5 +395,15 @@ impl PipeWireSession {
 
             _pod_bytes: pod_bytes,
         })
+    }
+}
+
+impl Drop for PipeWireWorker {
+    fn drop(&mut self) {
+        self.shutdown.store(true, Ordering::Release);
+
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
     }
 }

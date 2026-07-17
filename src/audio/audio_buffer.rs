@@ -5,11 +5,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use crate::core::error::Result;
 use rtrb::{Consumer, Producer, RingBuffer};
 use symphonia::core::audio::GenericAudioBuffer;
-use crate::audio::{
-    frame::{AudioFrame, FrameId},
-    frame_pool::FramePool,
-    FRAME_CAPACITY,
-};
+use crate::audio::{frame::{AudioFrame, FrameId}, frame_pool::FramePool, Audio, PcmAudio, FRAME_CAPACITY};
 
 pub struct FrameProducer {
     pool: Arc<FramePool>,
@@ -95,7 +91,8 @@ impl FrameProducer {
 
         pushed
     }
- 
+
+    #[inline(always)]
     pub fn send(&mut self, data: &[f32]) -> Result<bool> {
         let Some(id) = self.acquire() else {
             return Ok(false);
@@ -111,6 +108,22 @@ impl FrameProducer {
         self.commit(id)?;
  
         Ok(true)
+    }
+
+    #[inline(always)]
+    pub fn send_audio(
+        &mut self,
+        audio: Audio,
+        scratch: &mut Vec<f32>,
+    ) -> Result<bool> {
+        let pcm = audio.to_pcm()?;
+
+        Self::write_interleaved(
+            &pcm,
+            scratch,
+        );
+
+        self.send(scratch)
     }
 
     /// Нет свободных кадров для записи.
@@ -133,6 +146,27 @@ impl FrameProducer {
     #[inline(always)]
     pub fn has_free_frame(&self) -> bool {
         self.free.slots() > 0
+    }
+
+    #[inline(always)]
+    fn write_interleaved(
+        pcm: &PcmAudio,
+        output: &mut Vec<f32>,
+    ) {
+        output.clear();
+
+        let channels = pcm.channel_count();
+        let frames = pcm.frames();
+
+        output.reserve(frames * channels);
+
+        for frame in 0..frames {
+            for channel in 0..channels {
+                output.push(
+                    pcm.channel(channel)[frame]
+                );
+            }
+        }
     }
 }
 

@@ -1,9 +1,4 @@
-use std::any::Any;
-use std::cell::RefCell;
-use std::collections::HashMap;
-use std::rc::Rc;
-use std::str::FromStr;
-use std::time::Duration;
+use libspa_sys::*;
 use pipewire as pw;
 use pipewire::loop_::Timeout;
 use pipewire::proxy::{Listener, ProxyListener, ProxyT};
@@ -14,10 +9,16 @@ use pipewire::spa::pod::{ChoiceValue, Value};
 use pipewire::spa::utils::ChoiceEnum;
 use pipewire::spa::utils::dict::DictRef;
 use pipewire::types::ObjectType;
-use libspa_sys::*;
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::rc::Rc;
+use std::time::Duration;
 
+use crate::audio::{
+    AudioDeviceFactory, AudioDeviceId, AudioDeviceInfo, AudioDevices, AudioDirection, AudioFormat,
+    Endianness, HardwareDeviceConfig, PcmFormat, VirtualDeviceConfig,
+};
 use crate::core::error::Result;
-use crate::audio::{AudioDeviceFactory, AudioDeviceId, AudioDeviceInfo, AudioDevices, AudioDirection, AudioFormat, Endianness, HardwareDeviceConfig, PcmFormat, VirtualDeviceConfig};
 
 const DEFAULT_AUDIO_FORMAT: AudioFormat = AudioFormat {
     sample_rate: 48_000,
@@ -45,36 +46,22 @@ impl BoundObjects {
         }
     }
 
-    fn add(
-        &mut self,
-        proxy: Box<dyn ProxyT>,
-        listener: Box<dyn Listener>,
-    ) {
+    fn add(&mut self, proxy: Box<dyn ProxyT>, listener: Box<dyn Listener>) {
         let id = proxy.upcast_ref().id();
 
         self.proxies.insert(id, proxy);
 
-        self.listeners
-            .entry(id)
-            .or_default()
-            .push(listener);
+        self.listeners.entry(id).or_default().push(listener);
     }
 
-    fn _add_proxy_listener(
-        &mut self,
-        proxy_id: u32,
-        listener: ProxyListener,
-    ) {
+    fn _add_proxy_listener(&mut self, proxy_id: u32, listener: ProxyListener) {
         self.listeners
             .entry(proxy_id)
             .or_default()
             .push(Box::new(listener));
     }
 
-    fn _remove(
-        &mut self,
-        proxy_id: u32,
-    ) {
+    fn _remove(&mut self, proxy_id: u32) {
         self.proxies.remove(&proxy_id);
         self.listeners.remove(&proxy_id);
     }
@@ -83,17 +70,13 @@ impl BoundObjects {
 pub struct PipeWireDeviceFactory;
 
 impl AudioDeviceFactory for PipeWireDeviceFactory {
-    fn enumerate_devices(
-        &self,
-    ) -> Result<Vec<AudioDeviceInfo>> {
+    fn enumerate_devices(&self) -> Result<Vec<AudioDeviceInfo>> {
         let nodes = enumerate_nodes()?;
 
         let mut devices = Vec::new();
 
         for node in nodes {
-            let Some(media_class) =
-                node.properties.get("media.class")
-            else {
+            let Some(media_class) = node.properties.get("media.class") else {
                 continue;
             };
 
@@ -103,9 +86,7 @@ impl AudioDeviceFactory for PipeWireDeviceFactory {
                 _ => continue,
             };
 
-            let device_id = node
-                .properties
-                .get("device.id");
+            let device_id = node.properties.get("device.id");
 
             let is_virtual = device_id.is_none();
 
@@ -166,13 +147,9 @@ fn enumerate_nodes() -> Result<Vec<PipeWireNodeInfo>> {
     let registry = core.get_registry_rc()?;
     let registry_weak = registry.downgrade();
 
-    let nodes = Rc::new(
-        RefCell::new(HashMap::<u32, PipeWireNodeInfo>::new())
-    );
+    let nodes = Rc::new(RefCell::new(HashMap::<u32, PipeWireNodeInfo>::new()));
 
-    let bound = Rc::new(
-        RefCell::new(BoundObjects::new())
-    );
+    let bound = Rc::new(RefCell::new(BoundObjects::new()));
     let bound_ref = bound.clone();
 
     let nodes_ref = nodes.clone();
@@ -188,10 +165,7 @@ fn enumerate_nodes() -> Result<Vec<PipeWireNodeInfo>> {
 
             if let Some(p) = &obj.props {
                 for (k, v) in p.iter() {
-                    props.insert(
-                        k.to_string(),
-                        v.to_string(),
-                    );
+                    props.insert(k.to_string(), v.to_string());
                 }
             }
 
@@ -223,12 +197,13 @@ fn enumerate_nodes() -> Result<Vec<PipeWireNodeInfo>> {
                             return;
                         };
 
-                        if let Ok((_, Value::Object(obj))) = PodDeserializer::deserialize_from(pod.as_bytes()) {
+                        if let Ok((_, Value::Object(obj))) =
+                            PodDeserializer::deserialize_from(pod.as_bytes())
+                        {
                             let mut builder = DefaultFormatBuilder::default();
 
                             for prop in obj.properties {
                                 match (FormatProperties::from_raw(prop.key), &prop.value) {
-
                                     (FormatProperties::AudioFormat, Value::Choice(choice)) => {
                                         if let Some(id) = choice_default_id(choice) {
                                             builder.sample_format = pcm_format_from_spa(id);
@@ -249,7 +224,7 @@ fn enumerate_nodes() -> Result<Vec<PipeWireNodeInfo>> {
                                         // Пока игнорируем
                                     }
 
-                                    (_, value) => {
+                                    (_, _value) => {
                                         /*
                                         println!(
                                             "Unhandled property {:?}: {:?}",
@@ -270,17 +245,11 @@ fn enumerate_nodes() -> Result<Vec<PipeWireNodeInfo>> {
                     })
                     .register();
 
-                node.enum_params(
-                    1,
-                    Some(pw::spa::param::ParamType::EnumFormat),
-                    0,
-                    u32::MAX,
-                );
+                node.enum_params(1, Some(pw::spa::param::ParamType::EnumFormat), 0, u32::MAX);
 
-                bound_ref.borrow_mut().add(
-                    Box::new(node),
-                    Box::new(node_listener),
-                );
+                bound_ref
+                    .borrow_mut()
+                    .add(Box::new(node), Box::new(node_listener));
             }
         })
         .register();
@@ -288,27 +257,21 @@ fn enumerate_nodes() -> Result<Vec<PipeWireNodeInfo>> {
     core.sync(0)?;
 
     for _ in 0..10 {
-        main_loop.loop_().iterate(Timeout::Finite(Duration::from_millis(50)));
+        main_loop
+            .loop_()
+            .iterate(Timeout::Finite(Duration::from_millis(50)));
     }
 
-    Ok(
-        nodes
-            .borrow()
-            .values()
-            .cloned()
-            .collect()
-    )
+    Ok(nodes.borrow().values().cloned().collect())
 }
 
 fn choice_default_id(choice: &ChoiceValue) -> Option<u32> {
     match choice {
-        ChoiceValue::Id(choice) => {
-            match choice.1 {
-                ChoiceEnum::None(id) => Some(id.0),
-                ChoiceEnum::Enum { default, .. } => Some(default.0),
-                _ => None,
-            }
-        }
+        ChoiceValue::Id(choice) => match choice.1 {
+            ChoiceEnum::None(id) => Some(id.0),
+            ChoiceEnum::Enum { default, .. } => Some(default.0),
+            _ => None,
+        },
 
         _ => None,
     }
@@ -316,14 +279,12 @@ fn choice_default_id(choice: &ChoiceValue) -> Option<u32> {
 
 fn choice_default_int(choice: &ChoiceValue) -> Option<i32> {
     match choice {
-        ChoiceValue::Int(choice) => {
-            match choice.1 {
-                ChoiceEnum::None(v) => Some(v),
-                ChoiceEnum::Enum { default, .. } => Some(default),
-                ChoiceEnum::Range { default, .. } => Some(default),
-                _ => None,
-            }
-        }
+        ChoiceValue::Int(choice) => match choice.1 {
+            ChoiceEnum::None(v) => Some(v),
+            ChoiceEnum::Enum { default, .. } => Some(default),
+            ChoiceEnum::Range { default, .. } => Some(default),
+            _ => None,
+        },
 
         _ => None,
     }

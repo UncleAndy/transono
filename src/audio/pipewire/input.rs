@@ -1,10 +1,14 @@
 use std::sync::Arc;
 use futures_util::stream::BoxStream;
-use crate::audio::{Audio, AudioFormat, AudioInput, FrameConsumer, LatencyStats};
+
+use crate::audio::{Audio, AudioFormat, AudioInput, FrameConsumer, LatencyStats, PipeWireWorker};
+use crate::core::error::Result;
 
 pub struct PipeWireInput {
     consumer: FrameConsumer,
     format: AudioFormat,
+
+    worker: Option<PipeWireWorker>,
 }
 
 impl PipeWireInput {
@@ -15,20 +19,21 @@ impl PipeWireInput {
         Self {
             consumer,
             format,
+            worker: None,
         }
     }
 }
 
 impl AudioInput for PipeWireInput {
-    fn stream(&mut self) -> crate::core::error::Result<BoxStream<'static, Audio>> {
+    fn stream(&mut self) -> Result<BoxStream<'static, Audio>> {
         todo!()
     }
 
-    fn start(&self) -> crate::core::error::Result<()> {
+    fn start(&self) -> Result<()> {
         todo!()
     }
 
-    fn stop(&self) -> crate::core::error::Result<()> {
+    fn stop(&self) -> Result<()> {
         todo!()
     }
 
