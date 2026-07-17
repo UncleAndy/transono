@@ -58,9 +58,9 @@ pub struct PipeWireOutput {
     format: AudioFormat,
 
     _node_name: String,
-    _node_id: Option<u32>,
+    _node_id: u32,
 
-    _worker: Option<PipeWireWorker>,
+    _worker: PipeWireWorker,
 }
 
 impl PipeWireOutput {
@@ -71,20 +71,27 @@ impl PipeWireOutput {
             producer: Some(producer),
             format,
             _node_name: node_name.clone(),
-            _node_id: Some(node_id),
-            _worker: Some(
-                PipeWireWorker::spawn_output(consumer, format, node_name.clone(), Some(node_id))
+            _node_id: node_id,
+            _worker: PipeWireWorker::spawn_output(consumer, format, node_name.clone(), Some(node_id))
                     .ok()
                     .unwrap(),
-            ),
         }
     }
 }
 
 impl AudioOutput for PipeWireOutput {
     fn sink(&mut self) -> Result<BoxSink<'static, Audio, CoreError>> {
+        let producer = self
+            .producer
+            .take()
+            .ok_or_else(|| {
+                CoreError::Internal(
+                    "sink() already called".into()
+                )
+            })?;
+
         Ok(Box::pin(PipeWireSink {
-            producer: self.producer.take().unwrap(),
+            producer,
             scratch: Vec::with_capacity(FRAME_CAPACITY),
         }))
     }
