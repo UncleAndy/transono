@@ -133,8 +133,6 @@ fn main() -> Result<()> {
                     media.class = \"Audio/Sink\" \
                     node.virtual = true \
                     node.autoconnect = false \
-                    node.dont-reconnect = true \
-                    node.loopback = false \
                 }} \
                 playback.props = {{ \
                     node.name = \"{}\" \
@@ -145,6 +143,10 @@ fn main() -> Result<()> {
                     node.dont-reconnect = true \
                     target.delay-connect = true \
                     node.autoconnect = false \
+                    audio.format = \"F32\" \
+                    audio.rate = 48000 \
+                    audio.channels = 2 \
+                    audio.position = [ FL FR ] \
                 }}",
                 names.from_meeting_speaker_out,
                 names.from_meeting_speaker_out,
@@ -162,6 +164,10 @@ fn main() -> Result<()> {
                     node.dont-reconnect = true \
                     target.delay-connect = true \
                     node.autoconnect = false \
+                    audio.format = \"F32\" \
+                    audio.rate = 48000 \
+                    audio.channels = 2 \
+                    audio.position = [ FL FR ] \
                 }} \
                 playback.props = {{ \
                     node.name = \"{}\" \
@@ -169,8 +175,6 @@ fn main() -> Result<()> {
                     media.class = \"Audio/Source\" \
                     node.virtual = true \
                     node.autoconnect = false \
-                    node.dont-reconnect = true \
-                    node.loopback = false \
                 }}",
                 names.internal_to_meeting_speaker_out,
                 names.internal_to_meeting_speaker_out,
