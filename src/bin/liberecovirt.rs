@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Result};
 use clap::Parser;
+use daemonize::Daemonize;
 use libereco::ctl::pipewire::VirtualAudioDevices;
 use pipewire::main_loop::MainLoopRc;
 use pipewire::context::ContextRc;
@@ -7,7 +8,7 @@ use std::ffi::CString;
 use std::fs;
 use std::path::PathBuf;
 use std::process;
-use std::io::{Read, Write};
+use std::io::Read;
 
 #[derive(Parser)]
 #[command(author, version, about)]
@@ -18,28 +19,47 @@ struct Cli {
     language: Option<String>,
 }
 
-fn get_pid_file(language: &str) -> PathBuf {
+fn get_cache_dir() -> PathBuf {
     let mut path = dirs::cache_dir().unwrap_or_else(|| PathBuf::from("/tmp"));
     path.push("liberecovirt");
-    let _ = fs::create_dir_all(&path);
+    let _ = fs::create_dir_all(&path).expect("Не удалось создать директорию кэша");
+    path
+}
+
+fn get_pid_file(language: &str) -> PathBuf {
+    let mut path = get_cache_dir();
     path.push(format!("{}.pid", language));
+    path
+}
+
+fn get_log_file(language: &str) -> PathBuf {
+    let mut path = get_cache_dir();
+    path.push(format!("{}.log", language));
     path
 }
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    let (language, is_remove) = if cli.action == "remove" {
-        if let Some(lang) = cli.language {
-            (lang, true)
-        } else {
-            return Err(anyhow!("Укажите язык для удаления: liberecovirt remove <lang>"));
+    let (language, is_stop) = match cli.action.as_str() {
+        "remove" | "stop" => {
+            if let Some(lang) = cli.language {
+                (lang, true)
+            } else {
+                return Err(anyhow!("Укажите язык: liberecovirt {} <lang>", cli.action));
+            }
         }
-    } else {
-        (cli.action, false)
+        "start" => {
+            if let Some(lang) = cli.language {
+                (lang, false)
+            } else {
+                return Err(anyhow!("Укажите язык для запуска: liberecovirt start <lang>"));
+            }
+        }
+        lang => (lang.to_string(), false),
     };
 
-    if is_remove {
+    if is_stop {
         let pid_file = get_pid_file(&language);
         if !pid_file.exists() {
             println!("Устройства для языка {} не найдены", language);
@@ -60,6 +80,8 @@ fn main() -> Result<()> {
 
     // Start logic
     let pid_file = get_pid_file(&language);
+    let log_file = get_log_file(&language);
+
     if pid_file.exists() {
         let mut file = fs::File::open(&pid_file)?;
         let mut pid_str = String::new();
@@ -77,15 +99,27 @@ fn main() -> Result<()> {
         let _ = fs::remove_file(&pid_file);
     }
 
-            // Start logic continued...
-            // Start as daemon
-            let pid = process::id();
-            let mut file = fs::File::create(&pid_file)?;
-            file.write_all(pid.to_string().as_bytes())?;
+    println!("Запуск виртуальных устройств для языка: {}", language);
 
-            println!("Запуск виртуальных устройств для языка: {}", language);
+    let stdout = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_file)?;
+    let stderr = stdout.try_clone()?;
 
-            let names = VirtualAudioDevices::names(&language);
+    let daemonize = Daemonize::new()
+        .pid_file(&pid_file)
+        .chown_pid_file(false) // We don't need root
+        .stdout(stdout)
+        .stderr(stderr)
+        .umask(0o027);
+
+    if let Err(e) = daemonize.start() {
+        return Err(anyhow!("Ошибка при переходе в режим демона: {}", e));
+    }
+
+    // From here on we are in the background (child process)
+    let names = VirtualAudioDevices::names(&language);
 
             pipewire::init();
             let main_loop = MainLoopRc::new(None).map_err(|e| anyhow!("Не удалось создать Main Loop: {}", e))?;
@@ -97,6 +131,7 @@ fn main() -> Result<()> {
                     node.name = \"{}\" \
                     node.description = \"{}\" \
                     media.class = \"Audio/Sink\" \
+                    node.always-process = true \
                 }} \
                 playback.props = {{ \
                     node.name = \"{}\" \
@@ -125,6 +160,7 @@ fn main() -> Result<()> {
                     node.name = \"{}\" \
                     node.description = \"{}\" \
                     media.class = \"Audio/Source\" \
+                    node.always-process = true \
                 }}",
                 names.internal_to_meeting_speaker_out,
                 names.internal_to_meeting_speaker_out,
@@ -160,12 +196,8 @@ fn main() -> Result<()> {
                 return Err(anyhow!("Не удалось создать Устройство 2"));
             }
 
-            println!("Виртуальные кабели запущены для {}. PID: {}", language, pid);
-            
             // Running main loop will block until process exits
             main_loop.run();
 
-            // Cleanup on exit
-            let _ = fs::remove_file(&pid_file);
             Ok(())
 }
