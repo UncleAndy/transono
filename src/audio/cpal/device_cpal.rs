@@ -8,11 +8,8 @@ pub struct AudioDevicesCpal {
 
 impl AudioDevicesCpal {
     pub fn new() -> Self {
-        // TODO: Сделать зависимость от бэкэнда
-        let host = cpal::host_from_id(cpal::HostId::PipeWire).unwrap();
-
         Self {
-            host,
+            host: cpal::default_host(),
         }
     }
 
