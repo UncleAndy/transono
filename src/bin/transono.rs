@@ -245,13 +245,6 @@ fn find_virtual_output(host: &Host, name: &str, language: &str) -> Result<Device
     if let Some(device) = device {
         return Ok(device)
     }
-    /*
-    for device in host.output_devices()? {
-        if device.description().map(|d| d.to_string() == name).unwrap_or(false) {
-            return Ok(device);
-        }
-    }
-     */
     Err(missing_virtual_device("output", name, language))
 }
 
@@ -261,19 +254,12 @@ fn find_virtual_input(host: &Host, name: &str, language: &str) -> Result<Device>
     if let Some(device) = device {
         return Ok(device)
     }
-    /*
-    for device in host.input_devices()? {
-        if device.description().map(|d| d.to_string() == name).unwrap_or(false) {
-            return Ok(device);
-        }
-    }
-     */
     Err(missing_virtual_device("input", name, language))
 }
 
 fn missing_virtual_device(direction: &str, name: &str, language: &str) -> anyhow::Error {
     anyhow!(
-        "virtual {direction} device '{name}' not found; run `transonoctl init {language}` first"
+        "virtual {direction} device '{name}' not found; run `transonovirt {language}` first"
     )
 }
 
