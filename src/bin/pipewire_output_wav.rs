@@ -2,7 +2,7 @@ use anyhow::{Result, bail};
 use futures_util::SinkExt;
 use hound::{SampleFormat, WavReader};
 use std::env;
-
+use std::time::Duration;
 use libereco::audio::{
     Audio, AudioFormat, AudioOutput, Endianness, FRAME_CAPACITY, PcmAudio, PcmFormat,
     PipeWireOutput,
@@ -39,6 +39,28 @@ async fn main() -> Result<()> {
     let mut pcm = PcmAudio::new(format.spec(), FRAME_CAPACITY / format.channels as usize);
 
     match (spec.sample_format, spec.bits_per_sample) {
+        (SampleFormat::Float, 32) => {
+            let channels = format.channels as usize;
+            let mut frame = 0;
+            let mut channel = 0;
+
+            for sample in wav.samples::<f32>() {
+                pcm.channel_mut(channel)[frame] = sample?;
+
+                channel += 1;
+                if channel == channels {
+                    channel = 0;
+                    frame += 1;
+                }
+
+                if frame == pcm.frames() {
+                    sink.send(Audio::from_pcm(&pcm)?).await?;
+
+                    frame = 0;
+                    channel = 0;
+                }
+            }
+        }
         (SampleFormat::Int, 16) => {
             let channels = format.channels as usize;
             let mut frame = 0;
@@ -66,6 +88,7 @@ async fn main() -> Result<()> {
     }
 
     sink.flush().await?;
+    output.stop()?;
 
     Ok(())
 }

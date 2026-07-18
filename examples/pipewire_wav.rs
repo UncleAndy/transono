@@ -95,7 +95,7 @@ fn main() -> Result<()> {
     println!("Waiting for playback...");
 
     while !producer.is_empty() {
-        thread::sleep(Duration::from_secs(1));
+        thread::sleep(Duration::from_millis(1000));
     }
 
     Ok(())

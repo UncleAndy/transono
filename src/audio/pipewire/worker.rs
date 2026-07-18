@@ -206,7 +206,6 @@ impl PipeWireWorker {
 
         let _ = self.command_tx
             .send(WorkerCommand::Drain(tx));
-
         let _ = rx.recv();
 
         Ok(())

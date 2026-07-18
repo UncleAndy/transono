@@ -173,13 +173,7 @@ impl FrameProducer {
 impl FrameConsumer {
     #[inline(always)]
     pub fn receive(&mut self) -> Option<FrameId> {
-        let id = self.filled.pop().ok();
-
-        if id.is_some() {
-            self.inner.ready_count.fetch_sub(1, Ordering::SeqCst);
-        }
-
-        id
+        self.filled.pop().ok()
     }
 
     #[inline(always)]
@@ -191,7 +185,9 @@ impl FrameConsumer {
     #[inline(always)]
     pub fn release(&mut self, id: FrameId) -> Result<()> {
         self.pool.get_mut(id).clear();
- 
+
+        self.inner.ready_count.fetch_sub(1, Ordering::SeqCst);
+
         self.free
             .push(id)
             .map_err(|_| "free queue overflow".into())

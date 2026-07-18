@@ -2,7 +2,6 @@ use futures_util::Sink;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
-
 use crate::audio::{
     Audio, AudioBuffer, AudioFormat, AudioOutput, BoxSink, FRAME_CAPACITY, FrameProducer,
     LatencyStats, PipeWireWorker,
