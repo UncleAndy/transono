@@ -114,11 +114,11 @@ impl AudioDeviceFactory for PipeWireDeviceFactory {
         Ok(devices)
     }
 
-    fn open_hardware(&self, config: &HardwareDeviceConfig) -> Result<AudioDevices> {
+    fn open_hardware(&self, _config: &HardwareDeviceConfig) -> Result<AudioDevices> {
         todo!()
     }
 
-    fn create_virtual(&self, config: &VirtualDeviceConfig) -> Result<AudioDevices> {
+    fn create_virtual(&self, _config: &VirtualDeviceConfig) -> Result<AudioDevices> {
         todo!()
     }
 }
@@ -192,7 +192,7 @@ fn enumerate_nodes() -> Result<Vec<PipeWireNodeInfo>> {
 
                 let node_listener = node
                     .add_listener_local()
-                    .param(move |seq, id, index, next, pod| {
+                    .param(move |_seq, _id, _index, _next, pod| {
                         let Some(pod) = pod else {
                             return;
                         };

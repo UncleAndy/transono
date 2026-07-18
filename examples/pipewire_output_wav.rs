@@ -8,7 +8,6 @@ use libereco::audio::{
     Audio, AudioFormat, AudioOutput, Endianness, FRAME_CAPACITY, PcmAudio, PcmFormat,
     PipeWireOutput,
 };
-use libereco::audio::AudioCodec::Pcm;
 
 #[tokio::main]
 async fn main() -> Result<()> {
