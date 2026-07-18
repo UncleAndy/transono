@@ -3,6 +3,7 @@ use futures_util::SinkExt;
 use hound::{SampleFormat, WavReader};
 use std::env;
 use std::time::Duration;
+use tokio::time::sleep;
 use libereco::audio::{
     Audio, AudioFormat, AudioOutput, Endianness, FRAME_CAPACITY, PcmAudio, PcmFormat,
     PipeWireOutput,
@@ -88,6 +89,9 @@ async fn main() -> Result<()> {
     }
 
     sink.flush().await?;
+
+    sleep(Duration::from_millis(2000)).await;
+
     output.stop()?;
 
     Ok(())
