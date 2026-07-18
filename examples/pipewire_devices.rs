@@ -1,7 +1,7 @@
 use anyhow::Result;
 
-use libereco::audio::AudioDeviceFactory;
-use libereco::audio::pipewire::device::PipeWireDeviceFactory;
+use transono::audio::AudioDeviceFactory;
+use transono::audio::pipewire::device::PipeWireDeviceFactory;
 
 fn main() -> Result<()> {
     let factory = PipeWireDeviceFactory;

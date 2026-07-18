@@ -6,8 +6,8 @@ use std::{
 use anyhow::Result;
 use hound::{SampleFormat, WavSpec, WavWriter};
 
-use libereco::audio::{AudioBuffer, AudioFormat, Endianness, PcmFormat};
-use libereco::audio::pipewire::PipeWireWorker;
+use transono::audio::{AudioBuffer, AudioFormat, Endianness, PcmFormat};
+use transono::audio::pipewire::PipeWireWorker;
 
 fn main() -> Result<()> {
     let format = AudioFormat {

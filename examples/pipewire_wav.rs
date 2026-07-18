@@ -7,8 +7,8 @@ use std::{
 use anyhow::{bail, Result};
 use hound::{SampleFormat, WavReader};
 
-use libereco::audio::{AudioBuffer, AudioFormat, Endianness, PcmFormat, FRAME_CAPACITY};
-use libereco::audio::pipewire::PipeWireWorker;
+use transono::audio::{AudioBuffer, AudioFormat, Endianness, PcmFormat, FRAME_CAPACITY};
+use transono::audio::pipewire::PipeWireWorker;
 
 fn main() -> Result<()> {
     let filename = env::args()

@@ -1,6 +1,6 @@
 ## Why Donations Matter
 
-LIBERECO is a personal open-source project created with a simple 
+TRANSONO is a personal open-source project created with a simple 
 idea in mind: to make communication between people easier, 
 regardless of the language they speak.
 
@@ -18,12 +18,12 @@ It also involves:
 
 Most importantly, it requires time.
 
-If LIBERECO has been useful to you—whether in your work, your studies, 
+If TRANSONO has been useful to you—whether in your work, your studies, 
 your travels, or simply in helping people understand each other—you can 
 help ensure that the project continues to grow.
 
 Your donation helps cover development costs and allows me to dedicate 
-more time to improving LIBERECO for everyone.
+more time to improving TRANSONO for everyone.
 
 However, financial support is only one way to contribute. You can also 
 help by:
@@ -33,7 +33,7 @@ help by:
 * 💡 Suggesting new ideas and improvements.
 * 📖 Improving or translating the documentation.
 * 💻 Contributing code or submitting pull requests.
-* 📢 Sharing LIBERECO with others who may find it useful.
+* 📢 Sharing TRANSONO with others who may find it useful.
 
 Every contribution, no matter its size, is sincerely appreciated.
 
@@ -41,7 +41,7 @@ Thank you for helping make communication between people a little freer.
 
 **Donations are completely optional.**
 
-LIBERECO will always remain free and open source. If you enjoy 
+TRANSONO will always remain free and open source. If you enjoy 
 using the project and would like to help its development, you 
 can support it using one of the methods below.
 

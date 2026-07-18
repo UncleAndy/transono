@@ -2,7 +2,7 @@ use futures_util::{SinkExt, StreamExt};
 
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 
-use libereco::{
+use transono::{
     core::{
         transport::Transport,
         websocket::WebSocketTransport,

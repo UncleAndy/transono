@@ -1,16 +1,16 @@
-# LIBERECO
+# TRANSONO
 
-> **Libereco kompreni.**
+> **Kompreni trans sone.**
 
-*(Freedom to understand.)*
+*(Understand over sound.)*
 
 Languages: **English** | [Русский](README.ru.md) | [Esperanto](README.eo.md)
 
-**LIBERECO** (Esperanto for "freedom") is an open-source project whose goal is to make modern real-time speech translation accessible to everyone.
+**TRANSONO** (Esperanto for "sound transmission") is an open-source project whose goal is to make modern real-time speech translation accessible to everyone.
 
 More than a century ago, **Esperanto** was created to help overcome language barriers and bring people from different countries and cultures closer together. Today, advances in artificial intelligence offer another way to achieve the same vision: allowing everyone to speak their native language while understanding one another.
 
-LIBERECO exists to help make that vision a reality.
+TRANSONO exists to help make that vision a reality.
 
 ## Why this project exists
 
@@ -26,7 +26,7 @@ It affects:
 
 Modern AI models are already capable of translating speech almost in real time. However, many existing solutions are difficult to configure, tied to specific services, or distributed as closed-source software.
 
-The goal of LIBERECO is to provide a free, open and extensible platform that makes modern AI-powered speech translation simple and accessible.
+The goal of TRANSONO is to provide a free, open and extensible platform that makes modern AI-powered speech translation simple and accessible.
 
 ## Features
 
@@ -43,7 +43,7 @@ Planned capabilities include:
 
 ## Architecture
 
-LIBERECO is written in **Rust** with a strong focus on:
+TRANSONO is written in **Rust** with a strong focus on:
 
 * high performance;
 * low-latency audio processing;
@@ -54,13 +54,13 @@ The project is designed as a collection of independent components, making it pos
 
 ## Project status
 
-LIBERECO is currently in an early stage of development.
+TRANSONO is currently in an early stage of development.
 
 The architecture is still evolving, and some APIs may change before the first stable **1.0** release.
 
 ## Open Source
 
-LIBERECO is developed as an open-source project.
+TRANSONO is developed as an open-source project.
 
 Contributions of any kind are warmly welcome.
 
@@ -79,7 +79,7 @@ Every contribution, no matter how small, helps move the project forward.
 
 ## ❤️ Support the Project
 
-LIBERECO is and will always remain free and open source.
+TRANSONO is and will always remain free and open source.
 
 If you find this project useful and would like to support its development, there are many ways to help:
 
@@ -90,7 +90,7 @@ If you find this project useful and would like to support its development, there
 * 💻 Contribute code or submit pull requests.
 * ❤️ If you wish, you can also support the project financially. Please see [DONATE.md](DONATE.md) for available options.
 
-Every contribution—whether it's a bug report, a documentation fix, a new feature, or a donation—helps make LIBERECO better.
+Every contribution—whether it's a bug report, a documentation fix, a new feature, or a donation—helps make TRANSONO better.
 
 Thank you for supporting the project and helping make communication between people a little freer.
 
@@ -98,6 +98,6 @@ Thank you for supporting the project and helping make communication between peop
 
 Many thanks to the open-source community whose work makes projects like this possible.
 
-And special thanks to everyone who decides to contribute to LIBERECO.
+And special thanks to everyone who decides to contribute to TRANSONO.
 
 Together we can make communication between people a little freer.

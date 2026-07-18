@@ -5,15 +5,15 @@ use std::sync::Arc;
 // No imports needed from symphonia::core::audio here if not used
 use tokio::sync::mpsc;
 
-use libereco::audio::processors::compressor::{Compressor, NATURAL_VOICE};
-use libereco::line::TranslationLine;
-use libereco::audio::diagnost::indicator::Indicator;
-use libereco::audio::processors::denoiser::Denoiser;
-use libereco::audio::{AudioDevicesCpal, AudioFormat, AudioInputCpal, AudioOutputCpal, Processor};
-use libereco::console::ConsoleApp;
-use libereco::core::provider::Provider;
-use libereco::ctl::create_backend;
-use libereco::providers::openai::translation::{
+use transono::audio::processors::compressor::{Compressor, NATURAL_VOICE};
+use transono::line::TranslationLine;
+use transono::audio::diagnost::indicator::Indicator;
+use transono::audio::processors::denoiser::Denoiser;
+use transono::audio::{AudioDevicesCpal, AudioFormat, AudioInputCpal, AudioOutputCpal, Processor};
+use transono::console::ConsoleApp;
+use transono::core::provider::Provider;
+use transono::ctl::create_backend;
+use transono::providers::openai::translation::{
     OpenAITranslationConfig, OpenAITranslationProvider,
 };
 
@@ -102,7 +102,7 @@ async fn main() -> Result<()> {
     println!("Remote : {} Hz", remote_spec.rate());
     println!("Playback: {} Hz", output_sample_rate);
 
-    let stats_direct = Arc::new(libereco::audio::LatencyStats::default());
+    let stats_direct = Arc::new(transono::audio::LatencyStats::default());
 
     let input_hw = AudioInputCpal::new(capture, stats_direct.clone())?;
     let to_microphone_virt = AudioOutputCpal::new(to_microphone, stats_direct.clone())?;
@@ -159,7 +159,7 @@ async fn main() -> Result<()> {
         .clone();
     let provider_back = OpenAITranslationProvider::new(config_back);
 
-    let stats_back = Arc::new(libereco::audio::LatencyStats::default());
+    let stats_back = Arc::new(transono::audio::LatencyStats::default());
 
     let from_speaker_virt = AudioInputCpal::new(from_speaker, stats_back.clone())?;
     let output_hw = AudioOutputCpal::new(playback, stats_back.clone())?;
@@ -273,11 +273,11 @@ fn find_virtual_input(host: &Host, name: &str, language: &str) -> Result<Device>
 
 fn missing_virtual_device(direction: &str, name: &str, language: &str) -> anyhow::Error {
     anyhow!(
-        "virtual {direction} device '{name}' not found; run `liberecoctl init {language}` first"
+        "virtual {direction} device '{name}' not found; run `transonoctl init {language}` first"
     )
 }
 
-fn print_latency_stats(snapshot: libereco::audio::LatencySnapshot) {
+fn print_latency_stats(snapshot: transono::audio::LatencySnapshot) {
     println!("---------------------------------------------------------------");
     println!("Stage             | Min    | Avg    | Max    | Last   |");
     println!("---------------------------------------------------------------");
@@ -293,7 +293,7 @@ fn print_latency_stats(snapshot: libereco::audio::LatencySnapshot) {
     println!("---------------------------------------------------------------");
 }
 
-fn print_metric(name: &str, m: libereco::audio::MetricSnapshot) {
+fn print_metric(name: &str, m: transono::audio::MetricSnapshot) {
     println!(
         "{} | {:6.2} | {:6.2} | {:6.2} | {:6.2} |",
         name, m.min_ms, m.avg_ms, m.max_ms, m.last_ms

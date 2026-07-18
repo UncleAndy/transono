@@ -1,5 +1,5 @@
 use cpal::traits::DeviceTrait;
-use libereco::audio::AudioDevicesCpal;
+use transono::audio::AudioDevicesCpal;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

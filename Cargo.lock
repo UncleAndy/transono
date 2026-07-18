@@ -1427,43 +1427,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66"
 
 [[package]]
-name = "libereco"
-version = "0.4.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "audio_samples",
- "base64-simd",
- "bytemuck",
- "bytes",
- "clap",
- "cookie-factory",
- "cpal",
- "crossterm 0.28.1",
- "daemonize",
- "dirs",
- "dotenvy",
- "futures-util",
- "hound",
- "http",
- "i24",
- "libspa-sys",
- "pipewire",
- "ratatui",
- "rtrb",
- "rubato",
- "rustls",
- "serde",
- "serde_json",
- "symphonia",
- "thiserror 2.0.18",
- "tokio",
- "tokio-stream",
- "tokio-tungstenite",
- "tokio-util",
-]
-
-[[package]]
 name = "libloading"
 version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3467,6 +3430,43 @@ name = "toml_writer"
 version = "1.1.1+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "756daf9b1013ebe47a8776667b466417e2d4c5679d441c26230efd9ef78692db"
+
+[[package]]
+name = "transono"
+version = "0.4.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "audio_samples",
+ "base64-simd",
+ "bytemuck",
+ "bytes",
+ "clap",
+ "cookie-factory",
+ "cpal",
+ "crossterm 0.28.1",
+ "daemonize",
+ "dirs",
+ "dotenvy",
+ "futures-util",
+ "hound",
+ "http",
+ "i24",
+ "libspa-sys",
+ "pipewire",
+ "ratatui",
+ "rtrb",
+ "rubato",
+ "rustls",
+ "serde",
+ "serde_json",
+ "symphonia",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-stream",
+ "tokio-tungstenite",
+ "tokio-util",
+]
 
 [[package]]
 name = "transpose"

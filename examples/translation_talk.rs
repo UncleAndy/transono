@@ -3,9 +3,9 @@ use std::sync::Arc;
 use tokio::signal;
 use cpal::traits::DeviceTrait;
 
-use libereco::audio::{AudioDevicesCpal, AudioInputCpal, AudioOutputCpal, LatencyStats};
-use libereco::providers::openai::translation::{OpenAITranslationConfig, OpenAITranslationProvider};
-use libereco::line::TranslationLine;
+use transono::audio::{AudioDevicesCpal, AudioInputCpal, AudioOutputCpal, LatencyStats};
+use transono::providers::openai::translation::{OpenAITranslationConfig, OpenAITranslationProvider};
+use transono::line::TranslationLine;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -94,7 +94,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-fn print_latency_stats(snapshot: libereco::audio::LatencySnapshot) {
+fn print_latency_stats(snapshot: transono::audio::LatencySnapshot) {
     println!();
     println!("Latency Statistics (ms):");
     println!("---------------------------------------------------------------");
@@ -110,7 +110,7 @@ fn print_latency_stats(snapshot: libereco::audio::LatencySnapshot) {
     println!("---------------------------------------------------------------");
 }
 
-fn print_metric(name: &str, m: libereco::audio::MetricSnapshot) {
+fn print_metric(name: &str, m: transono::audio::MetricSnapshot) {
     println!(
         "{} | {:6.2} | {:6.2} | {:6.2} | {:6.2} |",
         name, m.min_ms, m.avg_ms, m.max_ms, m.last_ms

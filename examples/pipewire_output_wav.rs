@@ -4,7 +4,7 @@ use hound::{SampleFormat, WavReader};
 use std::env;
 use std::time::Duration;
 use tokio::time::sleep;
-use libereco::audio::{
+use transono::audio::{
     Audio, AudioFormat, AudioOutput, Endianness, FRAME_CAPACITY, PcmAudio, PcmFormat,
     PipeWireOutput,
 };

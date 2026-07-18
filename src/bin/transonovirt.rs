@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
 use clap::Parser;
 use daemonize::Daemonize;
-use libereco::ctl::pipewire::VirtualAudioDevices;
+use transono::ctl::pipewire::VirtualAudioDevices;
 use pipewire::main_loop::MainLoopRc;
 use pipewire::context::ContextRc;
 use std::ffi::CString;
@@ -21,7 +21,7 @@ struct Cli {
 
 fn get_cache_dir() -> PathBuf {
     let mut path = dirs::cache_dir().unwrap_or_else(|| PathBuf::from("/tmp"));
-    path.push("liberecovirt");
+    path.push("transonovirt");
     let _ = fs::create_dir_all(&path).expect("Не удалось создать директорию кэша");
     path
 }
@@ -46,14 +46,14 @@ fn main() -> Result<()> {
             if let Some(lang) = cli.language {
                 (lang, true)
             } else {
-                return Err(anyhow!("Укажите язык: liberecovirt {} <lang>", cli.action));
+                return Err(anyhow!("Укажите язык: transonovirt {} <lang>", cli.action));
             }
         }
         "start" => {
             if let Some(lang) = cli.language {
                 (lang, false)
             } else {
-                return Err(anyhow!("Укажите язык для запуска: liberecovirt start <lang>"));
+                return Err(anyhow!("Укажите язык для запуска: transonovirt start <lang>"));
             }
         }
         lang => (lang.to_string(), false),
