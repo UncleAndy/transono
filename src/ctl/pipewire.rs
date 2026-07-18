@@ -51,7 +51,8 @@ impl Backend for PipewireBackend {
     }
 
     fn status(&self, lang: &str) -> Result<Vec<DeviceStatus>> {
-        let host = cpal::default_host();
+        let host = cpal::host_from_id(cpal::HostId::PipeWire)
+            .map_err(|e| CoreError::Cpal(e.to_string()))?;
 
         let inputs = host
             .input_devices()
