@@ -399,11 +399,15 @@ impl PipeWireSession {
                             return;
                         };
 
+                        println!("INPUT CALLBACK RUNNING {:?}", stream.state());
+
                         let Some(mut buffer) =
                             stream.dequeue_buffer()
                         else {
                             return;
                         };
+
+                        println!("Buffer requested: {:?}", buffer.requested());
 
                         let datas = buffer.datas_mut();
 
@@ -413,10 +417,24 @@ impl PipeWireSession {
 
                         let data = &datas[0];
 
+
                         let size = {
                             let chunk = data.chunk();
+
+                            println!(
+                                "offset={} size={} stride={}",
+                                chunk.offset(),
+                                chunk.size(),
+                                chunk.stride(),
+                            );
+
                             chunk.size() as usize
                         };
+
+                        let chunk = data.chunk();
+
+                        let offset = chunk.offset() as usize;
+                        let size = chunk.size() as usize;
 
                         let data = &mut datas[0];
 
@@ -424,12 +442,32 @@ impl PipeWireSession {
                             return;
                         };
 
+                        let bytes = &bytes[offset .. offset + size];
+
+                        let non_zero = bytes.iter().any(|b| *b != 0);
+
+                        println!(
+                            "bytes={} non_zero={}",
+                            bytes.len(),
+                            non_zero
+                        );
+
                         let samples: &[f32] = unsafe {
                             std::slice::from_raw_parts(
                                 bytes.as_ptr() as *const f32,
                                 size / size_of::<f32>(),
                             )
                         };
+
+                        let max = samples
+                            .iter()
+                            .fold(0.0f32, |m, x| m.max(x.abs()));
+
+                        println!(
+                            "samples={} max={}",
+                            samples.len(),
+                            max
+                        );
 
                         state.writer.write(samples);
                     })
@@ -448,7 +486,7 @@ impl PipeWireSession {
         stream.connect(
             direction,
             config.node_id,
-            StreamFlags::AUTOCONNECT | StreamFlags::MAP_BUFFERS,
+            StreamFlags::AUTOCONNECT | StreamFlags::MAP_BUFFERS | StreamFlags::RT_PROCESS,
             &mut params,
         )?;
 

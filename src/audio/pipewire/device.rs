@@ -27,10 +27,10 @@ const DEFAULT_AUDIO_FORMAT: AudioFormat = AudioFormat {
 };
 
 #[derive(Debug, Clone)]
-pub struct PipeWireNodeInfo {
-    pub id: u32,
-    pub properties: HashMap<String, String>,
-    pub default_format: Option<AudioFormat>,
+struct PipeWireNodeInfo {
+    id: u32,
+    properties: HashMap<String, String>,
+    default_format: Option<AudioFormat>,
 }
 
 struct BoundObjects {
@@ -140,7 +140,7 @@ impl DefaultFormatBuilder {
     }
 }
 
-pub fn enumerate_nodes() -> Result<Vec<PipeWireNodeInfo>> {
+fn enumerate_nodes() -> Result<Vec<PipeWireNodeInfo>> {
     let main_loop = pw::main_loop::MainLoopRc::new(None)?;
     let context = pw::context::ContextRc::new(&main_loop, None)?;
     let core = context.connect_rc(None)?;
@@ -263,28 +263,6 @@ pub fn enumerate_nodes() -> Result<Vec<PipeWireNodeInfo>> {
     }
 
     Ok(nodes.borrow().values().cloned().collect())
-}
-
-pub fn find_node_by_name(name: &str) -> Result<Option<u32>> {
-    let nodes = enumerate_nodes()?;
-    for node in nodes {
-        if let Some(desc) = node.properties.get("node.description") {
-            if desc == name {
-                return Ok(Some(node.id));
-            }
-        }
-        if let Some(nick) = node.properties.get("node.nick") {
-            if nick == name {
-                return Ok(Some(node.id));
-            }
-        }
-        if let Some(node_name) = node.properties.get("node.name") {
-            if node_name == name {
-                return Ok(Some(node.id));
-            }
-        }
-    }
-    Ok(None)
 }
 
 fn choice_default_id(choice: &ChoiceValue) -> Option<u32> {

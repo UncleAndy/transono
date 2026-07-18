@@ -1,5 +1,6 @@
+use std::str::FromStr;
 use anyhow::{Context, Result, anyhow};
-use cpal::traits::DeviceTrait;
+use cpal::{Device, Host, traits::{DeviceTrait, HostTrait}, DeviceId};
 use std::sync::Arc;
 // No imports needed from symphonia::core::audio here if not used
 use tokio::sync::mpsc;
@@ -8,10 +9,7 @@ use transono::audio::processors::compressor::{Compressor, NATURAL_VOICE};
 use transono::line::TranslationLine;
 use transono::audio::diagnost::indicator::Indicator;
 use transono::audio::processors::denoiser::Denoiser;
-use transono::audio::{
-    AudioDevicesCpal, AudioFormat, AudioInputCpal, AudioOutputCpal, PipeWireInput, PipeWireOutput,
-    Processor, find_node_by_name,
-};
+use transono::audio::{AudioDevicesCpal, AudioFormat, AudioInputCpal, AudioOutputCpal, Processor};
 use transono::console::ConsoleApp;
 use transono::core::provider::Provider;
 use transono::ctl::create_backend;
@@ -58,24 +56,33 @@ async fn main() -> Result<()> {
     let capture = devices.default_input()?;
     let playback = devices.default_output()?;
 
+    let host = devices.host();
+
+    println!("Check virtual output: {}", &virtual_devices.internal_to_meeting_speaker_out);
+    let to_microphone = find_virtual_output(
+        host,
+        &virtual_devices.internal_to_meeting_speaker_out,
+        language,
+    )?;
+    println!("{:#?}", to_microphone.default_output_config());
+
+    println!("Check virtual input: {}", &virtual_devices.internal_from_meeting_microphone_in);
+    let from_speaker = find_virtual_input(
+        host,
+        &virtual_devices.internal_from_meeting_microphone_in,
+        language,
+    )?;
+    println!("{:#?}", from_speaker.default_input_config());
+
+    println!("Translator App");
+    println!("===========================");
+    println!();
+
     let config = OpenAITranslationConfig::from_env()?
         .with_lang(language)
         .clone();
 
     let remote_spec = config.audio_format().spec().clone();
-    let remote_format = AudioFormat::from(config.audio_format());
-
-    println!("Check virtual output: {}", &virtual_devices.internal_to_meeting_speaker_out);
-    let to_microphone_node_id = find_node_by_name(&virtual_devices.internal_to_meeting_speaker_out)?
-        .ok_or_else(|| missing_virtual_device("output", &virtual_devices.internal_to_meeting_speaker_out, language))?;
-
-    println!("Check virtual input: {}", &virtual_devices.internal_from_meeting_microphone_in);
-    let from_speaker_node_id = find_node_by_name(&virtual_devices.internal_from_meeting_microphone_in)?
-        .ok_or_else(|| missing_virtual_device("input", &virtual_devices.internal_from_meeting_microphone_in, language))?;
-
-    println!("Translator App");
-    println!("===========================");
-    println!();
 
     println!(
         "OpenAI format: {} Hz, {} channel(s)",
@@ -88,19 +95,17 @@ async fn main() -> Result<()> {
 
     let provider = OpenAITranslationProvider::new(config);
 
+    let output_sample_rate = to_microphone.default_output_config()?.sample_rate();
     let input_sample_rate = capture.default_input_config()?.sample_rate();
 
     println!("Capture: {} Hz", input_sample_rate);
     println!("Remote : {} Hz", remote_spec.rate());
+    println!("Playback: {} Hz", output_sample_rate);
 
     let stats_direct = Arc::new(transono::audio::LatencyStats::default());
 
     let input_hw = AudioInputCpal::new(capture, stats_direct.clone())?;
-    let to_microphone_virt = PipeWireOutput::new(
-        remote_format,
-        virtual_devices.internal_to_meeting_speaker_out.clone(),
-        to_microphone_node_id,
-    )?;
+    let to_microphone_virt = AudioOutputCpal::new(to_microphone, stats_direct.clone())?;
 
     /*
         ------------------------------------------------------------------
@@ -152,16 +157,11 @@ async fn main() -> Result<()> {
     let config_back = OpenAITranslationConfig::from_env()?
         .with_lang(language_self)
         .clone();
-    let remote_format_back = AudioFormat::from(config_back.audio_format());
     let provider_back = OpenAITranslationProvider::new(config_back);
 
     let stats_back = Arc::new(transono::audio::LatencyStats::default());
 
-    let from_speaker_virt = PipeWireInput::new(
-        remote_format_back,
-        virtual_devices.internal_from_meeting_microphone_in.clone(),
-        from_speaker_node_id,
-    )?;
+    let from_speaker_virt = AudioInputCpal::new(from_speaker, stats_back.clone())?;
     let output_hw = AudioOutputCpal::new(playback, stats_back.clone())?;
 
     // TranslationLine "en" -> "ru"
@@ -236,6 +236,25 @@ async fn main() -> Result<()> {
     println!("Done.");
 
     Ok(())
+}
+
+fn find_virtual_output(host: &Host, name: &str, language: &str) -> Result<Device> {
+    let device_id = DeviceId::from_str(format!("{}:{}", host.id(), name).as_str())?;
+    println!("Output DeviceId: {}", device_id);
+    let device = host.device_by_id(&device_id);
+    if let Some(device) = device {
+        return Ok(device)
+    }
+    Err(missing_virtual_device("output", name, language))
+}
+
+fn find_virtual_input(host: &Host, name: &str, language: &str) -> Result<Device> {
+    let device_id = DeviceId::from_str(format!("{}:{}", host.id(), name).as_str())?;
+    let device = host.device_by_id(&device_id);
+    if let Some(device) = device {
+        return Ok(device)
+    }
+    Err(missing_virtual_device("input", name, language))
 }
 
 fn missing_virtual_device(direction: &str, name: &str, language: &str) -> anyhow::Error {

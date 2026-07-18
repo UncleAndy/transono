@@ -65,16 +65,18 @@ pub struct PipeWireOutput {
 }
 
 impl PipeWireOutput {
-    pub fn new(format: AudioFormat, node_name: String, node_id: u32) -> Result<Self> {
-        let (producer, consumer) = AudioBuffer::new(32)?;
+    pub fn new(format: AudioFormat, node_name: String, node_id: u32) -> Self {
+        let (producer, consumer) = AudioBuffer::new(32).unwrap();
 
-        Ok(Self {
+        Self {
             producer: Some(producer),
             format,
             _node_name: node_name.clone(),
             _node_id: node_id,
-            _worker: PipeWireWorker::spawn_output(consumer, format, node_name, Some(node_id))?,
-        })
+            _worker: PipeWireWorker::spawn_output(consumer, format, node_name.clone(), Some(node_id))
+                    .ok()
+                    .unwrap(),
+        }
     }
 }
 

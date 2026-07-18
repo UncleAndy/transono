@@ -127,38 +127,40 @@ fn main() -> Result<()> {
             let _core = context.connect_rc(None).map_err(|e| anyhow!("Не удалось подключиться к Core: {}", e))?;
 
             let dev1_args = format!("\
+                node.passive = true \
                 capture.props = {{ \
                     node.name = \"{}\" \
                     node.description = \"{}\" \
                     media.class = \"Audio/Sink\" \
-                    node.virtual = true \
-                    node.autoconnect = false \
+                    node.target = \"{}\" \
+                    node.passive = true \
+                    audio.format = \"F32\" \
+                    audio.rate = 48000 \
+                    audio.position = \"FL,FR\" \
                 }} \
                 playback.props = {{ \
                     node.name = \"{}\" \
                     node.description = \"{}\" \
-                    media.class = \"Stream/Input/Audio\" \
+                    media.class = \"Audio/Source\" \
+                    node.source = \"{}\" \
                     node.passive = true \
-                    node.always-process = true \
-                    node.dont-reconnect = true \
-                    target.delay-connect = true \
-                    node.autoconnect = false \
                     audio.format = \"F32\" \
                     audio.rate = 48000 \
-                    audio.channels = 2 \
-                    audio.position = [ FL FR ] \
+                    audio.position = \"FL,FR\" \
                 }}",
                 names.from_meeting_speaker_out,
                 names.from_meeting_speaker_out,
                 names.internal_from_meeting_microphone_in,
                 names.internal_from_meeting_microphone_in,
+                names.internal_from_meeting_microphone_in,
+                names.from_meeting_speaker_out,
             );
 
             let dev2_args = format!("\
                 capture.props = {{ \
                     node.name = \"{}\" \
                     node.description = \"{}\" \
-                    media.class = \"Stream/Output/Audio\" \
+                    media.class = \"Audio/Sink\" \
                     node.passive = true \
                     node.always-process = true \
                     node.dont-reconnect = true \
@@ -166,8 +168,7 @@ fn main() -> Result<()> {
                     node.autoconnect = false \
                     audio.format = \"F32\" \
                     audio.rate = 48000 \
-                    audio.channels = 2 \
-                    audio.position = [ FL FR ] \
+                    audio.position = \"FL,FR\" \
                 }} \
                 playback.props = {{ \
                     node.name = \"{}\" \
@@ -175,6 +176,9 @@ fn main() -> Result<()> {
                     media.class = \"Audio/Source\" \
                     node.virtual = true \
                     node.autoconnect = false \
+                    audio.format = \"F32\" \
+                    audio.rate = 48000 \
+                    audio.position = \"FL,FR\" \
                 }}",
                 names.internal_to_meeting_speaker_out,
                 names.internal_to_meeting_speaker_out,
