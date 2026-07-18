@@ -131,7 +131,10 @@ fn main() -> Result<()> {
                     node.name = \"{}\" \
                     node.description = \"{}\" \
                     media.class = \"Audio/Sink\" \
-                    node.always-process = true \
+                    node.virtual = true \
+                    node.autoconnect = false \
+                    node.dont-reconnect = true \
+                    node.loopback = false \
                 }} \
                 playback.props = {{ \
                     node.name = \"{}\" \
@@ -140,6 +143,8 @@ fn main() -> Result<()> {
                     node.passive = true \
                     node.always-process = true \
                     node.dont-reconnect = true \
+                    target.delay-connect = true \
+                    node.autoconnect = false \
                 }}",
                 names.from_meeting_speaker_out,
                 names.from_meeting_speaker_out,
@@ -155,12 +160,17 @@ fn main() -> Result<()> {
                     node.passive = true \
                     node.always-process = true \
                     node.dont-reconnect = true \
+                    target.delay-connect = true \
+                    node.autoconnect = false \
                 }} \
                 playback.props = {{ \
                     node.name = \"{}\" \
                     node.description = \"{}\" \
                     media.class = \"Audio/Source\" \
-                    node.always-process = true \
+                    node.virtual = true \
+                    node.autoconnect = false \
+                    node.dont-reconnect = true \
+                    node.loopback = false \
                 }}",
                 names.internal_to_meeting_speaker_out,
                 names.internal_to_meeting_speaker_out,
