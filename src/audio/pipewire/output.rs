@@ -98,12 +98,12 @@ impl AudioOutput for PipeWireOutput {
         }))
     }
 
-    fn start(&self) -> Result<()> {
+    fn start(&mut self) -> Result<()> {
         Ok(())
     }
 
-    fn stop(&self) -> Result<()> {
-        Ok(())
+    fn stop(&mut self) -> Result<()> {
+        self._worker.shutdown()
     }
 
     fn format(&self) -> AudioFormat {

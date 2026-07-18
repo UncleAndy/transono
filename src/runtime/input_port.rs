@@ -27,11 +27,11 @@ impl AudioOutput for InputPort {
             .sink_map_err(|_| CoreError::Transport(TransportError::ConnectionClosed))))
     }
 
-    fn start(&self) -> crate::core::error::Result<()> {
+    fn start(&mut self) -> crate::core::error::Result<()> {
         Ok(())
     }
 
-    fn stop(&self) -> crate::core::error::Result<()> {
+    fn stop(&mut self) -> crate::core::error::Result<()> {
         Ok(())
     }
 

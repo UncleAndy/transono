@@ -183,13 +183,13 @@ impl AudioOutput for AudioOutputCpal {
     }
 
     #[inline]
-    fn start(&self) -> Result<()> {
+    fn start(&mut self) -> Result<()> {
         self.stream.play().map_err(|e| CoreError::Cpal(e.to_string()))?;
         Ok(())
     }
  
     #[inline]
-    fn stop(&self) -> Result<()> {
+    fn stop(&mut self) -> Result<()> {
         self.stream.pause().map_err(|e| CoreError::Cpal(e.to_string()))?;
         Ok(())
     }

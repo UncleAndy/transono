@@ -1,5 +1,7 @@
+use std::cell::RefCell;
 use std::io::Cursor;
-use std::sync::Arc;
+use std::rc::Rc;
+use std::sync::{mpsc, Arc};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
 use std::time::Duration;
@@ -19,6 +21,11 @@ use crate::core::error::Result;
 pub struct PipeWireWorker {
     shutdown: Arc<AtomicBool>,
     thread: Option<JoinHandle<()>>,
+    command_tx: mpsc::Sender<WorkerCommand>,
+}
+
+enum WorkerCommand {
+    Drain(mpsc::Sender<()>),
 }
 
 pub struct FrameReader {
@@ -37,9 +44,17 @@ impl FrameReader {
     }
 }
 
+struct OutputState {
+    reader: FrameReader,
+}
+
+struct InputState {
+    writer: FrameWriter,
+}
+
 enum WorkerState {
-    Output(FrameReader),
-    Input(FrameWriter),
+    Output(OutputState),
+    Input(InputState),
 }
 
 struct FrameWriter {
@@ -61,6 +76,8 @@ struct PipeWireSession {
 
     _stream: StreamRc,
     _stream_listener: StreamListener<WorkerState>,
+    pending_drain: Rc<RefCell<Option<mpsc::Sender<()>>>>,
+    command_rx: mpsc::Receiver<WorkerCommand>,
 
     _format: AudioFormat,
     _node_name: String,
@@ -92,6 +109,8 @@ impl PipeWireWorker {
         let shutdown = Arc::new(AtomicBool::new(false));
         let thread_shutdown = shutdown.clone();
 
+        let (command_tx, command_rx) = mpsc::channel();
+
         let thread = std::thread::spawn(move || {
             let config = WorkerConfig {
                 node_name,
@@ -100,13 +119,14 @@ impl PipeWireWorker {
                 node_id,
             };
 
-            if let Err(e) = Self::run(thread_shutdown, config) {
+            if let Err(e) = Self::run(thread_shutdown, command_rx, config) {
                 eprintln!("PipeWire worker failed: {e}");
             }
         });
 
         Ok(Self {
             shutdown,
+            command_tx,
             thread: Some(thread),
         })
     }
@@ -120,6 +140,8 @@ impl PipeWireWorker {
         let shutdown = Arc::new(AtomicBool::new(false));
         let thread_shutdown = shutdown.clone();
 
+        let (command_tx, command_rx) = mpsc::channel();
+
         let thread = std::thread::spawn(move || {
             let config = WorkerConfig {
                 node_name,
@@ -128,32 +150,64 @@ impl PipeWireWorker {
                 node_id,
             };
 
-            if let Err(e) = Self::run(thread_shutdown, config) {
+            if let Err(e) = Self::run(thread_shutdown, command_rx, config) {
                 eprintln!("PipeWire worker failed: {e}");
             }
         });
 
         Ok(Self {
             shutdown,
+            command_tx,
             thread: Some(thread),
         })
     }
 
     fn run(
         shutdown: Arc<AtomicBool>,
+        command_rx: mpsc::Receiver<WorkerCommand>,
         config: WorkerConfig,
     ) -> Result<()> {
-
-        let ctx = PipeWireSession::new(config)?;
+        let ctx = PipeWireSession::new(config, command_rx)?;
 
         while !shutdown.load(Ordering::Acquire) {
+            ctx.process_commands()?;
 
             ctx._main_loop
                 .loop_()
                 .iterate(
                     Timeout::Finite(Duration::from_millis(10))
                 );
+
+            if shutdown.load(Ordering::Acquire) {
+                break;
+            }
         }
+
+        Ok(())
+    }
+
+    pub fn shutdown(&mut self) -> Result<()> {
+        // Доигрываем все данные.
+        self.drain()?;
+
+        // Просим поток завершиться.
+        self.shutdown.store(true, Ordering::Release);
+
+        // Ждем завершения потока.
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+
+        Ok(())
+    }
+
+    pub fn drain(&self) -> Result<()> {
+        let (tx, rx) = mpsc::channel();
+
+        let _ = self.command_tx
+            .send(WorkerCommand::Drain(tx));
+
+        let _ = rx.recv();
 
         Ok(())
     }
@@ -208,7 +262,7 @@ impl PipeWireSession {
         Ok(bytes)
     }
 
-    pub fn new(config: WorkerConfig) -> Result<Self> {
+    pub fn new(config: WorkerConfig, command_rx: mpsc::Receiver<WorkerCommand>) -> Result<Self> {
         pipewire::init();
 
         let main_loop = MainLoopRc::new(None)?;
@@ -242,15 +296,23 @@ impl PipeWireSession {
         let frame_stride =
             config.format.frame_size() as i32;
 
+        let pending_drain: Rc<RefCell<Option<mpsc::Sender<()>>>> =
+            Rc::new(RefCell::new(None));
+
         let stream_listener = match config.endpoint {
             WorkerEndpoint::Output(consumer) => {
+                let pending_drain_cb =
+                    pending_drain.clone();
+
                 stream
                     .add_local_listener_with_user_data(
                         WorkerState::Output(
-                            FrameReader {
-                                consumer,
-                                current: None,
-                                offset: 0,
+                            OutputState {
+                                reader: FrameReader {
+                                    consumer,
+                                    current: None,
+                                    offset: 0,
+                                },
                             }
                         )
                     )
@@ -263,7 +325,7 @@ impl PipeWireSession {
                         );
                     })
                     .process(move |stream, state| {
-                        let WorkerState::Output(reader) = state else {
+                        let WorkerState::Output(state) = state else {
                             return;
                         };
 
@@ -287,7 +349,6 @@ impl PipeWireSession {
                             };
 
                             let samples: &mut [f32] = unsafe {
-
                                 std::slice::from_raw_parts_mut(
                                     bytes.as_mut_ptr() as *mut f32,
                                     bytes.len()
@@ -295,7 +356,7 @@ impl PipeWireSession {
                                 )
                             };
 
-                            reader.fill(samples);
+                            state.reader.fill(samples);
 
                             bytes.len()
                         };
@@ -306,14 +367,23 @@ impl PipeWireSession {
                         *chunk.stride_mut() = frame_stride;
                         *chunk.size_mut() = size as u32;
                     })
+                    .drained(move |_, _| {
+                        if let Some(done) =
+                            pending_drain_cb.borrow_mut().take()
+                        {
+                            let _ = done.send(());
+                        }
+                    })
                     .register()?
             }
             WorkerEndpoint::Input(producer) => {
                 stream
                     .add_local_listener_with_user_data(
                         WorkerState::Input(
-                            FrameWriter {
-                                producer,
+                            InputState {
+                                writer: FrameWriter {
+                                    producer,
+                                }
                             }
                         )
                     )
@@ -326,7 +396,7 @@ impl PipeWireSession {
                         );
                     })
                     .process(move |stream, state| {
-                        let WorkerState::Input(writer) = state else {
+                        let WorkerState::Input(state) = state else {
                             return;
                         };
 
@@ -362,7 +432,7 @@ impl PipeWireSession {
                             )
                         };
 
-                        writer.write(samples);
+                        state.writer.write(samples);
                     })
                     .register()?
             }
@@ -390,11 +460,31 @@ impl PipeWireSession {
             _stream: stream,
             _stream_listener: stream_listener,
 
+            pending_drain,
+            command_rx,
+
             _format: config.format,
             _node_name: config.node_name,
 
             _pod_bytes: pod_bytes,
         })
+    }
+
+    fn process_commands(&self) -> Result<()> {
+        while let Ok(cmd) = self.command_rx.try_recv() {
+            match cmd {
+                WorkerCommand::Drain(done) => {
+                    if self.pending_drain.borrow().is_some() {
+                        // Игнорируем повторный вызов
+                        continue
+                    }
+                    *self.pending_drain.borrow_mut() = Some(done);
+                    self._stream.flush(true)?;
+                }
+            }
+        }
+
+        Ok(())
     }
 }
 

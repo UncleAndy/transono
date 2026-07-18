@@ -158,11 +158,11 @@ impl AudioOutput for Mixer {
             .sink_map_err(|_| CoreError::Transport(TransportError::ConnectionClosed))))
     }
 
-    fn start(&self) -> Result<()> {
+    fn start(&mut self) -> Result<()> {
         Ok(())
     }
 
-    fn stop(&self) -> Result<()> {
+    fn stop(&mut self) -> Result<()> {
         Ok(())
     }
 

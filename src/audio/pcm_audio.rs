@@ -17,7 +17,7 @@ pub struct PcmAudio {
 }
 
 impl PcmAudio {
-    pub(crate) fn new(spec: AudioSpec, frames: usize) -> Self {
+    pub fn new(spec: AudioSpec, frames: usize) -> Self {
         let channel_count = spec.channels().count();
         let data = vec![0.0; frames * channel_count];
 
@@ -31,7 +31,7 @@ impl PcmAudio {
         }
     }
 
-    pub(crate) fn frames(&self) -> usize {
+    pub fn frames(&self) -> usize {
         self.frames
     }
 
@@ -45,7 +45,7 @@ impl PcmAudio {
         &self.data[start..end]
     }
 
-    pub(crate) fn channel_mut(&mut self, index: usize) -> &mut [f32] {
+    pub fn channel_mut(&mut self, index: usize) -> &mut [f32] {
         let start = index * self.frames;
         let end = start + self.frames;
         &mut self.data[start..end]

@@ -1,16 +1,16 @@
-use std::{
-    env,
-    thread,
-    time::Duration,
-};
-
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
+use futures_util::SinkExt;
 use hound::{SampleFormat, WavReader};
+use std::env;
 
-use libereco::audio::{AudioBuffer, AudioFormat, Endianness, PcmFormat, FRAME_CAPACITY};
-use libereco::audio::pipewire::PipeWireWorker;
+use libereco::audio::{
+    Audio, AudioFormat, AudioOutput, Endianness, FRAME_CAPACITY, PcmAudio, PcmFormat,
+    PipeWireOutput,
+};
+use libereco::audio::AudioCodec::Pcm;
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     let filename = env::args()
         .nth(1)
         .unwrap_or_else(|| "sample.wav".to_string());
@@ -23,10 +23,7 @@ fn main() -> Result<()> {
 
     println!(
         "{} Hz, {} channels, {} bits, {:?}",
-        spec.sample_rate,
-        spec.channels,
-        spec.bits_per_sample,
-        spec.sample_format,
+        spec.sample_rate, spec.channels, spec.bits_per_sample, spec.sample_format,
     );
 
     let format = AudioFormat {
@@ -35,56 +32,32 @@ fn main() -> Result<()> {
         sample_format: PcmFormat::F32(Endianness::Little),
     };
 
-    let (mut producer, consumer) = AudioBuffer::new(32)?;
+    let mut output = PipeWireOutput::new(format, "wav-smoke".into(), 0);
 
-    let _worker = PipeWireWorker::spawn_output(
-        consumer,
-        format,
-        "wav-smoke".into(),
-        None,
-    )?;
+    let mut sink = output.sink()?;
+
+    let mut pcm = PcmAudio::new(format.spec(), FRAME_CAPACITY / format.channels as usize);
 
     match (spec.sample_format, spec.bits_per_sample) {
-        (SampleFormat::Float, 32) => {
-            let mut frame = Vec::<f32>::with_capacity(FRAME_CAPACITY);
-
-            for sample in wav.samples::<f32>() {
-                frame.push(sample?);
-
-                if frame.len() == FRAME_CAPACITY {
-                    while !producer.send(&frame)? {
-                        std::thread::yield_now();
-                    }
-
-                    frame.clear();
-                }
-            }
-
-            if !frame.is_empty() {
-                while !producer.send(&frame)? {
-                    std::thread::yield_now();
-                }
-            }
-        }
-
         (SampleFormat::Int, 16) => {
-            let mut frame = Vec::<f32>::with_capacity(FRAME_CAPACITY);
+            let channels = format.channels as usize;
+            let mut frame = 0;
+            let mut channel = 0;
 
             for sample in wav.samples::<i16>() {
-                frame.push(sample? as f32 / 32768.0);
+                pcm.channel_mut(channel)[frame] = sample? as f32 / 32768.0;
 
-                if frame.len() == FRAME_CAPACITY {
-                    while !producer.send(&frame)? {
-                        std::thread::yield_now();
-                    }
-
-                    frame.clear();
+                channel += 1;
+                if channel == channels {
+                    channel = 0;
+                    frame += 1;
                 }
-            }
 
-            if !frame.is_empty() {
-                while !producer.send(&frame)? {
-                    std::thread::yield_now();
+                if frame == pcm.frames() {
+                    sink.send(Audio::from_pcm(&pcm)?).await?;
+
+                    frame = 0;
+                    channel = 0;
                 }
             }
         }
@@ -92,11 +65,7 @@ fn main() -> Result<()> {
         _ => bail!("Unsupported WAV format"),
     }
 
-    println!("Waiting for playback...");
-
-    while !producer.is_empty() {
-        thread::sleep(Duration::from_secs(1));
-    }
+    sink.flush().await?;
 
     Ok(())
 }

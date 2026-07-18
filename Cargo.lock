@@ -1425,6 +1425,7 @@ dependencies = [
  "async-trait",
  "audio_samples",
  "base64-simd",
+ "bytemuck",
  "bytes",
  "clap",
  "cookie-factory",

@@ -251,7 +251,7 @@ impl<P: Provider> TranslationLine<P> {
     }
 
     fn stop_audio(&mut self) -> Result<()> {
-        if let Some(playback) = self.audio_output.take() {
+        if let Some(mut playback) = self.audio_output.take() {
             playback.stop()?;
         }
 

@@ -12,7 +12,7 @@ keywords = ["translation", "speech", "audio", "ai", "realtime"]
 categories = ["multimedia::audio", "api-bindings"]
 
 [dependencies]
-tokio = { version = "1.52", features = ["rt-multi-thread", "macros", "signal", "sync", "time", "io-std"] }
+tokio = { version = "1.52", features = ["rt-multi-thread", "macros", "signal", "sync", "time", "io-std", "rt"] }
 tokio-util = { version = "0.7", features = ["codec"] }
 tokio-stream = "0.1"
 cpal = { version = "0.18", features = ["pipewire", "realtime"] }
@@ -42,3 +42,4 @@ pipewire = "0.10"
 dirs = "6.0"
 cookie-factory = "0.3.3"
 libspa-sys = "0.10"
+bytemuck = "1.25.0"
