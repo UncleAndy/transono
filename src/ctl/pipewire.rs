@@ -70,8 +70,8 @@ impl Backend for PipewireBackend {
         let devices = VirtualAudioDevices::names(lang);
 
         result.push(DeviceStatus {
-            name: devices.to_meeting_microphone.clone(),
-            state: if has_device(inputs.iter().cloned(), &devices.to_meeting_microphone) {
+            name: devices.to_meeting_microphone_in.clone(),
+            state: if has_device(inputs.iter().cloned(), &devices.to_meeting_microphone_in) {
                 DeviceState::Present
             } else {
                 DeviceState::Missing
@@ -79,8 +79,8 @@ impl Backend for PipewireBackend {
         });
 
         result.push(DeviceStatus {
-            name: devices.from_meeting_speaker.clone(),
-            state: if has_device(outputs.iter().cloned(), &devices.from_meeting_speaker) {
+            name: devices.from_meeting_speaker_out.clone(),
+            state: if has_device(outputs.iter().cloned(), &devices.from_meeting_speaker_out) {
                 DeviceState::Present
             } else {
                 DeviceState::Missing
@@ -88,8 +88,8 @@ impl Backend for PipewireBackend {
         });
 
         result.push(DeviceStatus {
-            name: devices.internal_from_meeting_microphone.clone(),
-            state: if has_device(inputs.iter().cloned(), &devices.internal_from_meeting_microphone) {
+            name: devices.internal_from_meeting_microphone_in.clone(),
+            state: if has_device(inputs.iter().cloned(), &devices.internal_from_meeting_microphone_in) {
                 DeviceState::Present
             } else {
                 DeviceState::Missing
@@ -97,8 +97,8 @@ impl Backend for PipewireBackend {
         });
 
         result.push(DeviceStatus {
-            name: devices.internal_to_meeting_speaker.clone(),
-            state: if has_device(outputs.iter().cloned(), &devices.internal_to_meeting_speaker) {
+            name: devices.internal_to_meeting_speaker_out.clone(),
+            state: if has_device(outputs.iter().cloned(), &devices.internal_to_meeting_speaker_out) {
                 DeviceState::Present
             } else {
                 DeviceState::Missing
@@ -148,17 +148,17 @@ impl VirtualAudioDevices {
         let lang = lang.to_uppercase();
 
         DeviceSet {
-            to_meeting_microphone:
+            to_meeting_microphone_in:
             format!("Translator.{lang}.ToMeeting.Microphone"),
 
-            from_meeting_speaker:
+            internal_to_meeting_speaker_out:
+            format!("___internal.not_use.{lang}_out"),
+
+            from_meeting_speaker_out:
             format!("Translator.{lang}.FromMeeting.Speaker"),
 
-            internal_to_meeting_speaker:
-            format!("___internal.not_use.{lang}"),
-
-            internal_from_meeting_microphone:
-            format!("___internal.not_use.{lang}_"),
+            internal_from_meeting_microphone_in:
+            format!("___internal.not_use.{lang}_in"),
         }
     }
 
@@ -229,16 +229,16 @@ impl VirtualAudioDevices {
 
     pub fn device_set(&self) -> DeviceSet {
         DeviceSet {
-            to_meeting_microphone:
+            to_meeting_microphone_in:
             self.to.input_name.clone(),
 
-            from_meeting_speaker:
+            from_meeting_speaker_out:
             self.from.output_name.clone(),
 
-            internal_to_meeting_speaker:
+            internal_to_meeting_speaker_out:
             self.to.output_name.clone(),
 
-            internal_from_meeting_microphone:
+            internal_from_meeting_microphone_in:
             self.from.input_name.clone(),
         }
     }
@@ -255,12 +255,16 @@ fn create_pair(lang: &str, prefix: &str, hide_device: HiddenDevice) -> Result<Vi
     let sink_name = format!("translator_{lang}_{prefix}_speaker");
     let source_name = format!("translator_{lang}_{prefix}_microphone");
 
+    let names = VirtualAudioDevices::names(lang.as_str());
+
     let output_name = match hide_device {
         HiddenDevice::Output => {
-            format!("___internal.not_use.{}", lang.to_uppercase())
+            // format!("___internal.not_use.{}", lang.to_uppercase())
+            names.internal_to_meeting_speaker_out
         }
         HiddenDevice::Input => {
-            format!("Translator.{}.{}.Speaker", lang.to_uppercase(), prefix)
+            // format!("Translator.{}.{}.Speaker", lang.to_uppercase(), prefix)
+            names.to_meeting_microphone_in
         }
     };
     let sink_properties = &format!("device.description={output_name}");
@@ -277,10 +281,12 @@ fn create_pair(lang: &str, prefix: &str, hide_device: HiddenDevice) -> Result<Vi
 
     let input_name = match hide_device {
         HiddenDevice::Output => {
-            format!("Translator.{}.{}.Microphone", lang.to_uppercase(), prefix)
+            // format!("Translator.{}.{}.Microphone", lang.to_uppercase(), prefix)
+            names.from_meeting_speaker_out
         }
         HiddenDevice::Input => {
-            format!("___internal.not_use.{}_", lang.to_uppercase())
+            // format!("___internal.not_use.{}_", lang.to_uppercase())
+            names.internal_from_meeting_microphone_in
         }
     };
     let sink_properties = &format!("device.description={input_name}");

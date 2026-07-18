@@ -101,22 +101,22 @@ fn main() -> Result<()> {
                 playback.props = {{ \
                     node.name = \"{}\" \
                     node.description = \"{}\" \
-                    media.class = \"Stream/Output/Audio\" \
+                    media.class = \"Stream/Input/Audio\" \
                     node.passive = true \
                     node.always-process = true \
                     node.dont-reconnect = true \
                 }}",
-                names.from_meeting_speaker,
-                names.from_meeting_speaker,
-                names.internal_from_meeting_microphone,
-                names.internal_from_meeting_microphone
+                names.from_meeting_speaker_out,
+                names.from_meeting_speaker_out,
+                names.internal_from_meeting_microphone_in,
+                names.internal_from_meeting_microphone_in,
             );
 
             let dev2_args = format!("\
                 capture.props = {{ \
                     node.name = \"{}\" \
                     node.description = \"{}\" \
-                    media.class = \"Stream/Input/Audio\" \
+                    media.class = \"Stream/Output/Audio\" \
                     node.passive = true \
                     node.always-process = true \
                     node.dont-reconnect = true \
@@ -126,10 +126,10 @@ fn main() -> Result<()> {
                     node.description = \"{}\" \
                     media.class = \"Audio/Source\" \
                 }}",
-                names.internal_to_meeting_speaker,
-                names.internal_to_meeting_speaker,
-                names.to_meeting_microphone,
-                names.to_meeting_microphone
+                names.internal_to_meeting_speaker_out,
+                names.internal_to_meeting_speaker_out,
+                names.to_meeting_microphone_in,
+                names.to_meeting_microphone_in,
             );
 
             let _dev1_module = unsafe {

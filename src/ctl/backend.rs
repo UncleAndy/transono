@@ -16,21 +16,21 @@ pub trait Backend {
 
 #[derive(Debug, Clone)]
 pub struct DeviceSet {
-    pub to_meeting_microphone: String,
-    pub from_meeting_speaker: String,
+    pub to_meeting_microphone_in: String,
+    pub from_meeting_speaker_out: String,
 
-    pub internal_to_meeting_speaker: String,
-    pub internal_from_meeting_microphone: String,
+    pub internal_to_meeting_speaker_out: String,
+    pub internal_from_meeting_microphone_in: String,
 }
 
 impl Display for DeviceSet {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "  Public:")?;
-        writeln!(f, "    ToMeeting.Microphone     : {}", self.to_meeting_microphone)?;
-        writeln!(f, "    FromMeeting.Speaker      : {}", self.from_meeting_speaker)?;
+        writeln!(f, "    ToMeeting.Microphone     : {}", self.to_meeting_microphone_in)?;
+        writeln!(f, "    FromMeeting.Speaker      : {}", self.from_meeting_speaker_out)?;
         writeln!(f, "  Internal:")?;
-        writeln!(f, "    ToMeeting.Speaker        : {}", self.internal_to_meeting_speaker)?;
-        writeln!(f, "    FromMeeting.Microphone   : {}", self.internal_from_meeting_microphone)
+        writeln!(f, "    ToMeeting.Speaker        : {}", self.internal_to_meeting_speaker_out)?;
+        writeln!(f, "    FromMeeting.Microphone   : {}", self.internal_from_meeting_microphone_in)
     }
 }
 

@@ -36,19 +36,19 @@ async fn main() -> Result<()> {
     println!("Virtual devices:");
     println!(
         "    meeting microphone: {}",
-        &virtual_devices.to_meeting_microphone
+        &virtual_devices.to_meeting_microphone_in
     );
     println!(
         "    meeting speaker   : {}",
-        &virtual_devices.from_meeting_speaker
+        &virtual_devices.from_meeting_speaker_out
     );
     println!(
         "    internal output   : {}",
-        &virtual_devices.internal_to_meeting_speaker
+        &virtual_devices.internal_to_meeting_speaker_out
     );
     println!(
         "    internal input    : {}",
-        &virtual_devices.internal_from_meeting_microphone
+        &virtual_devices.internal_from_meeting_microphone_in
     );
 
     let devices = AudioDevicesCpal::new();
@@ -58,14 +58,21 @@ async fn main() -> Result<()> {
 
     let host = devices.host();
 
-    let to_microphone =
-        find_virtual_output(host, &virtual_devices.internal_to_meeting_speaker, language)?;
-
-    let from_speaker = find_virtual_input(
+    println!("Check virtual output: {}", &virtual_devices.internal_to_meeting_speaker_out);
+    let to_microphone = find_virtual_output(
         host,
-        &virtual_devices.internal_from_meeting_microphone,
+        &virtual_devices.internal_to_meeting_speaker_out,
         language,
     )?;
+    println!("{:#?}", to_microphone.default_output_config());
+
+    println!("Check virtual input: {}", &virtual_devices.internal_from_meeting_microphone_in);
+    let from_speaker = find_virtual_input(
+        host,
+        &virtual_devices.internal_from_meeting_microphone_in,
+        language,
+    )?;
+    println!("{:#?}", from_speaker.default_input_config());
 
     println!("Translator App");
     println!("===========================");
@@ -233,6 +240,7 @@ async fn main() -> Result<()> {
 
 fn find_virtual_output(host: &Host, name: &str, language: &str) -> Result<Device> {
     let device_id = DeviceId::from_str(format!("{}:{}", host.id(), name).as_str())?;
+    println!("Output DeviceId: {}", device_id);
     let device = host.device_by_id(&device_id);
     if let Some(device) = device {
         return Ok(device)
