@@ -489,6 +489,11 @@ impl PipeWireSession {
 
 impl Drop for PipeWireWorker {
     fn drop(&mut self) {
+        let _ = self.drain();
+
+        // дать PipeWire еще немного пожить
+        std::thread::sleep(Duration::from_millis(200));
+
         self.shutdown.store(true, Ordering::Release);
 
         if let Some(thread) = self.thread.take() {
