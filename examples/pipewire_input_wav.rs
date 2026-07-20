@@ -12,6 +12,8 @@ async fn main() -> Result<()> {
     let backend = create_backend()
         .context("failed to create backend")?;
 
+    backend.init(language)?;
+
     let virt = backend
         .devices(language)
         .context("failed to resolve virtual devices")?;
@@ -75,4 +77,22 @@ async fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn find_node_by_name(name: &str) -> Result<Option<u32>> {
+    use transono::audio::{AudioDeviceFactory, AudioDeviceId};
+    use transono::audio::pipewire::device::PipeWireDeviceFactory;
+
+    let factory = PipeWireDeviceFactory;
+    let devices = factory.enumerate_devices()?;
+
+    for device in devices {
+        if device.name == name {
+            if let AudioDeviceId::Numeric(id) = device.id {
+                return Ok(Some(id as u32));
+            }
+        }
+    }
+
+    Ok(None)
 }
