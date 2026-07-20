@@ -67,6 +67,7 @@ impl BoundObjects {
     }
 }
 
+/// Factory for discovering and creating PipeWire audio devices.
 pub struct PipeWireDeviceFactory;
 
 impl AudioDeviceFactory for PipeWireDeviceFactory {

@@ -10,6 +10,7 @@ use crate::audio::{
 };
 use crate::core::error::{CoreError, Result};
 
+/// Audio input implementation using PipeWire.
 pub struct PipeWireInput {
     consumer: Option<FrameConsumer>,
     format: AudioFormat,
@@ -21,6 +22,7 @@ pub struct PipeWireInput {
 }
 
 impl PipeWireInput {
+    /// Creates a new PipeWire audio input for the specified node.
     pub fn new(format: AudioFormat, node_name: String, node_id: u32) -> Result<Self> {
         let (producer, consumer) = AudioBuffer::new(32)?;
 

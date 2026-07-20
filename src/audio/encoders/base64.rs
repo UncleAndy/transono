@@ -2,6 +2,7 @@ use crate::core::error::{CoreError, Result};
 use crate::audio::{AudioDecoder, AudioEncoder, EncodedAudio, EncodedAudioFormat, PcmAudio};
 use crate::audio::encoders::{PcmBinaryDecoder, PcmBinaryEncoder};
 
+/// Encoder for PCM audio that outputs Base64 encoded text.
 pub struct PcmBase64Encoder {
     format: EncodedAudioFormat,
     binary: PcmBinaryEncoder,
@@ -67,6 +68,7 @@ impl AudioEncoder for PcmBase64Encoder {
     }
 }
 
+/// Decoder for Base64 encoded PCM audio.
 pub struct PcmBase64Decoder {
     format: EncodedAudioFormat,
     binary: PcmBinaryDecoder,

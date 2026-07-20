@@ -11,12 +11,18 @@ use crate::audio::{
 };
 use crate::core::error::{CoreError, Result};
 
+/// Metric for tracking latency values.
 #[derive(Debug)]
 pub struct LatencyMetric {
+    /// Minimum latency in microseconds.
     pub min_us: AtomicU64,
+    /// Maximum latency in microseconds.
     pub max_us: AtomicU64,
+    /// Cumulative latency sum in microseconds.
     pub sum_us: AtomicU64,
+    /// Number of measurements taken.
     pub count: AtomicU64,
+    /// Last recorded latency in microseconds.
     pub last_us: AtomicU64,
 }
 
@@ -33,6 +39,7 @@ impl Default for LatencyMetric {
 }
 
 impl LatencyMetric {
+    /// Updates the metric with a new latency value in microseconds.
     pub fn update(&self, value_us: u64) {
         self.min_us.fetch_min(value_us, Ordering::Relaxed);
         self.max_us.fetch_max(value_us, Ordering::Relaxed);
@@ -41,6 +48,7 @@ impl LatencyMetric {
         self.last_us.store(value_us, Ordering::Relaxed);
     }
 
+    /// Takes a snapshot of the current metric values.
     pub fn snapshot(&self) -> MetricSnapshot {
         let count = self.count.load(Ordering::Relaxed);
         let min = self.min_us.load(Ordering::Relaxed);
@@ -61,38 +69,61 @@ impl LatencyMetric {
     }
 }
 
+/// Collection of latency metrics for different parts of the system.
 #[derive(Debug, Default)]
 pub struct LatencyStats {
+    /// Latency of the input processing pipeline.
     pub input_pipeline: LatencyMetric,
+    /// Total input latency including capture.
     pub input_total: LatencyMetric,
+    /// Latency of the output processing pipeline.
     pub output_pipeline: LatencyMetric,
+    /// Total output latency including playback.
     pub output_total: LatencyMetric,
+    /// Number of frames dropped at input.
     pub dropped_input: AtomicU64,
+    /// Number of packets dropped during network transmission.
     pub dropped_network: AtomicU64,
+    /// Number of frames dropped at output.
     pub dropped_output: AtomicU64,
+    /// Whether the output stream is currently active.
     pub output_active: AtomicBool,
 }
 
+/// Snapshot of a single latency metric.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct MetricSnapshot {
+    /// Minimum latency in milliseconds.
     pub min_ms: f64,
+    /// Maximum latency in milliseconds.
     pub max_ms: f64,
+    /// Average latency in milliseconds.
     pub avg_ms: f64,
+    /// Last latency in milliseconds.
     pub last_ms: f64,
 }
 
+/// Snapshot of all latency statistics.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct LatencySnapshot {
+    /// Snapshot of input pipeline metrics.
     pub input_pipeline: MetricSnapshot,
+    /// Snapshot of total input metrics.
     pub input_total: MetricSnapshot,
+    /// Snapshot of output pipeline metrics.
     pub output_pipeline: MetricSnapshot,
+    /// Snapshot of total output metrics.
     pub output_total: MetricSnapshot,
+    /// Total frames dropped at input.
     pub dropped_input: u64,
+    /// Total packets dropped on the network.
     pub dropped_network: u64,
+    /// Total frames dropped at output.
     pub dropped_output: u64,
 }
 
 impl LatencyStats {
+    /// Takes a snapshot of all statistics.
     pub fn snapshot(&self) -> LatencySnapshot {
         LatencySnapshot {
             input_pipeline: self.input_pipeline.snapshot(),
@@ -105,25 +136,30 @@ impl LatencyStats {
         }
     }
 
+    /// Increments the dropped input counter.
     pub fn inc_dropped_input(&self) {
         self.dropped_input.fetch_add(1, Ordering::Relaxed);
     }
 
+    /// Increments the dropped network counter.
     pub fn inc_dropped_network(&self) {
         self.dropped_network.fetch_add(1, Ordering::Relaxed);
     }
 
+    /// Increments the dropped output counter.
     pub fn inc_dropped_output(&self) {
         if self.output_active.load(Ordering::Relaxed) {
             self.dropped_output.fetch_add(1, Ordering::Relaxed);
         }
     }
 
+    /// Sets whether the output is currently active.
     pub fn set_output_active(&self, active: bool) {
         self.output_active.store(active, Ordering::Relaxed);
     }
 }
 
+/// Audio processing pipeline that executes a sequence of processors.
 pub struct AudioPipeline {
     processors: Vec<Processor>,
     scratch_pcm: Option<PcmAudio>,
@@ -133,6 +169,7 @@ pub struct AudioPipeline {
 }
 
 impl AudioPipeline {
+    /// Creates a new audio pipeline.
     pub fn new(stats: Arc<LatencyStats>, is_input: bool) -> Self {
         Self {
             processors: Vec::new(),
@@ -143,6 +180,7 @@ impl AudioPipeline {
         }
     }
  
+    /// Creates a new audio pipeline with a specific PCM pool.
     pub fn with_pool(stats: Arc<LatencyStats>, is_input: bool, pool: SharedPcmPool) -> Self {
         Self {
             processors: Vec::new(),
@@ -153,6 +191,7 @@ impl AudioPipeline {
         }
     }
  
+    /// Creates a standalone audio pipeline without external stats.
     pub fn new_standalone(is_input: bool) -> Self {
         Self {
             processors: Vec::new(),
@@ -163,12 +202,13 @@ impl AudioPipeline {
         }
     }
 
+    /// Adds a processor to the pipeline.
     pub fn with(&mut self, processor: Processor) -> &mut Self {
         self.processors.push(processor);
         self
     }
 
-    /// Создает пайплайн для преобразования входного аудио между форматами.
+    /// Creates a pipeline for converting input audio between formats.
     pub fn new_input_pipeline(stats: Arc<LatencyStats>, from: AudioFormat, to: AudioFormat) -> Result<Box<Self>> {
         let mut pipeline = Self::new(stats, true);
 
@@ -193,7 +233,7 @@ impl AudioPipeline {
         Ok(Box::new(pipeline))
     }
 
-    /// Создает пайплайн для преобразования выходного аудио между форматами.
+    /// Creates a pipeline for converting output audio between formats.
     pub fn new_output_pipeline(stats: Arc<LatencyStats>, from: AudioFormat, to: AudioFormat) -> Result<Box<Self>> {
         let mut pipeline = Self::new(stats, false);
 
@@ -215,6 +255,7 @@ impl AudioPipeline {
         Ok(Box::new(pipeline))
     }
 
+    /// Processes an audio stream and updates latency statistics.
     pub fn process_stream(&mut self, mut audio: Audio) -> Result<Option<(Audio, Duration)>> {
         let start_time = Instant::now();
 
@@ -240,15 +281,17 @@ impl AudioPipeline {
         Ok(Some((audio, duration)))
     }
 
+    /// Returns true if the pipeline has no processors.
     pub fn is_empty(&self) -> bool {
         self.processors.is_empty()
     }
 
+    /// Removes all processors from the pipeline.
     pub fn clear(&mut self) {
         self.processors.clear()
     }
 
-    /// Внутренний метод обработки, который можно вызывать из трейтов.
+    /// Internal processing method that can be called from traits.
     pub fn process_audio(&mut self, audio: &mut Audio) -> Result<bool> {
         let mut in_scratch = false;
  
@@ -299,6 +342,7 @@ impl AudioPipeline {
         Ok(true)
     }
 
+    /// Processes DSP-level PCM audio.
     pub fn process_dsp(&mut self, pcm: &mut PcmAudio) -> Result<bool> {
         let mut in_audio = false;
         let mut current_audio: Option<Audio> = None;
@@ -365,18 +409,25 @@ impl Default for AudioPipeline {
     }
 }
 
+/// Container for input and output pipelines.
 pub struct Pipelines {
+    /// The input audio processing pipeline.
     pub input: Box<dyn Pipeline>,
+    /// The output audio processing pipeline.
     pub output: Box<dyn Pipeline>,
+    /// Shared latency statistics for both pipelines.
     pub stats: Arc<LatencyStats>,
+    /// Shared PCM buffer pool.
     pub pool: SharedPcmPool,
 }
  
 impl Pipelines {
+    /// Creates a new set of pipelines with default statistics.
     pub fn new() -> Self {
         Self::with_stats(Arc::new(LatencyStats::default()))
     }
  
+    /// Creates a new set of pipelines with specified statistics.
     pub fn with_stats(stats: Arc<LatencyStats>) -> Self {
         let pool = Arc::new(PcmPool::new());
         Self {

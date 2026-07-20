@@ -5,13 +5,16 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::oneshot;
 use tokio_tungstenite::{accept_async, WebSocketStream};
 
+/// Type alias for the WebSocket stream used in tests.
 pub type TestWebSocket = WebSocketStream<TcpStream>;
 
+/// A simple WebSocket server for integration testing.
 pub struct WebSocketTestServer {
     addr: SocketAddr,
 }
 
 impl WebSocketTestServer {
+    /// Starts a new WebSocket server with the given connection handler.
     pub async fn start<F, Fut>(handler: F) -> Result<Self>
     where
         F: Fn(TestWebSocket) -> Fut + Clone + Send + Sync + 'static,
@@ -59,10 +62,12 @@ impl WebSocketTestServer {
         handler(websocket).await
     }
 
+    /// Returns the socket address the server is listening on.
     pub fn addr(&self) -> SocketAddr {
         self.addr
     }
 
+    /// Returns the full WebSocket URI for the server.
     pub fn uri(&self) -> String {
         format!("ws://{}", self.addr)
     }

@@ -3,10 +3,15 @@
 //! Provides components for mixing, splitting, and linking audio streams
 //! in a flexible processing graph.
 
+/// Components for linking audio processing nodes.
 pub mod link;
+/// Input port for audio data in the graph.
 pub mod input_port;
+/// Output port for audio data in the graph.
 pub mod output_port;
+/// Splitter for distributing audio to multiple outputs.
 pub mod splitter;
+/// Mixer for combining multiple audio inputs.
 pub mod mixer;
 
 pub use link::*;

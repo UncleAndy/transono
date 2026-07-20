@@ -6,13 +6,17 @@ use symphonia::core::audio::{AudioSpec, Channels};
 /// The library supports arbitrary sample formats through `Audio`,
 /// but all built-in DSP processors currently operate on `f32`.
 pub struct PcmAudio {
+    /// Audio specification (sample rate, channels).
     pub spec: AudioSpec,
-    pub data: Vec<f32>, // Один плоский массив для всех каналов (планарный: [chan0][chan1]...).
+    /// Flat array of samples (planar layout: [chan0][chan1]...).
+    pub data: Vec<f32>,
     pub(crate) frames: usize,
 
     #[allow(unused)]
     pub(crate) sequence: u64,
+    /// Timestamp when the audio was captured.
     pub capture_timestamp: Instant,
+    /// Timestamp when the audio started processing.
     pub processing_timestamp: Instant,
 }
 
@@ -46,10 +50,12 @@ impl PcmAudio {
         self.frames
     }
 
+    /// Returns the number of channels.
     pub(crate) fn channel_count(&self) -> usize {
         self.spec.channels().count()
     }
 
+    /// Returns a reference to the samples of a specific channel.
     pub(crate) fn channel(&self, index: usize) -> &[f32] {
         let start = index * self.frames;
         let end = start + self.frames;
@@ -71,6 +77,7 @@ impl PcmAudio {
         &mut self.data[start..end]
     }
 
+    /// Sets the channel layout.
     pub(crate) fn set_channel_layout(
         &mut self,
         layout: Channels,
@@ -88,6 +95,7 @@ impl PcmAudio {
         );
     }
 
+    /// Resizes the buffer to a new frame and channel count.
     pub(crate) fn resize(&mut self, frames: usize, channels: usize) {
         let old_frames = self.frames;
         let old_channels = self.channel_count();
@@ -97,24 +105,24 @@ impl PcmAudio {
         }
 
         if channels != old_channels {
-            // При изменении количества каналов планарная структура меняется.
-            // Просто меняем размер. fill(0.0) не нужен, так как данные будут перезаписаны.
+            // If the number of channels changes, the planar structure changes.
+            // Just resize. fill(0.0) is not needed as data will be overwritten.
             self.data.resize(frames * channels, 0.0);
         } else if frames != old_frames {
             if frames > old_frames {
-                // Увеличиваем: сначала ресайз, потом сдвиг в конец
+                // Grow: first resize, then shift to the end
                 self.data.resize(frames * channels, 0.0);
                 if channels > 1 && old_frames > 0 {
                     for i in (1..channels).rev() {
                         let old_start = i * old_frames;
                         let new_start = i * frames;
                         self.data.copy_within(old_start..old_start + old_frames, new_start);
-                        // Обнуляем старое место (опционально, так как там будут данные следующего канала)
+                        // Zero out old space (optional, as it will be overwritten by the next channel)
                         self.data[old_start..new_start].fill(0.0);
                     }
                 }
             } else {
-                // Уменьшаем: сначала сдвиг в начало, потом ресайз
+                // Shrink: first shift to the start, then resize
                 if channels > 1 && frames > 0 {
                     for i in 1..channels {
                         let old_start = i * old_frames;
@@ -133,7 +141,9 @@ impl PcmAudio {
 /// Byte order for PCM encoded audio.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Endianness {
+    /// Little-endian byte order.
     Little,
+    /// Big-endian byte order.
     Big,
 }
 

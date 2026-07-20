@@ -1,6 +1,7 @@
 use crate::core::error::{CoreError, Result};
 use crate::audio::{AudioCodec, AudioDecoder, AudioEncoder, EncodedAudio, EncodedAudioFormat, PcmAudio, PcmFormat};
 
+/// Encoder for PCM audio that outputs raw binary data.
 pub struct PcmBinaryEncoder {
     format: EncodedAudioFormat,
     pcm_format: PcmFormat,
@@ -78,6 +79,7 @@ impl AudioEncoder for PcmBinaryEncoder {
     }
 }
 
+/// Decoder for raw binary PCM audio.
 pub struct PcmBinaryDecoder {
     format: EncodedAudioFormat,
     pcm_format: PcmFormat,

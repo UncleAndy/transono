@@ -1,4 +1,4 @@
-//! Lock-free обмен аудиокадрами между потоками.
+//! Lock-free audio frame exchange between threads.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -7,6 +7,7 @@ use rtrb::{Consumer, Producer, RingBuffer};
 use symphonia::core::audio::GenericAudioBuffer;
 use crate::audio::{frame::{AudioFrame, FrameId}, frame_pool::FramePool, Audio, PcmAudio, FRAME_CAPACITY};
 
+/// Producer for writing audio frames to the buffer.
 pub struct FrameProducer {
     pool: Arc<FramePool>,
     free: Consumer<FrameId>,
@@ -14,6 +15,7 @@ pub struct FrameProducer {
     inner: Arc<AudioBuffer>,
 }
 
+/// Consumer for reading audio frames from the buffer.
 pub struct FrameConsumer {
     pool: Arc<FramePool>,
     free: Producer<FrameId>,
@@ -21,11 +23,13 @@ pub struct FrameConsumer {
     inner: Arc<AudioBuffer>,
 }
 
+/// Coordinator of a lock-free audio frame buffer.
 pub struct AudioBuffer {
     ready_count: AtomicUsize,
 }
 
 impl AudioBuffer {
+    /// Creates a new audio buffer and returns a pair (producer, consumer).
     pub fn new(frame_count: usize) -> Result<(FrameProducer, FrameConsumer)> {
         let pool = Arc::new(FramePool::new(frame_count));
  
@@ -60,11 +64,13 @@ impl AudioBuffer {
 }
 
 impl FrameProducer {
+    /// Acquires a free frame ID for writing.
     #[inline(always)]
     pub fn acquire(&mut self) -> Option<FrameId> {
         self.free.pop().ok()
     }
 
+    /// Writes audio data to a frame with the specified ID.
     #[inline(always)]
     pub fn write(&self, id: FrameId, data: &[f32]) -> bool {
         let frame = self.pool.get_mut(id);
@@ -79,6 +85,7 @@ impl FrameProducer {
         true
     }
 
+    /// Commits a frame, making it available for the consumer.
     #[inline(always)]
     pub fn commit(&mut self, id: FrameId) -> Result<()> {
         let pushed = self.filled
@@ -92,6 +99,7 @@ impl FrameProducer {
         pushed
     }
 
+    /// Acquires a frame, writes data to it, and commits it.
     #[inline(always)]
     pub fn send(&mut self, data: &[f32]) -> Result<bool> {
         let Some(id) = self.acquire() else {
@@ -110,6 +118,7 @@ impl FrameProducer {
         Ok(true)
     }
 
+    /// Acquires a frame, writes audio from an Audio object to it, and commits it.
     #[inline(always)]
     pub fn send_audio(
         &mut self,
@@ -126,23 +135,25 @@ impl FrameProducer {
         self.send(scratch)
     }
 
-    /// Нет свободных кадров для записи.
+    /// Returns true if no free frames are available for writing.
     #[inline(always)]
     pub fn is_full(&self) -> bool {
         self.free.slots() == 0
     }
 
+    /// Returns true if there are no ready frames.
     #[inline(always)]
     pub fn is_empty(&self) -> bool {
         self.inner.ready_count.load(Ordering::SeqCst) == 0
     }
 
+    /// Returns true if there is at least one ready frame.
     #[inline(always)]
     pub fn has_frame(&self) -> bool {
         self.inner.ready_count.load(Ordering::SeqCst) != 0
     }
 
-    /// Есть хотя бы один свободный кадр.
+    /// Returns true if there is at least one free frame.
     #[inline(always)]
     pub fn has_free_frame(&self) -> bool {
         self.free.slots() > 0
@@ -171,17 +182,20 @@ impl FrameProducer {
 }
 
 impl FrameConsumer {
+    /// Receives a frame ID from the filled queue.
     #[inline(always)]
     pub fn receive(&mut self) -> Option<FrameId> {
         self.filled.pop().ok()
     }
 
+    /// Reads a frame using a closure.
     #[inline(always)]
     pub fn read<R>(&self, id: FrameId, f: impl FnOnce(&AudioFrame) -> R) -> R {
         let frame = self.pool.get(id);
         f(frame)
     }
 
+    /// Releases a frame back to the free queue.
     #[inline(always)]
     pub fn release(&mut self, id: FrameId) -> Result<()> {
         self.pool.get_mut(id).clear();
@@ -193,6 +207,7 @@ impl FrameConsumer {
             .map_err(|_| "free queue overflow".into())
     }
 
+    /// Reads data from a frame into the output slice.
     #[inline(always)]
     pub fn read_frame(&self, id: FrameId, offset: &mut usize, output: &mut [f32]) -> bool {
         self.read(id, |frame| {
@@ -211,6 +226,7 @@ impl FrameConsumer {
         })
     }
 
+    /// Receives and reads a frame, handling partial reads.
     #[inline(always)]
     pub fn receive_frame(
         &mut self,
@@ -246,6 +262,7 @@ impl FrameConsumer {
         }
     }
 
+    /// Fills the output buffer with data from multiple frames if necessary.
     #[inline(always)]
     pub fn fill_buffer(
         &mut self,
@@ -295,20 +312,22 @@ impl FrameConsumer {
         }
     }
 
-    /// Нет готовых кадров.
+    /// Returns true if there are no ready frames.
     #[inline(always)]
     pub fn is_empty(&self) -> bool {
         self.inner.ready_count.load(Ordering::SeqCst) == 0
     }
 
-    /// Есть готовый кадр.
+    /// Returns true if there is at least one ready frame.
     #[inline(always)]
     pub fn has_frame(&self) -> bool {
         self.inner.ready_count.load(Ordering::SeqCst) != 0
     }
 }
 
+/// Trait for converting to a GenericAudioBuffer.
 #[allow(unused)]
 pub trait IntoGenericAudioBuffer {
+    /// Converts the object to a GenericAudioBuffer.
     fn into_generic(self) -> GenericAudioBuffer;
 }

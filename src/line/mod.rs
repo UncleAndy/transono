@@ -4,7 +4,9 @@
 //! not know about each other; multi-party coordination belongs to a higher
 //! layer (TranslationBridge — see architecture docs).
 
+/// Core translation line implementation.
 pub mod line;
+/// Translation line state definitions.
 pub mod state;
 
 pub use line::*;

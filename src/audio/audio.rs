@@ -312,6 +312,7 @@ impl From<EncodedAudioFormat> for AudioFormat {
 }
 
 pub(crate) trait IntoGenericBuffer {
+    /// Converts the buffer into a symphonia `GenericAudioBuffer`.
     fn into_generic_buffer(self) -> GenericAudioBuffer;
 }
 
@@ -336,6 +337,7 @@ impl_into_generic!(i16, S16);
 impl_into_generic!(i24, S24);
 impl_into_generic!(i32, S32);
 
+/// Marker trait for supported audio sample types.
 pub(crate) trait AudioSample:
 Sample
 + FromSample<Self>

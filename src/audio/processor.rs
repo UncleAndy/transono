@@ -14,14 +14,23 @@ use crate::core::error::{CoreError, Result};
 /// Can represent either a high-level [`AudioProcessor`] or a low-level
 /// [`DspProcessor`]. Used to build processing pipelines.
 pub enum Processor {
+    /// Passes audio through without modification.
     Identity(IdentityProcessor),
+    /// Removes noise from the audio stream.
     Denoiser(Denoiser),
+    /// Changes the audio sample rate.
     Resampler(Resampler),
+    /// Converts between different channel layouts.
     ChannelConverter(ChannelConverter),
+    /// Dynamic range compressor.
     Compressor(Compressor),
+    /// Audio level normalizer.
     Normalizer(Normalizer),
+    /// A nested processing pipeline.
     Pipeline(Box<dyn Pipeline>),
+    /// Diagnostic volume indicator.
     IndicatorDiag(Indicator),
+    /// Diagnostic WAV file dumper.
     WavDumpDiag(WavDump),
 }
 

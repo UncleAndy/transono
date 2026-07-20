@@ -4,11 +4,17 @@
 //! Wire format details live in `commands` / `events` / `protocol`.
 //! Session orchestration is in [`TranslationSession`].
 
+/// Translation API commands.
 pub mod commands;
+/// Translation API events.
 pub mod events;
+/// Translation API protocol implementation.
 pub mod protocol;
+/// Translation API provider implementation.
 pub mod provider;
+/// Translation API session management.
 pub mod session;
+/// Translation API configuration.
 pub mod config;
 
 pub use commands::*;

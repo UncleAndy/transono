@@ -1,23 +1,24 @@
-//! Предварительно выделенный пул аудиокадров.
+//! Pre-allocated audio frame pool.
 //!
-//! FramePool не занимается управлением жизненным циклом кадров.
-//! Он только предоставляет быстрый доступ к памяти.
+//! FramePool does not manage frame lifetimes.
+//! It only provides fast memory access.
 //!
-//! Владение FrameId определяется исключительно очередями rtrb.
+//! Ownership of FrameId is determined solely by rtrb queues.
 
 use std::cell::UnsafeCell;
 
 use crate::audio::frame::{AudioFrame, FrameId};
 
+/// A pool of audio frames.
 pub struct FramePool {
     frames: Box<[UnsafeCell<AudioFrame>]>,
 }
 
 // SAFETY:
 //
-// Каждый AudioFrame одновременно принадлежит только одному владельцу.
+// Each AudioFrame belongs to only one owner at a time.
 //
-// Жизненный цикл:
+// Lifecycle:
 //
 // FreeQueue
 //      ↓
@@ -29,16 +30,14 @@ pub struct FramePool {
 //      ↓
 // FreeQueue
 //
-// Один и тот же FrameId никогда одновременно не находится
-// в двух очередях.
+// The same FrameId is never in two queues simultaneously.
 //
-// Поэтому одновременно существовать двух &mut AudioFrame
-// для одного кадра не может.
+// Therefore, two &mut AudioFrame for the same frame cannot exist at the same time.
 //
 unsafe impl Sync for FramePool {}
 
 impl FramePool {
-    /// Создает пул фиксированного размера.
+    /// Creates a fixed-size pool.
     pub fn new(capacity: usize) -> Self {
         assert!(capacity > 0);
 
@@ -53,13 +52,13 @@ impl FramePool {
         }
     }
 
-    /// Количество кадров.
+    /// Returns the number of frames in the pool.
     #[inline(always)]
     pub fn capacity(&self) -> usize {
         self.frames.len()
     }
 
-    /// Неизменяемый доступ.
+    /// Immutable access to a frame by ID.
     #[inline(always)]
     pub fn get(&self, id: FrameId) -> &AudioFrame {
         debug_assert!((id as usize) < self.frames.len());
@@ -67,7 +66,7 @@ impl FramePool {
         unsafe { &*self.frames[id as usize].get() }
     }
 
-    /// Изменяемый доступ.
+    /// Mutable access to a frame by ID.
     #[inline(always)]
     pub fn get_mut(&self, id: FrameId) -> &mut AudioFrame {
         debug_assert!((id as usize) < self.frames.len());

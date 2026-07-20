@@ -18,6 +18,7 @@ use pipewire::stream::{StreamFlags, StreamListener, StreamRc};
 use crate::audio::{AudioFormat, FrameConsumer, FrameId, FrameProducer};
 use crate::core::error::Result;
 
+/// A worker that manages a PipeWire stream in a background thread.
 pub struct PipeWireWorker {
     shutdown: Arc<AtomicBool>,
     thread: Option<JoinHandle<()>>,
@@ -28,6 +29,7 @@ enum WorkerCommand {
     Drain(mpsc::Sender<()>),
 }
 
+/// Helper for reading audio frames from a consumer into a buffer.
 pub struct FrameReader {
     consumer: FrameConsumer,
     current: Option<FrameId>,
@@ -35,6 +37,7 @@ pub struct FrameReader {
 }
 
 impl FrameReader {
+    /// Fills the output buffer with samples from the frame consumer.
     pub fn fill(&mut self, output: &mut [f32]) {
         self.consumer.fill_buffer(
             &mut self.current,
@@ -85,21 +88,29 @@ struct PipeWireSession {
     _pod_bytes: Vec<u8>,
 }
 
+/// Possible endpoints for a PipeWire worker.
 pub enum WorkerEndpoint {
+    /// An output endpoint that consumes frames and sends them to PipeWire.
     Output(FrameConsumer),
+    /// An input endpoint that receives frames from PipeWire and produces them.
     Input(FrameProducer),
 }
 
+/// Configuration for a PipeWire worker.
 pub struct WorkerConfig {
+    /// Name of the PipeWire node.
     pub node_name: String,
+    /// Audio format for the stream.
     pub format: AudioFormat,
+    /// The endpoint (input or output) for this worker.
     pub endpoint: WorkerEndpoint,
 
-    /// PipeWire node id.
+    /// Optional PipeWire node id.
     pub node_id: Option<u32>,
 }
 
 impl PipeWireWorker {
+    /// Spawns a background worker for audio output.
     pub fn spawn_output(
         consumer: FrameConsumer,
         format: AudioFormat,
@@ -131,6 +142,7 @@ impl PipeWireWorker {
         })
     }
 
+    /// Spawns a background worker for audio input.
     pub fn spawn_input(
         producer: FrameProducer,
         format: AudioFormat,
@@ -186,6 +198,7 @@ impl PipeWireWorker {
         Ok(())
     }
 
+    /// Shuts down the worker thread and cleans up resources.
     pub fn shutdown(&mut self) -> Result<()> {
         // Доигрываем все данные.
         self.drain()?;
@@ -201,6 +214,7 @@ impl PipeWireWorker {
         Ok(())
     }
 
+    /// Blocks until all pending audio data has been processed.
     pub fn drain(&self) -> Result<()> {
         let (tx, rx) = mpsc::channel();
 
@@ -418,7 +432,7 @@ impl PipeWireSession {
                         let data = &datas[0];
 
 
-                        let size = {
+                        let _size = {
                             let chunk = data.chunk();
 
                             println!(

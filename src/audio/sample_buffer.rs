@@ -1,9 +1,11 @@
+/// A simple contiguous buffer for audio samples.
 pub struct SampleBuffer<T> {
     data: Vec<T>,
     head: usize,
 }
 
 impl<T: Copy> SampleBuffer<T> {
+    /// Creates a new empty sample buffer.
     pub fn new() -> Self {
         Self {
             data: Vec::new(),
@@ -11,27 +13,32 @@ impl<T: Copy> SampleBuffer<T> {
         }
     }
 
+    /// Returns the number of samples available for reading.
     #[inline(always)]
     pub fn available(&self) -> usize {
         self.data.len() - self.head
     }
 
+    /// Returns true if the buffer contains no samples.
     #[inline(always)]
     pub fn is_empty(&self) -> bool {
         self.available() == 0
     }
 
+    /// Clears the buffer.
     #[inline(always)]
     pub fn clear(&mut self) {
         self.data.clear();
         self.head = 0;
     }
 
+    /// Pushes new samples into the buffer.
     #[inline(always)]
     pub fn push(&mut self, input: &[T]) {
         self.data.extend_from_slice(input);
     }
 
+    /// Returns a slice of the requested number of samples if available.
     #[inline(always)]
     pub fn read(&self, count: usize) -> Option<&[T]> {
         if self.available() < count {
@@ -41,6 +48,7 @@ impl<T: Copy> SampleBuffer<T> {
         Some(&self.data[self.head..self.head + count])
     }
 
+    /// Consumes samples from the head of the buffer.
     pub fn consume(&mut self, count: usize) {
         assert!(count <= self.available());
 
@@ -62,6 +70,7 @@ impl<T: Copy> SampleBuffer<T> {
         }
     }
 
+    /// Reserves space at the end of the buffer and returns a mutable slice.
     pub fn reserve_append(
         &mut self,
         count: usize,

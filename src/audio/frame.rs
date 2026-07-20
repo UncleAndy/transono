@@ -1,24 +1,24 @@
-//! Аудиокадр, передаваемый между потоками.
+//! Audio frame passed between threads.
 //!
-//! Все кадры имеют фиксированный размер буфера.
-//! Поле `len` указывает количество валидных сэмплов.
+//! All frames have a fixed buffer size.
+//! The `len` field indicates the number of valid samples.
 
-/// Максимальное количество сэмплов в одном кадре.
+/// Maximum number of samples in a single frame.
 ///
-/// Должно быть больше максимального размера callback CPAL.
-/// 2048 сэмплов при 48 кГц соответствуют ≈42.7 мс.
+/// Must be greater than the maximum CPAL callback size.
+/// 2048 samples at 48 kHz correspond to ≈42.7 ms.
 pub const FRAME_CAPACITY: usize = 4096;
 
-/// Индекс кадра в пуле.
+/// Index of a frame in the pool.
 pub type FrameId = u32;
 
-/// Один аудиокадр.
+/// A single audio frame.
 #[derive(Debug)]
 pub struct AudioFrame {
-    /// Количество валидных сэмплов.
+    /// Number of valid samples.
     pub len: usize,
 
-    /// PCM F32.
+    /// PCM F32 samples.
     pub samples: [f32; FRAME_CAPACITY],
 }
 
@@ -32,24 +32,25 @@ impl Default for AudioFrame {
 }
 
 impl AudioFrame {
-    /// Очищает кадр перед повторным использованием.
+    /// Clears the frame before reuse.
     #[inline(always)]
     pub fn clear(&mut self) {
         self.len = 0;
     }
 
-    /// Возвращает заполненную часть буфера.
+    /// Returns the valid part of the buffer as a slice.
     #[inline(always)]
     pub fn samples(&self) -> &[f32] {
         &self.samples[..self.len]
     }
 
-    /// Возвращает заполненную часть буфера для записи.
+    /// Returns the valid part of the buffer as a mutable slice.
     #[inline(always)]
     pub fn samples_mut(&mut self) -> &mut [f32] {
         &mut self.samples[..self.len]
     }
 
+    /// Copies data from a slice into the frame.
     #[inline(always)]
     pub fn copy_from(&mut self, input: &[f32]) -> bool {
         if input.len() > FRAME_CAPACITY {

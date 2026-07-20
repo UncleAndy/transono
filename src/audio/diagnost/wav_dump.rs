@@ -7,11 +7,13 @@ use hound::{SampleFormat, WavSpec, WavWriter};
 use crate::audio::{DspProcessor, PcmAudio};
 use crate::core::error::{CoreError, Result};
 
+/// Processor that dumps PCM audio data into a WAV file.
 pub struct WavDump {
     writer: Option<WavWriter<BufWriter<File>>>,
 }
 
 impl WavDump {
+    /// Creates a new WAV dump processor that writes to the specified path.
     pub fn new(
         path: impl AsRef<Path>,
         spec: symphonia::core::audio::AudioSpec,

@@ -1,10 +1,12 @@
 use crate::audio::SampleBuffer;
 
+/// A buffer for planar audio samples (each channel in its own contiguous memory).
 pub struct PlanarSampleBuffer<T> {
     channels: Vec<SampleBuffer<T>>,
 }
 
 impl<T: Copy> PlanarSampleBuffer<T> {
+    /// Creates a new planar sample buffer with the specified number of channels.
     pub fn new(channels: usize) -> Self {
         Self {
             channels: (0..channels)
@@ -13,11 +15,13 @@ impl<T: Copy> PlanarSampleBuffer<T> {
         }
     }
 
+    /// Returns the number of channels in the buffer.
     #[inline(always)]
     pub fn channels(&self) -> usize {
         self.channels.len()
     }
 
+    /// Returns the number of available frames.
     #[inline(always)]
     pub fn available(&self) -> usize {
         self.channels
@@ -25,11 +29,13 @@ impl<T: Copy> PlanarSampleBuffer<T> {
             .map_or(0, SampleBuffer::available)
     }
 
+    /// Returns true if the buffer is empty.
     #[inline(always)]
     pub fn is_empty(&self) -> bool {
         self.available() == 0
     }
 
+    /// Clears all samples from the buffer.
     #[inline(always)]
     pub fn clear(&mut self) {
         for channel in &mut self.channels {
@@ -37,6 +43,7 @@ impl<T: Copy> PlanarSampleBuffer<T> {
         }
     }
 
+    /// Pushes multiple channels of planar audio into the buffer.
     pub fn push(&mut self, input: &[&[T]]) {
         assert_eq!(
             input.len(),
@@ -60,6 +67,7 @@ impl<T: Copy> PlanarSampleBuffer<T> {
         }
     }
 
+    /// Pushes a single channel of audio into the buffer.
     pub fn push_channel(
         &mut self,
         channel: usize,
@@ -68,6 +76,7 @@ impl<T: Copy> PlanarSampleBuffer<T> {
         self.channels[channel].push(input);
     }
 
+    /// Reads a slice of samples for a specific channel.
     #[inline(always)]
     pub fn read_channel(
         &self,
@@ -79,6 +88,7 @@ impl<T: Copy> PlanarSampleBuffer<T> {
             .read(frames)
     }
 
+    /// Consumes the specified number of frames from all channels.
     #[inline(always)]
     pub fn consume(&mut self, frames: usize) {
         for channel in &mut self.channels {
@@ -86,6 +96,7 @@ impl<T: Copy> PlanarSampleBuffer<T> {
         }
     }
 
+    /// Resizes the buffer to a new number of channels and clears it.
     #[inline(always)]
     pub fn resize(&mut self, channels: usize) {
         self.clear();

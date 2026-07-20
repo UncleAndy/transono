@@ -7,6 +7,7 @@ use symphonia::core::audio::Channels::Positioned;
 use crate::audio::{Endianness};
 use crate::core::error::{CoreError, Result};
 
+/// Encoded audio data with its format information.
 #[derive(Debug, Clone)]
 pub struct EncodedAudio {
     format: EncodedAudioFormat,
@@ -28,21 +29,32 @@ impl EncodedAudio {
         })
     }
 
+    /// Returns the audio container format.
     pub fn container(&self) -> &AudioContainer {
         &self.format.container
     }
+
+    /// Returns the audio codec.
     pub fn codec(&self) -> &AudioCodec {
         &self.format.codec
     }
+
+    /// Returns the binary encoding format (e.g., Base64 or Binary).
     pub fn encoding(&self) -> &BinaryEncoding {
         &self.format.encoding
     }
+
+    /// Returns the audio specification (sample rate, channels).
     pub fn spec(&self) -> &AudioSpec {
         &self.format.spec
     }
+
+    /// Returns the raw encoded data.
     pub fn bytes(&self) -> &Bytes {
         &self.data
     }
+
+    /// Returns the data as a string if the encoding is Base64.
     pub fn as_str(&self) -> Result<&str> {
         match self.encoding() {
             BinaryEncoding::Base64 => {
@@ -53,6 +65,7 @@ impl EncodedAudio {
             _ => Err(CoreError::Internal("EncodedAudio is not text".to_string())),
         }
     }
+    /// Converts the data to a String if the encoding is Base64.
     pub fn into_string(self) -> Result<String> {
         match self.encoding() {
             BinaryEncoding::Base64 => {
@@ -65,6 +78,7 @@ impl EncodedAudio {
     }
 }
 
+/// Detailed specification of an encoded audio format.
 #[derive(Debug, Clone)]
 pub struct EncodedAudioFormat {
     pub(crate) container: AudioContainer,
@@ -76,6 +90,7 @@ pub struct EncodedAudioFormat {
 static INTERNAL_FORMAT: OnceLock<EncodedAudioFormat> = OnceLock::new();
 
 impl EncodedAudioFormat {
+    /// Creates a new encoded audio format.
     pub fn new(
         container: AudioContainer,
         codec: AudioCodec,
@@ -90,6 +105,7 @@ impl EncodedAudioFormat {
         }
     }
     
+    /// Returns the internal audio format used by the library.
     pub fn internal_format() -> Self {
         INTERNAL_FORMAT.get_or_init(|| {
             Self {
@@ -104,79 +120,128 @@ impl EncodedAudioFormat {
         }).clone()
     }
 
+    /// Initializes the internal audio format. Errors if already initialized.
     pub fn init_internal_format(format: EncodedAudioFormat) -> Result<()> {
         INTERNAL_FORMAT.set(format).map_err(|_| CoreError::Internal("Internal format already initialized".to_string()))
     }
 
+    /// Returns the container type.
     pub fn container(&self) -> AudioContainer {
         self.container.clone()
     }
+
+    /// Returns the codec type.
     pub fn codec(&self) -> AudioCodec {
         self.codec.clone()
     }
+
+    /// Returns the binary encoding type.
     pub fn encoding(&self) -> BinaryEncoding {
         self.encoding.clone()
     }
+
+    /// Returns the audio specification.
     pub fn spec(&self) -> AudioSpec {
         self.spec.clone()
     }
-
 }
 
+/// Supported audio containers.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AudioContainer {
+    /// Raw bytes without a container.
     Raw,
+    /// WAV container.
     Wav,
+    /// CAF container.
     Caf,
+    /// OGG container.
     Ogg,
+    /// MP3 container.
     Mp3,
+    /// MP4 container.
     Mp4,
+    /// FLAC container.
     Flac,
+    /// Matroska container.
     Matroska,
+    /// WebM container.
     Webm,
+    /// Custom container format.
     Custom(String),
 }
 
+/// Supported audio codecs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AudioCodec {
+    /// Pulse Code Modulation.
     Pcm(PcmFormat),
+    /// Opus codec.
     Opus,
+    /// Vorbis codec.
     Vorbis,
+    /// AAC codec.
     Aac,
+    /// FLAC codec.
     Flac,
+    /// ALAC codec.
     Alac,
+    /// LDAC codec.
     Ldac,
+    /// MPEG Layer 3 codec.
     Mpeg3,
+    /// Custom codec.
     Custom(String),
 }
 
-/// Audio encoding.
+/// Binary data encoding methods.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BinaryEncoding {
+    /// Raw binary data.
     Binary,
+    /// Base64 encoded text.
     Base64,
+    /// Custom encoding.
     Custom(String),
 }
 
+/// Detailed PCM sample format and endianness.
 #[derive(Debug, Clone, PartialEq, Eq, Copy, Hash)]
 pub enum PcmFormat {
+    /// Signed 8-bit integer.
     I8,
+    /// Signed 16-bit integer with endianness.
     I16(Endianness),
+    /// Signed 24-bit integer with endianness.
     I24(Endianness),
+    /// Signed 32-bit integer with endianness.
     I32(Endianness),
+    /// Signed 64-bit integer with endianness.
     I64(Endianness),
+    /// Unsigned 8-bit integer.
     U8,
+    /// Unsigned 16-bit integer with endianness.
     U16(Endianness),
+    /// Unsigned 24-bit integer with endianness.
     U24(Endianness),
+    /// Unsigned 32-bit integer with endianness.
     U32(Endianness),
+    /// Unsigned 64-bit integer with endianness.
     U64(Endianness),
+    /// 32-bit floating point with endianness.
     F32(Endianness),
+    /// 64-bit floating point with endianness.
     F64(Endianness),
+    /// DSD 8-bit.
     DsdU8,
+    /// DSD 16-bit with endianness.
     DsdU16(Endianness),
+    /// DSD 32-bit with endianness.
     DsdU32(Endianness),
 }
+
 impl PcmFormat {
+    /// Returns the size of a single sample in bytes.
     pub fn sample_size(&self) -> usize {
         match self {
             Self::U8 => 1,
@@ -201,6 +266,7 @@ impl PcmFormat {
     // Для хранения в I24 необходимо уменьшить разрядность до 24 бит,
     // а при чтении восстановить её обратно.
 
+    /// Encodes a single f32 sample into raw bytes according to the format.
     #[inline]
     pub fn encode_sample(&self, sample: f32, out: &mut [u8]) {
         match self {
@@ -359,6 +425,7 @@ impl PcmFormat {
         }
     }
 
+    /// Decodes raw bytes into a single f32 sample according to the format.
     pub fn decode_sample(
         &self,
         input: &[u8],

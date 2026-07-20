@@ -82,6 +82,7 @@ impl Default for SignalLevel {
     }
 }
 
+/// The main Terminal User Interface (TUI) application.
 pub struct ConsoleApp {
     direct_rx: mpsc::UnboundedReceiver<SessionEvent>,
     back_rx: mpsc::UnboundedReceiver<SessionEvent>,
@@ -115,6 +116,7 @@ pub struct ConsoleApp {
 }
 
 impl ConsoleApp {
+    /// Creates a new console application with the necessary event and indicator receivers.
     pub fn new(
         direct_rx: mpsc::UnboundedReceiver<SessionEvent>,
         back_rx: mpsc::UnboundedReceiver<SessionEvent>,
@@ -150,6 +152,7 @@ impl ConsoleApp {
         }
     }
 
+    /// Runs the application loop until the user quits.
     pub async fn run(mut self) -> anyhow::Result<()> {
         enable_raw_mode()?;
         let mut stdout = io::stdout();

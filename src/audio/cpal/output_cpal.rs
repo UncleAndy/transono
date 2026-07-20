@@ -11,6 +11,7 @@ use crate::audio::output::BoxSink;
 use crate::audio::{sample_to_pcm_format, Audio, AudioFormat, AudioOutput, LatencyStats};
 use crate::core::error::{CoreError, Result};
 
+/// Audio output implementation using the CPAL library.
 pub struct AudioOutputCpal {
     #[allow(unused)]
     name: String,
@@ -33,6 +34,7 @@ impl Drop for AudioOutputCpal {
 }
 
 impl AudioOutputCpal {
+    /// Creates a new CPAL audio output for the specified device.
     pub fn new(
         device: Device,
         stats: Arc<LatencyStats>,

@@ -3,18 +3,24 @@ use tokio::sync::mpsc;
 use crate::audio::{DspProcessor, PcmAudio};
 use crate::core::error::Result;
 
+/// Volume metrics for a block of audio samples.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct VolumeIndicator {
+    /// Root Mean Square (RMS) volume level.
     pub rms: f32,
+    /// Peak amplitude level.
     pub peak: f32,
+    /// Decibels relative to full scale (dBFS).
     pub dbfs: f32,
 }
 
+/// Processor that measures audio volume levels.
 pub struct Indicator {
     sender: mpsc::Sender<VolumeIndicator>,
 }
 
 impl Indicator {
+    /// Creates a new volume indicator processor.
     pub fn new(sender: mpsc::Sender<VolumeIndicator>) -> Self {
         Self { sender }
     }

@@ -14,6 +14,7 @@ use crate::audio::audio::{Audio, AudioFormat, IntoGenericBuffer};
 use crate::audio::{AudioInput, LatencyStats};
 use crate::audio::cpal::sample_to_pcm_format;
 
+/// Audio input implementation using the CPAL library.
 pub struct AudioInputCpal {
     #[allow(unused)]
     name: String,
@@ -30,6 +31,7 @@ impl Drop for AudioInputCpal {
 }
 
 impl AudioInputCpal {
+    /// Creates a new CPAL audio input for the specified device.
     pub fn new(
         device: Device,
         stats: Arc<LatencyStats>,

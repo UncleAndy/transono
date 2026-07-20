@@ -5,9 +5,11 @@ use cpal::traits::{DeviceTrait, HostTrait};
 use crate::core::error::{CoreError, Result};
 use crate::ctl::backend::{Backend, DeviceSet, DeviceState, DeviceStatus, DoctorReport};
 
+/// Backend implementation for PipeWire.
 pub struct PipewireBackend;
 
 impl PipewireBackend {
+    /// Creates a new PipeWire backend.
     pub fn new() -> Result<PipewireBackend> {
         Ok(Self{})
     }
@@ -114,26 +116,35 @@ impl Backend for PipewireBackend {
     }
 }
 
+/// Collection of virtual audio devices for a specific session.
 #[derive(Clone)]
 pub struct VirtualAudioDevices {
+    /// Device pair for audio coming from the session.
     pub from: VirtualAudioDevicePair,
+    /// Device pair for audio going to the session.
     pub to: VirtualAudioDevicePair,
 }
 
+/// A pair of virtual audio devices (sink and source).
 #[derive(Clone)]
 pub struct VirtualAudioDevicePair {
+    /// Name of the PulseAudio/PipeWire sink.
     pub sink_name: String,
+    /// Name of the PulseAudio/PipeWire source.
     pub source_name: String,
 
+    /// Human-readable name for output.
     pub output_name: String,
+    /// Human-readable name for input.
     pub input_name: String,
 }
 
 impl VirtualAudioDevices {
-    /// Возвращает набор:
-    /// - Объект VirtualDevices для сохранения его времени жизни
-    /// - Строку с именем устройства воспроизведения для передачи аудио в микрофон
-    /// - Строку с именем устройства чтения для чтения аудиоданных со встречи
+    /// Creates a new set of virtual audio devices for the specified language.
+    ///
+    /// This returns a set containing:
+    /// - VirtualAudioDevices object to manage their lifetime
+    /// - Device names for playback and capture
     pub fn create(lang: &str) -> Result<Self> {
         let to_pair = create_pair(lang, "ToMeeting", HiddenDevice::Output)?;
         let from_pair = create_pair(lang, "FromMeeting", HiddenDevice::Input)?;
@@ -145,6 +156,7 @@ impl VirtualAudioDevices {
         )
     }
 
+    /// Returns the names of virtual devices for a specific language.
     pub fn names(lang: &str) -> DeviceSet {
         let lang = lang.to_uppercase();
 
@@ -163,6 +175,7 @@ impl VirtualAudioDevices {
         }
     }
 
+    /// Cleans up virtual devices, optionally filtered by language.
     pub fn cleanup(lang: Option<&str>) -> Result<()> {
         let output = Command::new("pactl")
             .args(["list", "short", "modules"])
@@ -228,6 +241,7 @@ impl VirtualAudioDevices {
         Ok(())
     }
 
+    /// Returns the device set for this instance.
     pub fn device_set(&self) -> DeviceSet {
         DeviceSet {
             to_meeting_microphone_in:

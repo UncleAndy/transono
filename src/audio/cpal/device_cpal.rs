@@ -2,41 +2,49 @@ use anyhow::{Context, Result};
 use cpal::{traits::{DeviceTrait, HostTrait}, Device, Host, SampleFormat};
 use crate::audio::{Endianness, PcmFormat};
 
+/// Manager for audio devices discovered via CPAL.
 pub struct AudioDevicesCpal {
     host: Host,
 }
 
 impl AudioDevicesCpal {
+    /// Creates a new manager with the default host.
     pub fn new() -> Self {
         Self {
             host: cpal::default_host(),
         }
     }
 
+    /// Returns a reference to the CPAL host.
     pub fn host(&self) -> &Host {
         &self.host
     }
 
+    /// Returns the default input device.
     pub fn default_input(&self) -> Result<Device> {
         self.host
             .default_input_device()
             .context("Default input device not found")
     }
 
+    /// Returns the default output device.
     pub fn default_output(&self) -> Result<Device> {
         self.host
             .default_output_device()
             .context("Default output device not found")
     }
 
+    /// Returns a list of all available input devices.
     pub fn input_devices(&self) -> Result<Vec<Device>> {
         Ok(self.host.input_devices()?.collect())
     }
 
+    /// Returns a list of all available output devices.
     pub fn output_devices(&self) -> Result<Vec<Device>> {
         Ok(self.host.output_devices()?.collect())
     }
 
+    /// Finds an input device by its identifier.
     pub fn find_input(&self, id: &str) -> Result<Device> {
         let wanted = id.parse()?;
 
@@ -45,6 +53,7 @@ impl AudioDevicesCpal {
             .context("Input device not found")
     }
 
+    /// Finds an output device by its identifier.
     pub fn find_output(&self, id: &str) -> Result<Device> {
         let wanted = id.parse()?;
 

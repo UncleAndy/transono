@@ -34,6 +34,7 @@ impl Default for NormalizerConfig {
 ///
 /// Adjusts the gain of the audio signal to reach a target peak or RMS level.
 pub struct Normalizer {
+    /// Configuration for the normalizer.
     pub config: NormalizerConfig,
 }
 
