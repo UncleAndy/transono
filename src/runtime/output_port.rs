@@ -5,7 +5,10 @@ use futures_util::StreamExt;
 use crate::audio::{Audio, AudioFormat, AudioInput};
 use crate::core::error::{CoreError, Result};
 
-/// OutputPort - это AudioInput для внешнего API
+/// An output exit point for an audio graph.
+///
+/// Implements [`AudioInput`] to provide processed audio data to
+/// external consumers.
 pub struct OutputPort {
     format: AudioFormat,
     receiver: Option<Receiver<Audio>>

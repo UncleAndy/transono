@@ -1,3 +1,5 @@
+//! [`RealtimeSession`] — live OpenAI Realtime WebSocket session.
+
 use async_trait::async_trait;
 use futures_util::stream::BoxStream;
 use crate::audio::output::BoxSink;
@@ -24,6 +26,12 @@ use crate::providers::openai::realtime::{
 use tokio_tungstenite::tungstenite::{Message, Utf8Bytes};
 use crate::core::transport::TransportData;
 
+/// Live OpenAI Realtime WebSocket session.
+///
+/// Implements [`ProviderSession`] for line-level capture→playback bridging and
+/// [`Session`] for lower-level push/pull use. After [`Self::connect`], the first
+/// server `session.created` triggers a `session.update` with audio and turn
+/// settings from [`OpenAIRealtimeConfig`].
 pub struct RealtimeSession {
     closed: bool,
 
@@ -82,12 +90,12 @@ impl ProviderSession for RealtimeSession {
             let mut is_playing = false;
             let jitter_threshold = std::time::Duration::from_millis(100);
 
-            // Разделяем пайплайны
+            // Split pipelines for input/output tasks.
             let stats = pipelines.stats.clone();
             let mut input_pipeline = pipelines.input;
             let mut output_pipeline = pipelines.output;
 
-            // Создаем Sender для input_task
+            // Sender used by the capture/input task.
             let mut sender = RealtimeSender {
                 encoder: self.encoder.take().expect("encoder missing"),
                 writer_tx: self.transport.clone_sender(),
@@ -107,7 +115,7 @@ impl ProviderSession for RealtimeSession {
                                         continue
                                     };
 
-                                    // Отправляем аудио напрямую из input_task
+                                    // Send audio directly from the input task.
                                     tokio::select! {
                                         _ = cancel_input.cancelled() => break,
                                         res = sender.send_audio(audio) => {
@@ -146,7 +154,7 @@ impl ProviderSession for RealtimeSession {
                         match event {
                             SessionEvent::SessionStarted(_) => {
                                 // println!("{}", msg);
-                                // Отправляем конфиг в 'session.update'
+                                // Apply session config via `session.update`.
                                 self.send(SessionUpdate(
                                     SessionUpdateEvent {
                                         event_type: "session.update",
@@ -253,7 +261,7 @@ impl ProviderSession for RealtimeSession {
 
             self.close().await?;
 
-            // Собираем пайплайны обратно
+            // Reassemble pipelines for the caller.
             let input_pipeline = input_task.await
                 .map_err(|e| CoreError::Internal(format!("input task panicked: {}", e)))??;
 
@@ -315,6 +323,13 @@ impl Session for RealtimeSession {
 }
 
 impl RealtimeSession {
+    /// Open a Realtime WebSocket and prepare PCM encode/decode for the config format.
+    ///
+    /// # Errors
+    ///
+    /// Returns protocol errors if the handshake request cannot be built, transport
+    /// errors if the WebSocket connect fails, or codec errors if encoder/decoder
+    /// construction fails for [`OpenAIRealtimeConfig::audio_format`].
     pub async fn connect(config: &OpenAIRealtimeConfig) -> Result<Self> {
         let request = config.request()?;
 

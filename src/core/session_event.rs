@@ -1,29 +1,34 @@
+//! High-level lifecycle and content events for a realtime session.
+
 use crate::audio::Audio;
 
+/// Event observed on a running session (status, audio, or text).
 #[derive(Debug)]
 pub enum SessionEvent {
+    /// Remote session became ready; payload is a session identifier.
     SessionStarted(String),
 
+    /// Session configuration was acknowledged; payload is a status or id.
     SessionConfigured(String),
 
-    /// Очередная порция аудио.
+    /// Next chunk of output audio from the provider.
     Audio(Audio),
 
-    /// Очередная порция текста.
+    /// Next chunk of output text from the provider.
     Text(String),
 
-    /// Очередная порция текста из распознанного на входе.
+    /// Next chunk of transcribed input text (ASR on the capture path).
     InputText(String),
 
-    /// Провайдер начал принимать/обрабатывать новый пользовательский запрос
+    /// Provider started accepting or processing a new user request.
     RequestStarted,
 
-    /// Пользовательский запрос полностью получен (ввод завершён)
+    /// User request input is complete.
     RequestFinished,
 
-    /// Началась генерация ответа
+    /// Provider began generating a response.
     ResponseStarted,
 
-    /// Ответ полностью сформирован и передан
+    /// Response generation finished and was fully delivered.
     ResponseFinished,
 }

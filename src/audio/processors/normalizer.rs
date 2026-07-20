@@ -2,6 +2,7 @@ use crate::audio::processor::DspProcessor;
 use crate::audio::pcm_audio::PcmAudio;
 use crate::core::error::Result;
 
+/// Strategy for audio normalization.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum NormalizationType {
     /// Scales the signal so that the highest peak reaches the target level.
@@ -10,10 +11,12 @@ pub enum NormalizationType {
     Rms,
 }
 
+/// Configuration parameters for the [`Normalizer`].
 #[derive(Debug, Clone)]
 pub struct NormalizerConfig {
+    /// The type of normalization to apply.
     pub normalization_type: NormalizationType,
-    /// Target level (linear scale for Peak, linear RMS for RMS). 
+    /// Target level (linear scale for Peak, linear RMS for RMS).
     /// For Peak, 1.0 is the maximum possible value without clipping.
     pub target_level: f32,
 }
@@ -35,6 +38,11 @@ pub struct Normalizer {
 }
 
 impl Normalizer {
+    /// Creates a new [`Normalizer`] with the given configuration.
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - A [`NormalizerConfig`] containing the normalization strategy and target level.
     pub fn new(config: NormalizerConfig) -> Self {
         Self { config }
     }

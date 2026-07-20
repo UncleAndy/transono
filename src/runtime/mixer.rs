@@ -20,6 +20,10 @@ struct MixerChannel {
     last_timestamp: Option<Instant>,
 }
 
+/// Real-time audio mixer.
+///
+/// Combines multiple input audio streams into a single output stream.
+/// Supports weighted mixing and automatic sample rate/channel verification.
 pub struct Mixer {
     format: AudioFormat,
     channels: Arc<Mutex<HashMap<ChannelId, MixerChannel>>>,
@@ -29,6 +33,11 @@ pub struct Mixer {
 }
 
 impl Mixer {
+    /// Creates a new mixer with the specified audio format.
+    ///
+    /// # Arguments
+    ///
+    /// * `format` - The target [`AudioFormat`] for the mixed output. All inputs must match this format.
     pub fn new(format: AudioFormat) -> Self {
         let (tx, rx) = mpsc::channel(100);
         Self {
@@ -40,6 +49,21 @@ impl Mixer {
         }
     }
 
+    /// Adds a new input stream to the mixer.
+    ///
+    /// # Arguments
+    ///
+    /// * `input` - A mutable reference to an object implementing [`AudioInput`].
+    /// * `weight` - Volume multiplier for this channel (usually 0.0 to 1.0).
+    ///
+    /// # Returns
+    ///
+    /// Returns a [`Result`] containing a unique [`ChannelId`] if successful.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CoreError::Internal`] (with incompatible format message) if the input format
+    /// does not match the mixer's format, or if getting the input stream fails.
     pub fn add_input(&self, input: &mut dyn AudioInput, weight: f32) -> Result<ChannelId> {
         if input.format() != self.format {
             return Err(CoreError::Internal(format!(
@@ -66,6 +90,10 @@ impl Mixer {
         Ok(id)
     }
 
+    /// Runs the mixer's processing loop.
+    ///
+    /// This should be spawned in a separate task. It continuously pulls
+    /// data from all inputs, mixes it, and pushes to the output.
     pub async fn run(self: Arc<Self>) {
         let format = self.format.clone();
         let channels_lock = self.channels.clone();

@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Context, Result};
 use futures_util::StreamExt;
 
-use transono::audio::{find_node_by_name, AudioInput, AudioFormat, PipeWireInput, PcmAudio, DspProcessor};
+use transono::audio::{AudioInput, AudioFormat, PipeWireInput, PcmAudio, DspProcessor};
 use transono::audio::diagnost::wav_dump::WavDump;
 use transono::ctl::create_backend;
 

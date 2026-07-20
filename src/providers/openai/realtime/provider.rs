@@ -1,3 +1,5 @@
+//! [`OpenAIRealtimeProvider`] factory for OpenAI Realtime sessions.
+
 use crate::core::{
     provider::Provider,
     error::Result,
@@ -8,11 +10,30 @@ use crate::providers::openai::realtime::{
     config::OpenAIRealtimeConfig,
 };
 
+/// [`Provider`] factory for OpenAI Realtime sessions.
+///
+/// Holds an [`OpenAIRealtimeConfig`] and opens a [`RealtimeSession`] over WebSocket.
+///
+/// # Examples
+///
+/// ```no_run
+/// use transono::core::provider::Provider;
+/// use transono::providers::openai::realtime::{
+///     OpenAIRealtimeConfig, OpenAIRealtimeProvider,
+/// };
+///
+/// # async fn demo() -> transono::core::error::Result<()> {
+/// let provider = OpenAIRealtimeProvider::new(OpenAIRealtimeConfig::from_env()?);
+/// let _session = provider.create_session().await?;
+/// # Ok(())
+/// # }
+/// ```
 pub struct OpenAIRealtimeProvider {
     config: OpenAIRealtimeConfig,
 }
 
 impl OpenAIRealtimeProvider {
+    /// Wrap a Realtime config as a provider factory.
     pub fn new(config: OpenAIRealtimeConfig) -> Self {
         Self { config }
     }

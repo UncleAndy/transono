@@ -17,6 +17,16 @@ pub struct PcmAudio {
 }
 
 impl PcmAudio {
+    /// Creates a new [`PcmAudio`] buffer with the specified spec and frame count.
+    ///
+    /// # Arguments
+    ///
+    /// * `spec` - Audio specification (sample rate, channels).
+    /// * `frames` - Number of frames to allocate memory for.
+    ///
+    /// # Returns
+    ///
+    /// Returns a new instance of [`PcmAudio`] with zeroed data.
     pub fn new(spec: AudioSpec, frames: usize) -> Self {
         let channel_count = spec.channels().count();
         let data = vec![0.0; frames * channel_count];
@@ -31,6 +41,7 @@ impl PcmAudio {
         }
     }
 
+    /// Returns the number of audio frames in the buffer.
     pub fn frames(&self) -> usize {
         self.frames
     }
@@ -45,6 +56,15 @@ impl PcmAudio {
         &self.data[start..end]
     }
 
+    /// Returns a mutable reference to the samples of a specific channel.
+    ///
+    /// # Arguments
+    ///
+    /// * `index` - The zero-based index of the channel.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the `index` is out of bounds for the current channel count.
     pub fn channel_mut(&mut self, index: usize) -> &mut [f32] {
         let start = index * self.frames;
         let end = start + self.frames;

@@ -1,3 +1,8 @@
+//! Universal audio container and device sample layout.
+//!
+//! [`Audio`] wraps a shared [`GenericAudioBuffer`](symphonia::core::audio::GenericAudioBuffer)
+//! plus a capture timestamp. DSP stages usually convert to [`PcmAudio`] (`f32` planar).
+
 use std::fmt;
 use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
@@ -10,7 +15,10 @@ use symphonia::core::audio::sample::{i24, u24, Sample};
 use crate::audio::{PcmAudio, PcmFormat, EncodedAudioFormat, AudioCodec, Endianness};
 use crate::core::error::Result;
 
-/// Universal audio container.
+/// Reference-counted audio chunk with a capture timestamp.
+///
+/// Cheap to clone (`Arc` over the underlying buffer). Prefer converting to
+/// [`PcmAudio`] for DSP rather than mutating sample formats in place.
 #[derive(Clone)]
 pub struct Audio {
     buffer: Arc<GenericAudioBuffer>,
@@ -18,6 +26,11 @@ pub struct Audio {
 }
 
 impl Audio {
+    /// Wrap a buffer and stamp capture time as `Instant::now()`.
+    ///
+    /// # Arguments
+    ///
+    /// * `buffer` - A [`GenericAudioBuffer`] containing the audio samples.
     pub fn new(
         buffer: GenericAudioBuffer,
     ) -> Self {
@@ -27,6 +40,12 @@ impl Audio {
         }
     }
 
+    /// Wrap a buffer with an explicit capture timestamp.
+    ///
+    /// # Arguments
+    ///
+    /// * `buffer` - A [`GenericAudioBuffer`] containing the audio samples.
+    /// * `timestamp` - The precise moment when this audio was captured.
     pub fn new_with_timestamp(
         buffer: GenericAudioBuffer,
         timestamp: Instant,
@@ -37,14 +56,21 @@ impl Audio {
         }
     }
 
+    /// Instant when this chunk was captured (or assigned).
     pub fn capture_timestamp(&self) -> Instant {
         self.capture_timestamp
     }
 
+    /// Override the capture timestamp.
+    ///
+    /// # Arguments
+    ///
+    /// * `timestamp` - The new capture timestamp to assign to this chunk.
     pub fn set_capture_timestamp(&mut self, timestamp: Instant) {
         self.capture_timestamp = timestamp;
     }
 
+    /// Duration implied by frame count and sample rate (zero if rate is 0).
     pub fn duration(&self) -> std::time::Duration {
         let frames = self.buffer.frames() as u64;
         let rate = self.buffer.spec().rate() as u64;
@@ -54,10 +80,20 @@ impl Audio {
         std::time::Duration::from_nanos(frames * 1_000_000_000 / rate)
     }
 
+    /// Shared reference to the underlying sample buffer.
     pub fn buffer(&self) -> Arc<GenericAudioBuffer> {
         self.buffer.clone()
     }
 
+    /// Copy samples into a planar destination (`dst[channel][frame]`).
+    ///
+    /// # Arguments
+    ///
+    /// * `dst` - A mutable slice of mutable sample slices. Each inner slice represents one channel.
+    ///
+    /// # Type Parameters
+    ///
+    /// * `S` - The target sample type, must implement [`Sample`] and [`ConvertibleSample`].
     pub fn copy_to_planar<S>(
         &self,
         dst: &mut [&mut [S]],
@@ -87,6 +123,15 @@ impl Audio {
         Self::new(buffer.into_generic_buffer())
     }
 
+    /// Convert this chunk into a newly allocated [`PcmAudio`] (`f32` planar).
+    ///
+    /// # Returns
+    ///
+    /// Returns a [`Result`] containing the new [`PcmAudio`] buffer.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`crate::core::error::CoreError`] if the conversion or memory allocation fails.
     pub fn to_pcm(
         &self,
     ) -> Result<PcmAudio> {
@@ -99,6 +144,17 @@ impl Audio {
         Ok(pcm)
     }
 
+    /// Convert into an existing [`PcmAudio`], resizing it if needed.
+    ///
+    /// Prefer this over [`Self::to_pcm`] on hot paths when a buffer is pooled.
+    ///
+    /// # Arguments
+    ///
+    /// * `pcm` - A mutable reference to the target [`PcmAudio`] buffer.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`crate::core::error::CoreError`] if the internal symphonia buffer conversion fails.
     pub fn to_pcm_into(
         &self,
         pcm: &mut PcmAudio,
@@ -139,6 +195,22 @@ impl Audio {
         Ok(())
     }
 
+    /// Creates a new [`Audio`] instance from [`PcmAudio`].
+    ///
+    /// This performs an allocation as it converts the planar `f32` data back into
+    /// a [`GenericAudioBuffer`].
+    ///
+    /// # Arguments
+    ///
+    /// * `pcm` - The source [`PcmAudio`] buffer.
+    ///
+    /// # Returns
+    ///
+    /// Returns a [`Result`] containing the new [`Audio`] wrapper.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`crate::core::error::CoreError`] if the conversion fails.
     pub fn from_pcm(
         pcm: &PcmAudio,
     ) -> Result<Self> {
@@ -214,10 +286,12 @@ pub struct AudioFormat {
 }
 
 impl AudioFormat {
+    /// Returns the symphonia [`AudioSpec`] for this format.
     pub fn spec(&self) -> AudioSpec {
         AudioSpec::new(self.sample_rate, Channels::Discrete(self.channels))
     }
 
+    /// Returns the size of a single audio frame in bytes.
     pub fn frame_size(&self) -> usize {
         self.channels as usize * self.sample_format.sample_size()
     }

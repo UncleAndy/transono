@@ -9,6 +9,10 @@ use crate::audio::processors::normalizer::Normalizer;
 use crate::audio::{Audio, PcmAudio};
 use crate::core::error::{CoreError, Result};
 
+/// A wrapper for various audio and DSP processors.
+///
+/// Can represent either a high-level [`AudioProcessor`] or a low-level
+/// [`DspProcessor`]. Used to build processing pipelines.
 pub enum Processor {
     Identity(IdentityProcessor),
     Denoiser(Denoiser),
@@ -22,6 +26,20 @@ pub enum Processor {
 }
 
 impl Processor {
+    /// Processes a high-level [`Audio`] chunk.
+    ///
+    /// # Arguments
+    ///
+    /// * `audio` - A mutable reference to the [`Audio`] chunk to be processed.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(true)` if the processing was successful and output is available in the buffer,
+    /// `Ok(false)` if more data is needed, or an error.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CoreError::Processing`] if this variant is a DSP-only processor.
     pub fn process_audio(&mut self, audio: &mut Audio) -> Result<bool> {
         match self {
             Self::Identity(p) => AudioProcessor::process(p, audio),
@@ -30,6 +48,20 @@ impl Processor {
         }
     }
 
+    /// Processes low-level [`PcmAudio`].
+    ///
+    /// # Arguments
+    ///
+    /// * `pcm` - A mutable reference to the [`PcmAudio`] buffer to be processed.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(true)` if the processing was successful and output is available,
+    /// `Ok(false)` if more data is needed, or an error.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CoreError::Processing`] if this variant is an [`AudioProcessor`] only.
     pub fn process_dsp(&mut self, pcm: &mut PcmAudio) -> Result<bool> {
         match self {
             Self::Denoiser(p) => DspProcessor::process(p, pcm),
@@ -44,10 +76,12 @@ impl Processor {
         }
     }
 
+    /// Returns `true` if this is a high-level [`AudioProcessor`].
     pub fn is_audio(&self) -> bool {
         matches!(self, Self::Identity(_) | Self::Pipeline(_))
     }
 
+    /// Returns `true` if this is a low-level [`DspProcessor`].
     pub fn is_dsp(&self) -> bool {
         match self {
             Self::Pipeline(_) => true,
@@ -56,17 +90,24 @@ impl Processor {
     }
 }
 
-/// Любой обработчик аудиопотока.
+/// A high-level audio processor that operates on [`Audio`] chunks.
 pub trait AudioProcessor: Send {
-    /// Обрабатывает аудиоблок.
+    /// Processes an audio chunk.
     ///
-    /// Возвращает:
-    /// - `Ok(true)`  — выходные данные готовы;
-    /// - `Ok(false)` — требуется больше входных данных;
-    /// - `Err(...)`  — ошибка обработки.
+    /// # Arguments
+    ///
+    /// * `input` - A mutable reference to the [`Audio`] chunk.
+    ///
+    /// # Returns
+    ///
+    /// Returns:
+    /// - `Ok(true)`  — output data is ready;
+    /// - `Ok(false)` — needs more input data;
+    /// - `Err(...)`  — processing failure.
     fn process(&mut self, input: &mut Audio) -> Result<bool>;
 }
 
+/// A processor that does nothing and passes audio through.
 pub struct IdentityProcessor;
 
 impl AudioProcessor for IdentityProcessor {
@@ -75,25 +116,43 @@ impl AudioProcessor for IdentityProcessor {
     }
 }
 
-/// Внутренний обработчик в формате внутреннего представления аудо-данных
+/// A low-level DSP processor that operates on [`PcmAudio`].
 pub trait DspProcessor: Send {
-    /// Обрабатывает аудиоблок.
+    /// Processes a PCM audio block.
     ///
-    /// Возвращает:
-    /// - `Ok(true)`  — выходные данные готовы;
-    /// - `Ok(false)` — требуется больше входных данных;
-    /// - `Err(...)`  — ошибка обработки.
+    /// # Arguments
+    ///
+    /// * `input` - A mutable reference to the [`PcmAudio`] block.
+    ///
+    /// # Returns
+    ///
+    /// Returns:
+    /// - `Ok(true)`  — output data is ready;
+    /// - `Ok(false)` — needs more input data;
+    /// - `Err(...)`  — processing failure.
     fn process(&mut self, input: &mut PcmAudio) -> Result<bool>;
 }
 
-/// Трейт для цепочки обработки (Pipeline), объединяющий оба типа процессоров.
+/// A trait for processing chains (Pipelines) that combine multiple processors.
 pub trait Pipeline: AudioProcessor + DspProcessor + Send {
-    /// Добавляет процессор в цепочку.
+    /// Adds a processor to the chain.
+    ///
+    /// # Arguments
+    ///
+    /// * `processor` - The [`Processor`] to append to the pipeline.
     fn add(&mut self, processor: Processor);
 
-    /// Очищает цепочку процессоров.
+    /// Clears the processing chain.
     fn clear(&mut self);
 
-    /// Обрабатывает блок аудио как часть потока, возвращая результат и время обработки.
+    /// Processes an audio block as part of a stream, returning result and duration.
+    ///
+    /// # Arguments
+    ///
+    /// * `audio` - The input [`Audio`] block.
+    ///
+    /// # Returns
+    ///
+    /// Returns a [`Result`] containing an optional tuple of processed [`Audio`] and the [`Duration`] it took.
     fn process_stream(&mut self, audio: Audio) -> Result<Option<(Audio, Duration)>>;
 }

@@ -12,6 +12,10 @@ use crate::core::error::{CoreError, Result};
 const SUB_CHUNKS: usize = 4;
 const CHUNK_DURATION_MS: u32 = 20;
 
+/// An audio resampler that changes the sample rate.
+///
+/// Uses FFT-based resampling for high quality conversion. Supports arbitrary
+/// input rates and fixed output rates with multi-channel support.
 pub struct Resampler {
     output_rate: u32,
 
@@ -27,6 +31,21 @@ pub struct Resampler {
 }
 
 impl Resampler {
+    /// Creates a new [`Resampler`] with the specified input and output formats.
+    ///
+    /// # Arguments
+    ///
+    /// * `input_spec` - Specification of the input audio (sample rate, channels).
+    /// * `output_rate` - Target sample rate in Hz.
+    ///
+    /// # Returns
+    ///
+    /// Returns a [`Result`] containing the initialized [`Resampler`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CoreError::Internal`] if the FFT-based resampler fails to initialize
+    /// with the provided parameters.
     pub fn new(
         input_spec: AudioSpec,
         output_rate: u32,

@@ -1,3 +1,8 @@
+//! Audio devices, buffers, encoding, and DSP pipelines.
+//!
+//! Hot paths should avoid allocation: prefer pooled frames/PCM and
+//! slice-based processing. Device backends: [`cpal`], [`pipewire`].
+
 pub mod audio_buffer;
 pub mod frame;
 pub mod frame_pool;

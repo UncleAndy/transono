@@ -5,6 +5,10 @@ use crate::audio::output::BoxSink;
 use crate::audio::{Audio, AudioFormat, AudioOutput};
 use crate::core::error::{CoreError, Result, TransportError};
 
+/// An input entry point for an audio graph.
+///
+/// Implements [`AudioOutput`] to receive audio data from external sources
+/// and forward it to internal graph components.
 #[derive(Clone)]
 pub struct InputPort {
     format: AudioFormat,

@@ -3,11 +3,20 @@ use symphonia::core::audio::Channels;
 use crate::audio::{DspProcessor, PcmAudio};
 use crate::core::error::{CoreError, Result};
 
+/// A DSP processor for converting between mono and stereo audio.
+///
+/// Supports mono-to-stereo and stereo-to-mono conversions by averaging
+/// or duplicating channels.
 pub struct ChannelConverter {
     output_channels: Channels,
 }
 
 impl ChannelConverter {
+    /// Creates a new [`ChannelConverter`] with the target channel layout.
+    ///
+    /// # Arguments
+    ///
+    /// * `output_channels` - The target channel configuration (e.g., mono or stereo).
     pub fn new(
         output_channels: Channels,
     ) -> Self {

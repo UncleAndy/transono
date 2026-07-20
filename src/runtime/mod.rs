@@ -1,3 +1,8 @@
+//! Audio graph and routing runtime.
+//!
+//! Provides components for mixing, splitting, and linking audio streams
+//! in a flexible processing graph.
+
 pub mod link;
 pub mod input_port;
 pub mod output_port;

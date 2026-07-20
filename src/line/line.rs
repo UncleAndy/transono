@@ -1,3 +1,5 @@
+//! [`TranslationLine`]: one capture→provider→playback speech-translation stream.
+
 use tokio_util::sync::CancellationToken;
 use std::sync::Arc;
 
@@ -8,6 +10,20 @@ use crate::line::LineState;
 use crate::core::error::{CoreError, Result};
 use crate::core::session_event::SessionEvent;
 
+/// Single capture→provider→playback translation stream.
+///
+/// Parameterized by a [`Provider`]. Owns audio devices, DSP
+/// [`Pipelines`], and an optional provider session task. Prefer configuring
+/// processors before [`Self::run`].
+///
+/// # Examples
+///
+/// ```no_run
+/// // Requires real audio devices and provider credentials.
+/// # async fn demo() -> Result<(), Box<dyn std::error::Error>> {
+/// # Ok(())
+/// # }
+/// ```
 pub struct TranslationLine<P>
 where
     P: Provider,
@@ -20,6 +36,7 @@ where
     audio_output: Option<Box<dyn AudioOutput>>,
 
     pipelines: Option<Pipelines>,
+    /// Shared latency counters updated by the DSP pipelines.
     pub latency_stats: Arc<LatencyStats>,
 
     session_task: Option<tokio::task::JoinHandle<Result<Pipelines>>>,
@@ -30,6 +47,15 @@ where
 }
 
 impl<P: Provider> TranslationLine<P> {
+    /// Build a line with default input/output pipelines for the given devices.
+    ///
+    /// Creates [`Pipelines`] backed by `stats`, then calls [`Self::auto_configure`]
+    /// so capture and playback formats match the provider.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CoreError`] if pipeline auto-configuration fails (missing
+    /// audio devices or unsupported format conversion).
     pub async fn new(
         provider: P,
         audio_input: Box<dyn AudioInput>,
@@ -62,10 +88,16 @@ impl<P: Provider> TranslationLine<P> {
         Ok(line)
     }
 
+    /// Attach an unbounded channel for [`SessionEvent`]s from the provider session.
     pub fn set_event_sender(&mut self, tx: mpsc::UnboundedSender<SessionEvent>) {
         self.event_tx = Some(tx);
     }
 
+    /// Append a DSP stage on the capture (input) path.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CoreError::Internal`] if the line is already [`LineState::Running`].
     pub fn add_input_processor(
         &mut self,
         processor: Processor,
@@ -82,6 +114,10 @@ impl<P: Provider> TranslationLine<P> {
         Ok(())
     }
 
+    /// Append an input processor, printing to stderr on failure instead of returning an error.
+    ///
+    /// When the line is [`LineState::Running`], the failure from
+    /// [`Self::add_input_processor`] is logged via `eprintln!` and ignored.
     pub fn with_input_proc(
         &mut self,
         processor: Processor,
@@ -93,6 +129,9 @@ impl<P: Provider> TranslationLine<P> {
         self
     }
 
+    /// Replace the entire capture pipeline.
+    ///
+    /// No-ops (after `eprintln!`) when the line is [`LineState::Running`].
     pub fn with_input_pipeline(
         &mut self,
         pipeline: Box<dyn Pipeline>
@@ -109,6 +148,11 @@ impl<P: Provider> TranslationLine<P> {
         self
     }
 
+    /// Append a DSP stage on the playback (output) path.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CoreError::Internal`] if the line is already [`LineState::Running`].
     pub fn add_output_processor(
         &mut self,
         processor: Processor,
@@ -125,6 +169,11 @@ impl<P: Provider> TranslationLine<P> {
         Ok(())
     }
 
+    /// Remove all processors from the capture pipeline.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CoreError::Internal`] if the line is already [`LineState::Running`].
     pub fn clear_input_processors(&mut self) -> Result<()> {
         if self.state == LineState::Running {
             return Err(CoreError::Internal("TranslationLine is running".to_string()));
@@ -137,6 +186,11 @@ impl<P: Provider> TranslationLine<P> {
         Ok(())
     }
 
+    /// Remove all processors from the playback pipeline.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CoreError::Internal`] if the line is already [`LineState::Running`].
     pub fn clear_output_processors(&mut self) -> Result<()> {
         if self.state == LineState::Running {
             return Err(CoreError::Internal("TranslationLine is running".to_string()));
@@ -149,6 +203,10 @@ impl<P: Provider> TranslationLine<P> {
         Ok(())
     }
 
+    /// Append an output processor, printing to stderr on failure instead of returning an error.
+    ///
+    /// When the line is [`LineState::Running`], the failure from
+    /// [`Self::add_output_processor`] is logged via `eprintln!` and ignored.
     pub fn with_output_proc(
         &mut self,
         processor: Processor,
@@ -160,6 +218,9 @@ impl<P: Provider> TranslationLine<P> {
         self
     }
 
+    /// Replace the entire playback pipeline.
+    ///
+    /// No-ops (after `eprintln!`) when the line is [`LineState::Running`].
     pub fn with_output_pipeline(
         &mut self,
         pipeline: Box<dyn Pipeline>
@@ -176,28 +237,42 @@ impl<P: Provider> TranslationLine<P> {
         self
     }
 
+    /// Current lifecycle state.
     pub fn state(
         &self,
     ) -> LineState {
         self.state
     }
 
+    /// Snapshot of latency counters from [`Self::latency_stats`].
     pub fn latency(&self) -> crate::audio::LatencySnapshot {
         self.latency_stats.snapshot()
     }
 
+    /// Borrow the configured provider.
     pub fn provider(&self) -> &P {
         &self.provider
     }
 
+    /// Borrow the capture device, if still attached.
     pub fn audio_input(&self) -> Option<&dyn AudioInput> {
         self.audio_input.as_deref()
     }
 
+    /// Borrow the playback device, if still attached.
     pub fn audio_output(&self) -> Option<&dyn AudioOutput> {
         self.audio_output.as_deref()
     }
 
+    /// Rebuild default DSP pipelines for hardware ↔ provider format conversion.
+    ///
+    /// Capture path: device format → provider format. Playback path: provider
+    /// format → device format. Called automatically from [`Self::new`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CoreError::Internal`] if audio input/output is missing, or
+    /// pipeline construction fails for the negotiated formats.
     pub fn auto_configure(&mut self) -> Result<()> {
         let input_format = self.audio_input.as_ref().map(|i| i.format()).ok_or_else(|| CoreError::Internal("audio input missing".to_string()))?;
         let output_format = self.audio_output.as_ref().map(|o| o.format()).ok_or_else(|| CoreError::Internal("audio output missing".to_string()))?;
@@ -214,6 +289,16 @@ impl<P: Provider> TranslationLine<P> {
         Ok(())
     }
 
+    /// Cancel the provider session, reclaim pipelines, and stop audio devices.
+    ///
+    /// No-ops if the line is not [`LineState::Running`]. On success the state
+    /// becomes [`LineState::Stopped`].
+    ///
+    /// # Errors
+    ///
+    /// Propagates session-task join/panic failures, session [`CoreError`]s, or
+    /// audio stop failures. If the session ended with an error, audio is still
+    /// stopped before returning that error.
     pub async fn stop(&mut self) -> Result<()> {
         if self.state != LineState::Running {
             return Ok(());
@@ -236,7 +321,7 @@ impl<P: Provider> TranslationLine<P> {
                     self.pipelines = Some(pipelines);
                 }
                 Err(e) => {
-                    // Даже если сессия завершилась с ошибкой, мы должны остановить аудио
+                    // Even if the session ended with an error, we must stop audio.
                     let _ = self.stop_audio();
                     return Err(e);
                 }
@@ -262,6 +347,16 @@ impl<P: Provider> TranslationLine<P> {
         Ok(())
     }
 
+    /// Start capture, playback, and the provider session.
+    ///
+    /// Creates a provider session, starts audio I/O, transfers ownership of
+    /// [`Pipelines`] into the session task, and sets state to
+    /// [`LineState::Running`]. No-ops if already running.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CoreError`] if session creation fails, audio devices are
+    /// missing, or starting capture/playback fails.
     pub async fn run(&mut self) -> Result<()> {
         if self.state == LineState::Running {
             return Ok(());

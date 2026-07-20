@@ -22,15 +22,22 @@ pub struct Compressor {
     envelope: Vec<f32>,
 }
 
+/// Configuration parameters for the [`Compressor`].
 #[derive(Debug, Clone)]
 pub struct CompressorConfig {
+    /// Level (in dB) above which compression starts.
     pub threshold: f32,
+    /// Amount of gain reduction (e.g., 4.0 for 4:1 ratio).
     pub ratio: f32,
+    /// How quickly the compressor reacts to peaks (in seconds).
     pub attack_time: f32,
+    /// How quickly the compressor returns to normal gain (in seconds).
     pub release_time: f32,
+    /// Gain added after compression to restore overall volume (in dB).
     pub makeup_gain: f32,
 }
 
+/// A natural-sounding compressor preset optimized for voice.
 #[allow(unused)]
 pub static NATURAL_VOICE: CompressorConfig = CompressorConfig {
     threshold: -20.0,
@@ -40,6 +47,7 @@ pub static NATURAL_VOICE: CompressorConfig = CompressorConfig {
     makeup_gain: 4.0,
 };
 
+/// A more aggressive compressor preset for tight level control.
 #[allow(unused)]
 pub static TIGHT_CONTROL: CompressorConfig = CompressorConfig {
     threshold: -24.0,
@@ -50,6 +58,11 @@ pub static TIGHT_CONTROL: CompressorConfig = CompressorConfig {
 };
 
 impl Compressor {
+    /// Creates a new [`Compressor`] from the given configuration.
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - A [`CompressorConfig`] containing parameters for the compressor.
     pub fn new(config: CompressorConfig) -> Self {
         Self {
             threshold: config.threshold,

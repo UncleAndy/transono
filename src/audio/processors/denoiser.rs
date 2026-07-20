@@ -11,6 +11,10 @@ const MAX_ATTENUATION_DB: f32 = 18.0;
 const ATTACK_SMOOTHING: f32 = 0.45;
 const RELEASE_SMOOTHING: f32 = 0.08;
 
+/// A simple noise-gate style denoiser.
+///
+/// Tracks the noise floor and attenuates signals that fall below the
+/// speech threshold. Smoothes gain changes to avoid audible pumping.
 pub struct Denoiser {
     channels: usize,
     noise_floor_dbfs: f32,
@@ -18,6 +22,11 @@ pub struct Denoiser {
 }
 
 impl Denoiser {
+    /// Creates a new [`Denoiser`] with the given audio specification.
+    ///
+    /// # Arguments
+    ///
+    /// * `spec` - The [`AudioSpec`] defining the channel layout and sample rate.
     pub fn new(spec: AudioSpec) -> Self {
         Self {
             channels: spec.channels().count(),
