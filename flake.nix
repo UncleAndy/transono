@@ -16,27 +16,9 @@
         devShells.default = pkgs.mkShell {
           name = "transono-dev";
 
-        shellHook = ''
-            project_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-
-            __prompt() {
-                local rel branch dirty
-
-                rel="$(realpath --relative-to="$project_root" "$PWD")"
-
-                branch="$(git branch --show-current 2>/dev/null)"
-
-                if git diff --quiet --ignore-submodules HEAD 2>/dev/null; then
-                  dirty=""
-                else
-                  dirty="*"
-                fi
-
-                PS1="🦀 transono/$rel [$branch$dirty] \$ "
-              }
-
-            PROMPT_COMMAND=__prompt
-        '';
+            shellHook = ''
+              source ${./nix/prompt.sh}
+            '';
 
           nativeBuildInputs = with pkgs; [
             pkg-config
