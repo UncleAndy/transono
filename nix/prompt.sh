@@ -35,9 +35,9 @@ __git_prompt() {
     done < <(git status --porcelain=v2 --branch 2>/dev/null)
 
     if [[ -n "$branch" ]]; then
-        PS1="🦀 $project_name:$rel [$branch$marks] \$ "
+        PS1="#:$project_name/$rel [$branch$marks] \$ "
     else
-        PS1="🦀 $project_name:$rel \$ "
+        PS1="#:$project_name/$rel \$ "
     fi
 }
 
