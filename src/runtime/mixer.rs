@@ -24,7 +24,7 @@ struct MixerChannel {
 ///
 /// Combines multiple input audio streams into a single output stream.
 /// Supports weighted mixing and automatic sample rate/channel verification.
-pub struct Mixer {
+pub struct AudioMixer {
     format: AudioFormat,
     channels: Arc<Mutex<HashMap<ChannelId, MixerChannel>>>,
     output_tx: Sender<Audio>,
@@ -32,7 +32,7 @@ pub struct Mixer {
     next_channel_id: Mutex<ChannelId>,
 }
 
-impl Mixer {
+impl AudioMixer {
     /// Creates a new mixer with the specified audio format.
     ///
     /// # Arguments
@@ -180,7 +180,7 @@ impl Mixer {
     }
 }
 
-impl AudioOutput for Mixer {
+impl AudioOutput for AudioMixer {
     fn sink(&mut self) -> Result<BoxSink<'static, Audio, CoreError>> {
         Ok(Box::pin(PollSender::new(self.output_tx.clone())
             .sink_map_err(|_| CoreError::Transport(TransportError::ConnectionClosed))))
@@ -199,7 +199,7 @@ impl AudioOutput for Mixer {
     }
 }
 
-impl AudioInput for Mixer {
+impl AudioInput for AudioMixer {
     fn stream(&mut self) -> Result<BoxStream<'static, Audio>> {
         let mut rx_lock = self.output_rx.lock().unwrap();
         let receiver = rx_lock.take().ok_or_else(|| CoreError::Internal("Mixer receiver already taken".to_string()))?;
@@ -276,7 +276,7 @@ mod tests {
     #[tokio::test]
     async fn test_mixer_format_compatibility() {
         let format = create_test_format();
-        let mixer = Mixer::new(format.clone());
+        let mixer = AudioMixer::new(format.clone());
 
         let correct_format = format.clone();
         let (_tx_in, rx_in) = mpsc::channel(10);
@@ -297,7 +297,7 @@ mod tests {
     #[tokio::test]
     async fn test_mixing_logic() {
         let format = create_test_format();
-        let mut mixer = Mixer::new(format.clone());
+        let mut mixer = AudioMixer::new(format.clone());
         let mut stream_out = mixer.stream().unwrap();
         let mixer = Arc::new(mixer);
 
@@ -334,7 +334,7 @@ mod tests {
     #[tokio::test]
     async fn test_clamping() {
         let format = create_test_format();
-        let mut mixer = Mixer::new(format.clone());
+        let mut mixer = AudioMixer::new(format.clone());
         let mut stream_out = mixer.stream().unwrap();
         let mixer = Arc::new(mixer);
 

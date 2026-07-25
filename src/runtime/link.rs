@@ -1,8 +1,9 @@
-use tokio::sync::mpsc::{self, Sender, Receiver};
+use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tokio::task::JoinHandle;
-use futures_util::StreamExt;
-use crate::audio::{Audio, AudioFormat, AudioInput};
+use futures_util::{SinkExt, StreamExt};
+
+use crate::audio::{AudioFormat, AudioInput, AudioOutput};
 use crate::runtime::receiver_port::ReceiverPort;
 use crate::runtime::sender_port::SenderPort;
 
@@ -13,8 +14,8 @@ use crate::runtime::sender_port::SenderPort;
 pub struct AudioLink {
     cancel: Option<CancellationToken>,
     join_handle: Option<JoinHandle<()>>,
-    sender: Option<Sender<Audio>>,
-    receiver: Option<Receiver<Audio>>,
+    receiver: Box<dyn AudioInput>,
+    sender: Box<dyn AudioOutput>,
 }
 
 impl AudioLink {
@@ -48,30 +49,30 @@ impl AudioLink {
     pub fn new_link(
         _format: AudioFormat,
         _capacity: usize,
-        mut input: ReceiverPort,
-        output: SenderPort,
+        mut input: Box<dyn AudioInput>,
+        mut output: Box<dyn AudioOutput>,
     ) -> Self {
         let cancel = CancellationToken::new();
         let cancel_clone = cancel.clone();
 
-        let stream_result = input.stream();
-        let tx = output.sender();
+        let Ok(mut input_stream) = input.stream() else {
+            panic!("Failed to create input stream");
+        };
+        let Ok(mut output_sink) = output.sink() else {
+            panic!("Failed to create output sink");
+        };
 
         let join_handle = tokio::spawn(async move {
-            let Ok(mut stream) = stream_result else {
-                return;
-            };
-
             loop {
                 tokio::select! {
                     _ = cancel_clone.cancelled() => {
                         break;
                     }
-                    opt_audio = stream.next() => {
+                    opt_audio = input_stream.next() => {
                         let Some(audio) = opt_audio else {
                             break;
                         };
-                        if tx.send(audio).await.is_err() {
+                        if output_sink.send(audio).await.is_err() {
                             break;
                         }
                     }
@@ -82,8 +83,8 @@ impl AudioLink {
         Self {
             cancel: Some(cancel),
             join_handle: Some(join_handle),
-            sender: Some(output.sender()),
-            receiver: None,
+            receiver: input,
+            sender: output,
         }
     }
 
@@ -97,17 +98,14 @@ impl AudioLink {
 
 impl Drop for AudioLink {
     fn drop(&mut self) {
-        // Проверка: есть ли такой цикл
+        // Проверка: есть ли рабочий цикл
         if let Some(cancel) = self.cancel.take() {
             cancel.cancel();
             if let Some(handle) = self.join_handle.take() {
                 handle.abort();
             }
-        } else {
-            // Если цикла нет - закрывать каналы в правильном порядке.
-            // Правильный порядок: сначала закрываем отправку (sender), затем прием (receiver).
-            drop(self.sender.take());
-            drop(self.receiver.take());
+            let _ = self.sender.stop();
+            let _ = self.receiver.stop();
         }
     }
 }
@@ -121,7 +119,7 @@ mod tests {
     async fn test_audio_link_ports_and_link() {
         let format = AudioFormat::from(EncodedAudioFormat::internal_format());
         let (tx_port, rx_port) = AudioLink::new_ports(format.clone(), 10);
-        let link = AudioLink::new_link(format, 10, rx_port, tx_port);
+        let link = AudioLink::new_link(format, 10, Box::new(rx_port), Box::new(tx_port));
         link.stop();
     }
 
@@ -129,12 +127,11 @@ mod tests {
     fn test_audio_link_drop_no_loop() {
         let format = AudioFormat::from(EncodedAudioFormat::internal_format());
         let (_tx_port, _rx_port) = AudioLink::new_ports(format, 10);
-        let (tx, rx) = mpsc::channel(10);
         let link = AudioLink {
             cancel: None,
             join_handle: None,
-            sender: Some(tx),
-            receiver: Some(rx),
+            sender: Box::new(_tx_port),
+            receiver: Box::new(_rx_port),
         };
         drop(link);
     }

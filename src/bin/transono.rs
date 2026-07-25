@@ -1,21 +1,27 @@
-use std::str::FromStr;
 use anyhow::{Context, Result, anyhow};
-use cpal::{Device, Host, traits::{DeviceTrait, HostTrait}, DeviceId};
+use cpal::{
+    Device, DeviceId, Host,
+    traits::{DeviceTrait, HostTrait},
+};
+use std::str::FromStr;
 use std::sync::Arc;
-// No imports needed from symphonia::core::audio here if not used
 use tokio::sync::mpsc;
 
-use transono::audio::processors::compressor::{Compressor, NATURAL_VOICE};
-use transono::line::TranslationLine;
 use transono::audio::diagnost::indicator::Indicator;
+use transono::audio::processors::compressor::{Compressor, NATURAL_VOICE};
 use transono::audio::processors::denoiser::Denoiser;
-use transono::audio::{AudioDevicesCpal, AudioFormat, AudioInputCpal, AudioOutputCpal, Processor};
+use transono::audio::{
+    AudioDevicesCpal, AudioFormat, AudioInput, AudioInputCpal, AudioOutputCpal,
+    Processor,
+};
 use transono::console::ConsoleApp;
 use transono::core::provider::Provider;
 use transono::ctl::create_backend;
+use transono::line::TranslationLine;
 use transono::providers::openai::translation::{
     OpenAITranslationConfig, OpenAITranslationProvider,
 };
+use transono::runtime::{AudioLink, AudioMixer, AudioSplitter};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -58,7 +64,10 @@ async fn main() -> Result<()> {
 
     let host = devices.host();
 
-    println!("Check virtual output: {}", &virtual_devices.internal_to_meeting_speaker_out);
+    println!(
+        "Check virtual output: {}",
+        &virtual_devices.internal_to_meeting_speaker_out
+    );
     let to_microphone = find_virtual_output(
         host,
         &virtual_devices.internal_to_meeting_speaker_out,
@@ -66,7 +75,10 @@ async fn main() -> Result<()> {
     )?;
     println!("{:#?}", to_microphone.default_output_config());
 
-    println!("Check virtual input: {}", &virtual_devices.internal_from_meeting_microphone_in);
+    println!(
+        "Check virtual input: {}",
+        &virtual_devices.internal_from_meeting_microphone_in
+    );
     let from_speaker = find_virtual_input(
         host,
         &virtual_devices.internal_from_meeting_microphone_in,
@@ -118,10 +130,32 @@ async fn main() -> Result<()> {
     let (direct_input_indicator_tx, direct_input_indicator_rx) = mpsc::channel(8);
     let (direct_output_indicator_tx, direct_output_indicator_rx) = mpsc::channel(8);
 
+    // Сплиттер пока с одной линией для отладки
+    let mut splitter = AudioSplitter::new(input_hw.format(), 32, Box::new(input_hw));
+    let output_for_translate = splitter.create_output();
+
+    // Микшер, для которого сразу создаем как минимум, один вход, а выход направляем
+    // на виртуальный микрофон
+    let mixer = AudioMixer::new(output_for_translate.format());
+    // Создаем линк для передачи данных из line в микшер
+    let (to_mixer_sender, mut to_mixer_receiver) =
+        AudioLink::new_ports(output_for_translate.format(), 32);
+    // Добавляем в микшер вход из линка от line
+    let _ = mixer.add_input(&mut to_mixer_receiver, 1.0);
+    // Соединяем линком выход микшера с виртуальным микрофоном
+    let _link_from_mixer_to_virt_mic = AudioLink::new_link(
+        output_for_translate.format(),
+        32,
+        Box::new(mixer),
+        Box::new(to_microphone_virt),
+    );
+
+    // Прописываем на вход line выход сплиттера
+    // а на выход - микшер
     let mut line = TranslationLine::new(
         provider,
-        Box::new(input_hw),
-        Box::new(to_microphone_virt),
+        output_for_translate,
+        Box::new(to_mixer_sender),
         stats_direct,
     )
     .await?;
@@ -243,7 +277,7 @@ fn find_virtual_output(host: &Host, name: &str, language: &str) -> Result<Device
     println!("Output DeviceId: {}", device_id);
     let device = host.device_by_id(&device_id);
     if let Some(device) = device {
-        return Ok(device)
+        return Ok(device);
     }
     Err(missing_virtual_device("output", name, language))
 }
@@ -252,15 +286,13 @@ fn find_virtual_input(host: &Host, name: &str, language: &str) -> Result<Device>
     let device_id = DeviceId::from_str(format!("{}:{}", host.id(), name).as_str())?;
     let device = host.device_by_id(&device_id);
     if let Some(device) = device {
-        return Ok(device)
+        return Ok(device);
     }
     Err(missing_virtual_device("input", name, language))
 }
 
 fn missing_virtual_device(direction: &str, name: &str, language: &str) -> anyhow::Error {
-    anyhow!(
-        "virtual {direction} device '{name}' not found; run `transonovirt {language}` first"
-    )
+    anyhow!("virtual {direction} device '{name}' not found; run `transonovirt {language}` first")
 }
 
 fn print_latency_stats(snapshot: transono::audio::LatencySnapshot) {
