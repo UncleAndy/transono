@@ -1,8 +1,6 @@
-use tokio::select;
-use tokio::sync::mpsc;
-use tokio::sync::mpsc::{Receiver, Sender};
 use tokio_util::sync::CancellationToken;
-use crate::audio::{Audio, AudioFormat};
+use crate::audio::{AudioFormat, AudioInput};
+use crate::runtime::AudioLink;
 use crate::runtime::receiver_port::ReceiverPort;
 use crate::runtime::sender_port::SenderPort;
 
@@ -13,14 +11,11 @@ use crate::runtime::sender_port::SenderPort;
 pub struct AudioSplitter {
     cancel: CancellationToken,
 
-    input: ReceiverPort,
+    input: Box<dyn AudioInput>,
     format: AudioFormat,
     capacity: usize,
 
-    input_rx: Receiver<Audio>,
-
     outputs: Vec<SenderPort>,
-    outputs_tx: Vec<Sender<Audio>>
 }
 
 impl AudioSplitter {
@@ -31,23 +26,14 @@ impl AudioSplitter {
     ///
     /// * `format` - The [`AudioFormat`] for all input and output streams.
     /// * `capacity` - The buffer capacity for each output channel.
-    pub fn new(format: AudioFormat, capacity: usize) -> Self {
-        let (tx, rx) = mpsc::channel(capacity);
-
+    pub fn new(format: AudioFormat, capacity: usize, input: Box<dyn AudioInput>) -> Self {
         Self {
+            input,
             cancel: CancellationToken::new(),
-            input: ReceiverPort::new(format, rx),
             outputs: Vec::new(),
             format,
             capacity,
-            outputs_tx: Vec::new(),
         }
-    }
-
-    #[allow(unused)]
-    /// Returns a reference to the splitter's input port.
-    pub fn input_port(&self) -> &InputPort {
-        &self.input
     }
 
     #[allow(unused)]
@@ -56,53 +42,18 @@ impl AudioSplitter {
     /// # Returns
     ///
     /// Returns a reference to the newly created [`OutputPort`].
-    pub fn create_output(&mut self) -> &OutputPort {
-        let (tx, rx) = mpsc::channel(self.capacity);
+    pub fn create_output(&mut self) -> Box<ReceiverPort> {
+        let (link_sender_port, link_receiver_port) =
+            AudioLink::new_ports(self.format, self.capacity);
 
-        let port = OutputPort::new(self.format, rx);
+        self.outputs.push(link_sender_port);
 
-        self.outputs.push(port);
-        self.outputs_tx.push(tx);
-
-        self.outputs
-            .last()
-            .expect("just pushed")
+        Box::new(link_receiver_port)
     }
 
     #[allow(unused)]
     /// Starts the splitter's processing loop in a background task.
     pub fn start(&mut self) {
-        Self::spawn_run(
-            self.cancel.clone(),
-            std::mem::replace(&mut self.input_rx, mpsc::channel(1).1),
-            self.outputs_tx.clone(),
-        );
-    }
-
-    fn spawn_run(
-        cancel: CancellationToken,
-        mut input_rx: Receiver<Audio>,
-        outputs_tx: Vec<Sender<Audio>>,
-    ) {
-        let outputs_tx = outputs_tx.clone();
-
-        tokio::spawn(async move {
-            loop {
-                select! {
-                    _ = cancel.cancelled() => {
-                        break;
-                    }
-
-                    Some(audio) = input_rx.recv() => {
-                        for tx in outputs_tx.iter() {
-                            if tx.send(audio.clone()).await.is_err() {
-                                // приемник закрыт
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-        });
+        todo!()
     }
 }

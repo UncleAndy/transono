@@ -15,8 +15,8 @@ pub mod splitter;
 pub mod mixer;
 
 pub use link::*;
-pub use input_port::*;
-pub use output_port::*;
+pub use sender_port::*;
+pub use receiver_port::*;
 #[allow(unused_imports)]
 pub use splitter::*;
 pub use mixer::*;
