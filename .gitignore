@@ -25,3 +25,5 @@ target
 /.junie
 /.agents
 /.codex
+/.direnv
+/.cargo/config.toml

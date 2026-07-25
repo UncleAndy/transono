@@ -18,25 +18,37 @@
 
             shellHook = ''
               source ${./nix/prompt.sh}
-            '';
+
+              export BINDGEN_EXTRA_CLANG_ARGS="-isystem ${pkgs.glibc.dev}/include"
+
+            mkdir -p .cargo
+            cat <<EOF > .cargo/config.toml
+[env]
+PATH = { value = "${pkgs.lib.makeBinPath [ pkgs.pkg-config pkgs.clang pkgs.rustc pkgs.cargo ]}:\$PATH", relative = false }
+
+PKG_CONFIG_PATH = { value = "${pkgs.lib.makeSearchPath "lib/pkgconfig" [ pkgs.pipewire.dev pkgs.alsa-lib.dev ]}", relative = false }
+
+BINDGEN_EXTRA_CLANG_ARGS = "-isystem ${pkgs.glibc.dev}/include"
+
+LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib"
+EOF
+'';
 
           nativeBuildInputs = with pkgs; [
             pkg-config
-          ];
-
-          buildInputs = with pkgs; [
+            clang
             rustc
             cargo
             rustfmt
             clippy
             rust-analyzer
+          ];
 
+          buildInputs = with pkgs; [
+            glibc.dev
             alsa-lib
             pipewire
-
             openssl
-
-            clang
             llvmPackages.libclang
           ];
 

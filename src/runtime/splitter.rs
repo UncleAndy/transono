@@ -3,7 +3,8 @@ use tokio::sync::mpsc;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio_util::sync::CancellationToken;
 use crate::audio::{Audio, AudioFormat};
-use crate::runtime::{InputPort, OutputPort};
+use crate::runtime::receiver_port::ReceiverPort;
+use crate::runtime::sender_port::SenderPort;
 
 #[allow(unused)]
 /// A component for splitting one audio stream into multiple outputs.
@@ -12,13 +13,13 @@ use crate::runtime::{InputPort, OutputPort};
 pub struct AudioSplitter {
     cancel: CancellationToken,
 
-    input: InputPort,
+    input: ReceiverPort,
     format: AudioFormat,
     capacity: usize,
 
     input_rx: Receiver<Audio>,
 
-    outputs: Vec<OutputPort>,
+    outputs: Vec<SenderPort>,
     outputs_tx: Vec<Sender<Audio>>
 }
 
@@ -35,11 +36,10 @@ impl AudioSplitter {
 
         Self {
             cancel: CancellationToken::new(),
-            input: InputPort::new(format, tx),
+            input: ReceiverPort::new(format, rx),
             outputs: Vec::new(),
             format,
             capacity,
-            input_rx: rx,
             outputs_tx: Vec::new(),
         }
     }

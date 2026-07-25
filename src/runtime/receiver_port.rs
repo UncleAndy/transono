@@ -9,12 +9,12 @@ use crate::core::error::{CoreError, Result};
 ///
 /// Implements [`AudioInput`] to provide processed audio data to
 /// external consumers.
-pub struct OutputPort {
+pub struct ReceiverPort {
     format: AudioFormat,
     receiver: Option<Receiver<Audio>>
 }
 
-impl OutputPort {
+impl ReceiverPort {
     pub(crate) fn new(format: AudioFormat, input_rx: Receiver<Audio>) -> Self {
         Self {
             format,
@@ -23,7 +23,7 @@ impl OutputPort {
     }
 }
 
-impl AudioInput for OutputPort {
+impl AudioInput for ReceiverPort {
     fn stream(&mut self) -> Result<BoxStream<'static, Audio>> {
         let Some(receiver) = self.receiver.take() else {
             return Err(CoreError::Internal("receiver already taken".to_string()))

@@ -10,22 +10,26 @@ use crate::core::error::{CoreError, Result, TransportError};
 /// Implements [`AudioOutput`] to receive audio data from external sources
 /// and forward it to internal graph components.
 #[derive(Clone)]
-pub struct InputPort {
+pub struct SenderPort {
     format: AudioFormat,
     sender: Sender<Audio>
 }
 
 /// InputPort - это AudioOutput для аудио API
-impl InputPort {
+impl SenderPort {
     pub(crate) fn new(format: AudioFormat, output_tx: Sender<Audio>) -> Self {
         Self {
             format,
             sender: output_tx,
         }
     }
+
+    pub(crate) fn sender(&self) -> Sender<Audio> {
+        self.sender.clone()
+    }
 }
 
-impl AudioOutput for InputPort {
+impl AudioOutput for SenderPort {
     fn sink(&mut self) -> Result<BoxSink<'static, Audio, CoreError>> {
         Ok(Box::pin(PollSender::new(self.sender.clone())
             .sink_map_err(|_| CoreError::Transport(TransportError::ConnectionClosed))))

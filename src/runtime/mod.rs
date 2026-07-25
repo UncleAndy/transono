@@ -6,9 +6,9 @@
 /// Components for linking audio processing nodes.
 pub mod link;
 /// Input port for audio data in the graph.
-pub mod input_port;
+pub mod receiver_port;
 /// Output port for audio data in the graph.
-pub mod output_port;
+pub mod sender_port;
 /// Splitter for distributing audio to multiple outputs.
 pub mod splitter;
 /// Mixer for combining multiple audio inputs.
