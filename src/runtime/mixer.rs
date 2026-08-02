@@ -1,5 +1,6 @@
 use std::collections::{HashMap, VecDeque};
 use tokio::sync::mpsc::{self, Receiver, Sender};
+use tokio::task::JoinHandle;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use futures_util::stream::BoxStream;
@@ -10,6 +11,7 @@ use tokio_util::sync::PollSender;
 use crate::audio::output::BoxSink;
 use crate::audio::{Audio, AudioFormat, AudioInput, AudioOutput, PcmAudio};
 use crate::core::error::{CoreError, Result, TransportError};
+use crate::runtime::SenderPort;
 
 type ChannelId = usize;
 
@@ -90,15 +92,25 @@ impl AudioMixer {
         Ok(id)
     }
 
+    /// Returns an output port carrying the mixed audio stream.
+    ///
+    /// The returned [`SenderPort`] owns a clone of the mixer's output channel,
+    /// so it can be connected to an [`AudioLink`] after the mixer is wrapped in
+    /// an `Arc` and started. Call this after all inputs are configured.
+    pub fn get_output(&self) -> SenderPort {
+        SenderPort::new(self.format.clone(), self.output_tx.clone())
+    }
+
     /// Runs the mixer's processing loop.
     ///
-    /// This should be spawned in a separate task. It continuously pulls
-    /// data from all inputs, mixes it, and pushes to the output.
-    pub async fn run(self: Arc<Self>) {
+    /// Spawns the mixing loop in a background task and returns immediately.
+    /// The mixer must be fully configured (all inputs added) before calling this.
+    pub fn run(self: Arc<Self>) -> JoinHandle<()> {
         let format = self.format.clone();
         let channels_lock = self.channels.clone();
         let output_tx = self.output_tx.clone();
 
+        tokio::spawn(async move {
         let frame_ms = 10;
         let frame_size = (format.sample_rate as u64 * frame_ms / 1000) as usize;
         let sample_count = frame_size * format.channels as usize;
@@ -140,7 +152,7 @@ impl AudioMixer {
                         for i in 0..sample_count {
                             mixed_data[i] += channel.buffer.pop_front().unwrap() * channel.weight;
                         }
-                        
+
                         if let Some(ref mut ts) = channel.last_timestamp {
                             *ts += sample_duration * (frame_size as u32);
                         }
@@ -160,7 +172,7 @@ impl AudioMixer {
                         frame_size,
                     );
                     pcm.data = mixed_data.clone();
-                    
+
                     let mut audio = Audio::from_pcm(&pcm).unwrap();
                     if let Some(ts) = first_ts {
                         audio.set_capture_timestamp(ts);
@@ -177,6 +189,7 @@ impl AudioMixer {
                 tokio::time::sleep(Duration::from_millis(1)).await;
             }
         }
+        })
     }
 }
 
