@@ -11,8 +11,7 @@ use transono::audio::diagnost::indicator::Indicator;
 use transono::audio::processors::compressor::{Compressor, NATURAL_VOICE};
 use transono::audio::processors::denoiser::Denoiser;
 use transono::audio::{
-    AudioDevicesCpal, AudioFormat, AudioInput, AudioInputCpal, AudioOutputCpal,
-    Processor,
+    AudioDevicesCpal, AudioFormat, AudioInput, AudioInputCpal, AudioOutputCpal, Processor,
 };
 use transono::console::ConsoleApp;
 use transono::core::provider::Provider;
@@ -133,22 +132,29 @@ async fn main() -> Result<()> {
     // Сплиттер пока с одной линией для отладки
     let mut splitter = AudioSplitter::new(input_hw.format(), 32, Box::new(input_hw));
     let output_for_translate = splitter.create_output();
+    // Второй выход сплиттера — оригинальный голос для мониторинга на той стороне
+    let mut original_out = splitter.create_output();
 
-    // Микшер, для которого сразу создаем как минимум, один вход, а выход направляем
-    // на виртуальный микрофон
+    // Микшер, для которого создаем входы, а выход направляем на виртуальный микрофон
     let mixer = AudioMixer::new(output_for_translate.format());
     // Создаем линк для передачи данных из line в микшер
     let (to_mixer_sender, mut to_mixer_receiver) =
         AudioLink::new_ports(output_for_translate.format(), 32);
-    // Добавляем в микшер вход из линка от line
+    // Добавляем в микшер вход из линка от line (перевод на полной громкости)
     let _ = mixer.add_input(&mut to_mixer_receiver, 1.0);
-    // Соединяем линком выход микшера с виртуальным микрофоном
+    // Параллельный приглушённый канал оригинального голоса (0.5)
+    mixer.add_input(original_out.as_mut(), 0.5)?;
+    // Выход микшера как отдельный порт, соединяем с виртуальным микрофоном
+    let mixer_out = mixer.get_output();
     let _link_from_mixer_to_virt_mic = AudioLink::new_link(
         output_for_translate.format(),
         32,
-        Box::new(mixer),
+        Box::new(mixer_out),
         Box::new(to_microphone_virt),
     );
+    // Запускаем фоновый цикл микшера (spawn внутри run, не блокирует)
+    let mixer = Arc::new(mixer);
+    let _mixer_handle = mixer.run();
 
     // Прописываем на вход line выход сплиттера
     // а на выход - микшер
@@ -159,6 +165,8 @@ async fn main() -> Result<()> {
         stats_direct,
     )
     .await?;
+    // Запускаем фоновую рассылку аудио по выходам сплиттера
+    splitter.start();
 
     let remote_format = AudioFormat::from(line.provider().audio_format());
 
@@ -195,21 +203,47 @@ async fn main() -> Result<()> {
 
     let stats_back = Arc::new(transono::audio::LatencyStats::default());
 
-    let from_speaker_virt = AudioInputCpal::new(from_speaker, stats_back.clone())?;
-    let output_hw = AudioOutputCpal::new(playback, stats_back.clone())?;
-
-    // TranslationLine "en" -> "ru"
-
     let (back_input_indicator_tx, back_input_indicator_rx) = mpsc::channel(8);
     let (back_output_indicator_tx, back_output_indicator_rx) = mpsc::channel(8);
 
+    let from_speaker_virt = AudioInputCpal::new(from_speaker, stats_back.clone())?;
+    let output_hw = AudioOutputCpal::new(playback, stats_back.clone())?;
+
+    // Сплиттер на виртуальном динамике (оригинал собеседника)
+    let mut splitter_back =
+        AudioSplitter::new(from_speaker_virt.format(), 32, Box::new(from_speaker_virt));
+    let translated_out = splitter_back.create_output();
+    // Второй выход сплиттера — оригинальный голос собеседника для мониторинга
+    let mut original_back_out = splitter_back.create_output();
+
+    // Микшер: перевод (1.0) + оригинал собеседника приглушённо (0.5)
+    let mixer_back = AudioMixer::new(translated_out.format());
+    let (to_mixer_back_sender, mut to_mixer_back_receiver) =
+        AudioLink::new_ports(translated_out.format(), 32);
+    mixer_back.add_input(&mut to_mixer_back_receiver, 1.0)?;
+    mixer_back.add_input(original_back_out.as_mut(), 0.5)?;
+    // Выход микшера как отдельный порт, соединяем с реальным динамиком
+    let mixer_back_out = mixer_back.get_output();
+    let _link_back = AudioLink::new_link(
+        translated_out.format(),
+        32,
+        Box::new(mixer_back_out),
+        Box::new(output_hw),
+    );
+    // Запускаем фоновый цикл микшера (spawn внутри run, не блокирует)
+    let mixer_back = Arc::new(mixer_back);
+    let _mixer_back_handle = mixer_back.run();
+
+    // TranslationLine "en" -> "ru"
     let mut line_back = TranslationLine::new(
         provider_back,
-        Box::new(from_speaker_virt),
-        Box::new(output_hw),
+        translated_out,
+        Box::new(to_mixer_back_sender),
         stats_back,
     )
     .await?;
+    // Запускаем фоновую рассылку аудио по выходам сплиттера
+    splitter_back.start();
 
     // Input DSP
     {

@@ -1,17 +1,13 @@
+use crate::audio::{Audio, AudioFormat, AudioInput, PcmAudio};
+use crate::core::error::{CoreError, Result};
+use crate::runtime::ReceiverPort;
+use futures_util::stream::BoxStream;
+use futures_util::{FutureExt, StreamExt};
 use std::collections::{HashMap, VecDeque};
-use tokio::sync::mpsc::{self, Receiver, Sender};
-use tokio::task::JoinHandle;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use futures_util::stream::BoxStream;
-use futures_util::{StreamExt, FutureExt};
-use futures_util::SinkExt;
-use tokio_stream::wrappers::ReceiverStream;
-use tokio_util::sync::PollSender;
-use crate::audio::output::BoxSink;
-use crate::audio::{Audio, AudioFormat, AudioInput, AudioOutput, PcmAudio};
-use crate::core::error::{CoreError, Result, TransportError};
-use crate::runtime::SenderPort;
+use tokio::sync::mpsc::{self, Receiver, Sender};
+use tokio::task::JoinHandle;
 
 type ChannelId = usize;
 
@@ -78,27 +74,37 @@ impl AudioMixer {
         let input_stream = input.stream()?;
         let mut channels = self.channels.lock().unwrap();
         let mut id_gen = self.next_channel_id.lock().unwrap();
-        
+
         let id = *id_gen;
         *id_gen += 1;
 
-        channels.insert(id, MixerChannel {
-            weight,
-            stream: input_stream,
-            buffer: VecDeque::new(),
-            last_timestamp: None,
-        });
+        channels.insert(
+            id,
+            MixerChannel {
+                weight,
+                stream: input_stream,
+                buffer: VecDeque::new(),
+                last_timestamp: None,
+            },
+        );
 
         Ok(id)
     }
 
     /// Returns an output port carrying the mixed audio stream.
     ///
-    /// The returned [`SenderPort`] owns a clone of the mixer's output channel,
-    /// so it can be connected to an [`AudioLink`] after the mixer is wrapped in
-    /// an `Arc` and started. Call this after all inputs are configured.
-    pub fn get_output(&self) -> SenderPort {
-        SenderPort::new(self.format.clone(), self.output_tx.clone())
+    /// The returned [`ReceiverPort`] owns the mixer's output channel receiver,
+    /// so it can be connected to an [`AudioLink`] as the link's input. Call this
+    /// after all inputs are configured and before wrapping the mixer in `Arc`
+    /// and starting it via [`AudioMixer::run`].
+    pub fn get_output(&self) -> ReceiverPort {
+        let rx = self
+            .output_rx
+            .lock()
+            .unwrap()
+            .take()
+            .expect("mixer output already taken; call get_output only once");
+        ReceiverPort::new(self.format.clone(), rx)
     }
 
     /// Runs the mixer's processing loop.
@@ -111,133 +117,96 @@ impl AudioMixer {
         let output_tx = self.output_tx.clone();
 
         tokio::spawn(async move {
-        let frame_ms = 10;
-        let frame_size = (format.sample_rate as u64 * frame_ms / 1000) as usize;
-        let sample_count = frame_size * format.channels as usize;
-        let mut mixed_data = vec![0.0f32; sample_count];
-        let sample_duration = Duration::from_nanos(1_000_000_000 / format.sample_rate as u64);
-        let max_buffer_samples = format.sample_rate as usize * format.channels as usize;
+            let frame_ms = 10;
+            let frame_size = (format.sample_rate as u64 * frame_ms / 1000) as usize;
+            let sample_count = frame_size * format.channels as usize;
+            let mut mixed_data = vec![0.0f32; sample_count];
+            let sample_duration = Duration::from_nanos(1_000_000_000 / format.sample_rate as u64);
+            let max_buffer_samples = format.sample_rate as usize * format.channels as usize;
 
-        loop {
-            let result = {
-                let mut channels = channels_lock.lock().unwrap();
+            loop {
+                let result = {
+                    let mut channels = channels_lock.lock().unwrap();
 
-                for channel in channels.values_mut() {
-                    while let Some(audio) = channel.stream.next().now_or_never().flatten() {
-                        if let Ok(pcm) = audio.to_pcm() {
-                            if channel.buffer.is_empty() {
-                                channel.last_timestamp = Some(audio.capture_timestamp());
+                    for channel in channels.values_mut() {
+                        while let Some(audio) = channel.stream.next().now_or_never().flatten() {
+                            if let Ok(pcm) = audio.to_pcm() {
+                                if channel.buffer.is_empty() {
+                                    channel.last_timestamp = Some(audio.capture_timestamp());
+                                }
+                                channel.buffer.extend(pcm.data);
+
+                                if channel.buffer.len() > max_buffer_samples {
+                                    let to_remove = channel.buffer.len() - max_buffer_samples;
+                                    channel.buffer.drain(0..to_remove);
+                                }
                             }
-                            channel.buffer.extend(pcm.data);
+                        }
+                    }
 
-                            if channel.buffer.len() > max_buffer_samples {
-                                let to_remove = channel.buffer.len() - max_buffer_samples;
-                                channel.buffer.drain(0..to_remove);
+                    mixed_data.fill(0.0);
+                    let mut has_data = false;
+                    let mut first_ts = None;
+
+                    for channel in channels.values_mut() {
+                        if channel.buffer.len() >= sample_count {
+                            has_data = true;
+                            if first_ts.is_none() {
+                                first_ts = channel.last_timestamp;
+                            }
+
+                            for i in 0..sample_count {
+                                mixed_data[i] +=
+                                    channel.buffer.pop_front().unwrap() * channel.weight;
+                            }
+
+                            if let Some(ref mut ts) = channel.last_timestamp {
+                                *ts += sample_duration * (frame_size as u32);
                             }
                         }
                     }
-                }
 
-                mixed_data.fill(0.0);
-                let mut has_data = false;
-                let mut first_ts = None;
-
-                for channel in channels.values_mut() {
-                    if channel.buffer.len() >= sample_count {
-                        has_data = true;
-                        if first_ts.is_none() {
-                            first_ts = channel.last_timestamp;
+                    if has_data {
+                        for sample in mixed_data.iter_mut() {
+                            *sample = sample.clamp(-1.0, 1.0);
                         }
 
-                        for i in 0..sample_count {
-                            mixed_data[i] += channel.buffer.pop_front().unwrap() * channel.weight;
+                        let mut pcm = PcmAudio::new(
+                            symphonia::core::audio::AudioSpec::new(
+                                format.sample_rate,
+                                symphonia::core::audio::Channels::Discrete(format.channels),
+                            ),
+                            frame_size,
+                        );
+                        pcm.data = mixed_data.clone();
+
+                        let mut audio = Audio::from_pcm(&pcm).unwrap();
+                        if let Some(ts) = first_ts {
+                            audio.set_capture_timestamp(ts);
                         }
-
-                        if let Some(ref mut ts) = channel.last_timestamp {
-                            *ts += sample_duration * (frame_size as u32);
-                        }
+                        Some(audio)
+                    } else {
+                        None
                     }
-                }
+                };
 
-                if has_data {
-                    for sample in mixed_data.iter_mut() {
-                        *sample = sample.clamp(-1.0, 1.0);
-                    }
-
-                    let mut pcm = PcmAudio::new(
-                        symphonia::core::audio::AudioSpec::new(
-                            format.sample_rate,
-                            symphonia::core::audio::Channels::Discrete(format.channels),
-                        ),
-                        frame_size,
-                    );
-                    pcm.data = mixed_data.clone();
-
-                    let mut audio = Audio::from_pcm(&pcm).unwrap();
-                    if let Some(ts) = first_ts {
-                        audio.set_capture_timestamp(ts);
-                    }
-                    Some(audio)
+                if let Some(audio) = result {
+                    let _ = output_tx.send(audio).await;
                 } else {
-                    None
+                    tokio::time::sleep(Duration::from_millis(1)).await;
                 }
-            };
-
-            if let Some(audio) = result {
-                let _ = output_tx.send(audio).await;
-            } else {
-                tokio::time::sleep(Duration::from_millis(1)).await;
             }
-        }
         })
-    }
-}
-
-impl AudioOutput for AudioMixer {
-    fn sink(&mut self) -> Result<BoxSink<'static, Audio, CoreError>> {
-        Ok(Box::pin(PollSender::new(self.output_tx.clone())
-            .sink_map_err(|_| CoreError::Transport(TransportError::ConnectionClosed))))
-    }
-
-    fn start(&mut self) -> Result<()> {
-        Ok(())
-    }
-
-    fn stop(&mut self) -> Result<()> {
-        Ok(())
-    }
-
-    fn format(&self) -> AudioFormat {
-        self.format.clone()
-    }
-}
-
-impl AudioInput for AudioMixer {
-    fn stream(&mut self) -> Result<BoxStream<'static, Audio>> {
-        let mut rx_lock = self.output_rx.lock().unwrap();
-        let receiver = rx_lock.take().ok_or_else(|| CoreError::Internal("Mixer receiver already taken".to_string()))?;
-        Ok(ReceiverStream::new(receiver).boxed())
-    }
-
-    fn start(&self) -> Result<()> {
-        Ok(())
-    }
-
-    fn stop(&self) -> Result<()> {
-        Ok(())
-    }
-
-    fn format(&self) -> AudioFormat {
-        self.format.clone()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::audio::{Audio, AudioFormat, PcmAudio, AudioInput};
-    use tokio::sync::mpsc;
+    use crate::audio::{Audio, AudioFormat, AudioInput, PcmAudio};
     use std::sync::Arc;
+    use tokio::sync::mpsc;
+    use tokio_stream::wrappers::ReceiverStream;
 
     fn create_test_format() -> AudioFormat {
         let internal = crate::audio::EncodedAudioFormat::internal_format();
@@ -272,18 +241,29 @@ mod tests {
 
     impl MockInput {
         fn new(format: AudioFormat, rx: mpsc::Receiver<Audio>) -> Self {
-            Self { format, receiver: Some(rx) }
+            Self {
+                format,
+                receiver: Some(rx),
+            }
         }
     }
 
     impl AudioInput for MockInput {
         fn stream(&mut self) -> crate::core::error::Result<BoxStream<'static, Audio>> {
-            let receiver = self.receiver.take().ok_or_else(|| crate::core::error::CoreError::Internal("receiver taken".to_string()))?;
+            let receiver = self.receiver.take().ok_or_else(|| {
+                crate::core::error::CoreError::Internal("receiver taken".to_string())
+            })?;
             Ok(ReceiverStream::new(receiver).boxed())
         }
-        fn start(&self) -> crate::core::error::Result<()> { Ok(()) }
-        fn stop(&self) -> crate::core::error::Result<()> { Ok(()) }
-        fn format(&self) -> AudioFormat { self.format.clone() }
+        fn start(&self) -> crate::core::error::Result<()> {
+            Ok(())
+        }
+        fn stop(&self) -> crate::core::error::Result<()> {
+            Ok(())
+        }
+        fn format(&self) -> AudioFormat {
+            self.format.clone()
+        }
     }
 
     #[tokio::test]
@@ -310,8 +290,9 @@ mod tests {
     #[tokio::test]
     async fn test_mixing_logic() {
         let format = create_test_format();
-        let mut mixer = AudioMixer::new(format.clone());
-        let mut stream_out = mixer.stream().unwrap();
+        let mixer = AudioMixer::new(format.clone());
+        let mut mixer_out = mixer.get_output();
+        let mut stream_out = mixer_out.stream().unwrap();
         let mixer = Arc::new(mixer);
 
         // Input 1: all 0.5
@@ -328,15 +309,22 @@ mod tests {
         let samples1 = vec![0.5f32; 480 * format.channels as usize];
         let samples2 = vec![0.2f32; 480 * format.channels as usize];
 
-        tx1.send(create_audio_with_samples(&format, samples1)).await.unwrap();
-        tx2.send(create_audio_with_samples(&format, samples2)).await.unwrap();
+        tx1.send(create_audio_with_samples(&format, samples1))
+            .await
+            .unwrap();
+        tx2.send(create_audio_with_samples(&format, samples2))
+            .await
+            .unwrap();
 
         let mixer_clone = mixer.clone();
         tokio::spawn(async move {
-            mixer_clone.run().await;
+            mixer_clone.run();
         });
 
-        let mixed_audio = stream_out.next().await.expect("Mixer should produce output");
+        let mixed_audio = stream_out
+            .next()
+            .await
+            .expect("Mixer should produce output");
         let pcm = mixed_audio.to_pcm().unwrap();
 
         for &sample in pcm.data.iter() {
@@ -347,8 +335,9 @@ mod tests {
     #[tokio::test]
     async fn test_clamping() {
         let format = create_test_format();
-        let mut mixer = AudioMixer::new(format.clone());
-        let mut stream_out = mixer.stream().unwrap();
+        let mixer = AudioMixer::new(format.clone());
+        let mut mixer_out = mixer.get_output();
+        let mut stream_out = mixer_out.stream().unwrap();
         let mixer = Arc::new(mixer);
 
         let (tx1, rx1) = mpsc::channel(10);
@@ -363,15 +352,22 @@ mod tests {
         let samples1 = vec![0.8f32; 480 * format.channels as usize];
         let samples2 = vec![0.8f32; 480 * format.channels as usize];
 
-        tx1.send(create_audio_with_samples(&format, samples1)).await.unwrap();
-        tx2.send(create_audio_with_samples(&format, samples2)).await.unwrap();
+        tx1.send(create_audio_with_samples(&format, samples1))
+            .await
+            .unwrap();
+        tx2.send(create_audio_with_samples(&format, samples2))
+            .await
+            .unwrap();
 
         let mixer_clone = mixer.clone();
         tokio::spawn(async move {
-            mixer_clone.run().await;
+            mixer_clone.run();
         });
 
-        let mixed_audio = stream_out.next().await.expect("Mixer should produce output");
+        let mixed_audio = stream_out
+            .next()
+            .await
+            .expect("Mixer should produce output");
         let pcm = mixed_audio.to_pcm().unwrap();
 
         for &sample in pcm.data.iter() {
