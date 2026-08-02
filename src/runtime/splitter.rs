@@ -42,7 +42,7 @@ impl AudioSplitter {
     ///
     /// # Returns
     ///
-    /// Returns a reference to the newly created [`OutputPort`].
+    /// Returns a reference to the newly created [`ReceiverPort`].
     pub fn create_output(&mut self) -> Box<ReceiverPort> {
         let (link_sender_port, link_receiver_port) =
             AudioLink::new_ports(self.format, self.capacity);

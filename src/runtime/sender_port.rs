@@ -47,3 +47,50 @@ impl AudioOutput for SenderPort {
         self.format.clone()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::audio::{Audio, AudioFormat, AudioInput};
+    use crate::core::error::Result;
+    use crate::runtime::ReceiverPort;
+    use futures_util::StreamExt;
+
+    fn test_format() -> AudioFormat {
+        AudioFormat::from(crate::audio::EncodedAudioFormat::internal_format())
+    }
+
+    #[test]
+    fn new_stores_format() {
+        let (tx, _rx) = tokio::sync::mpsc::channel(4);
+        let port = SenderPort::new(test_format(), tx);
+        assert_eq!(port.format(), test_format());
+    }
+
+    #[tokio::test]
+    async fn sender_forwards_audio_to_receiver() -> Result<()> {
+        let format = test_format();
+        let (tx, rx) = tokio::sync::mpsc::channel(4);
+        let mut port = SenderPort::new(format.clone(), tx);
+        let mut receiver = ReceiverPort::new(format.clone(), rx);
+
+        let audio = Audio::from_pcm(
+            &crate::audio::PcmAudio::new(
+                symphonia::core::audio::AudioSpec::new(
+                    format.sample_rate,
+                    symphonia::core::audio::Channels::Discrete(format.channels),
+                ),
+                4,
+            ),
+        )
+        .unwrap();
+
+        port.sender().send(audio.clone()).await.unwrap();
+
+        let mut stream = receiver.stream()?;
+        let received = tokio::time::timeout(std::time::Duration::from_secs(1), stream.next()).await;
+        assert!(received.is_ok());
+        assert!(received.unwrap().is_some());
+        Ok(())
+    }
+}

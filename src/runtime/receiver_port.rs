@@ -44,3 +44,56 @@ impl AudioInput for ReceiverPort {
         self.format.clone()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::audio::{Audio, AudioFormat};
+    use crate::core::error::Result;
+
+    fn test_format() -> AudioFormat {
+        AudioFormat::from(crate::audio::EncodedAudioFormat::internal_format())
+    }
+
+    #[test]
+    fn new_stores_format() {
+        let (_tx, rx) = tokio::sync::mpsc::channel(4);
+        let port = ReceiverPort::new(test_format(), rx);
+        assert_eq!(port.format(), test_format());
+    }
+
+    #[test]
+    fn stream_take_twice_errors() {
+        let (_tx, rx) = tokio::sync::mpsc::channel(4);
+        let mut port = ReceiverPort::new(test_format(), rx);
+        let _first = port.stream();
+        // Second take must fail: receiver already consumed.
+        assert!(port.stream().is_err());
+    }
+
+    #[tokio::test]
+    async fn stream_yields_sent_audio() -> Result<()> {
+        let format = test_format();
+        let (tx, rx) = tokio::sync::mpsc::channel(4);
+        let mut port = ReceiverPort::new(format.clone(), rx);
+
+        let audio = Audio::from_pcm(
+            &crate::audio::PcmAudio::new(
+                symphonia::core::audio::AudioSpec::new(
+                    format.sample_rate,
+                    symphonia::core::audio::Channels::Discrete(format.channels),
+                ),
+                4,
+            ),
+        )
+        .unwrap();
+
+        tx.send(audio.clone()).await.unwrap();
+
+        let mut stream = port.stream()?;
+        let received = tokio::time::timeout(std::time::Duration::from_secs(1), stream.next()).await;
+        assert!(received.is_ok());
+        assert!(received.unwrap().is_some());
+        Ok(())
+    }
+}
