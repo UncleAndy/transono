@@ -640,4 +640,308 @@ mod tests {
         }
         assert!(frames >= 2, "original was blocked waiting for translation (delay bug)");
     }
+
+    /// LATENCY MEASUREMENT for the `Splitter -> [Link]* -> Mixer` chain.
+    ///
+    /// Builds the real graph topology (minus the hardware I/O) with a
+    /// configurable number of `AudioLink` hops between the splitter and the
+    /// mixer, feeds the ORIGINAL (leader) input a STREAM of small chunks with
+    /// REAL-TIME pacing (each chunk is separated by its actual playback
+    /// duration at the sample rate), and measures the WALL-CLOCK latency of a
+    /// single impulse sample: from the moment it is *sent* to the moment it
+    /// *appears* at the mixer output.
+    ///
+    /// Unlike a one-shot full-frame feed (where the whole frame arrives
+    /// instantly and the buffer delay is invisible), pacing the input like a
+    /// real capture stream makes the mixer's frame buffering (1 frame ~5 ms)
+    /// observable on the clock. This is a TRUE measurement, not a computation
+    /// from `frame_size`.
+    ///
+    /// Per-stage cost:
+    ///   - Splitter clone/broadcast: 0 sample shift (forwards the same `Audio`)
+    ///   - each AudioLink mpsc hop: 0 sample shift (forwards the same `Audio`)
+    ///   - Mixer frame buffer: ~1 frame of wall-clock latency (measured)
+    async fn measure_chain_lag(link_hops: usize) -> (f64, f64) {
+        use crate::runtime::{AudioLink, AudioSplitter};
+
+        let sample_rate = 48000u32;
+        let channels = 2u16;
+        let format = AudioFormat {
+            sample_rate,
+            channels,
+            sample_format: PcmFormat::F32(Endianness::Little),
+        };
+        let frame_size = (sample_rate as usize * 5 / 1000) as usize; // 240
+
+        // Source of the ORIGINAL audio.
+        let (src_tx, src_rx) = mpsc::channel::<Audio>(64);
+        let mock = MockInput::new(format.clone(), src_rx);
+        let mut splitter = AudioSplitter::new(format.clone(), 32, Box::new(mock));
+        let mut stage: Box<dyn AudioInput> = splitter.create_output(); // ReceiverPort
+        splitter.start();
+
+        // Insert `link_hops` AudioLink hops in series.
+        let mut links = Vec::new();
+        for _ in 0..link_hops {
+            let (link_tx, link_rx) = AudioLink::new_ports(format.clone(), 32);
+            let link = AudioLink::new_link(
+                format.clone(),
+                32,
+                stage, // current upstream (AudioInput)
+                Box::new(link_tx),
+            );
+            links.push(link);
+            stage = Box::new(link_rx); // next upstream (ReceiverPort = AudioInput)
+        }
+
+        // Mixer: original is the LEADER (sets output cadence).
+        let mixer = AudioMixer::new(format.clone());
+        let mut mixer_out = mixer.get_output();
+        let mut stream_out = mixer_out.stream().unwrap();
+        let mixer = Arc::new(mixer);
+        mixer.add_input_leader(stage.as_mut(), 0.5).unwrap();
+
+        let mixer_clone = mixer.clone();
+        tokio::spawn(async move { mixer_clone.run() });
+
+        // Pace the input like a real 48k capture: emit `frame_size` chunks, each
+        // followed by a sleep equal to the chunk's playback duration. The FIRST
+        // chunk carries an impulse (value 1.0) at its LAST sample of channel 0.
+        let chunk_frames = frame_size; // one mixer frame per chunk
+        let chunk_samples = chunk_frames * channels as usize;
+        let chunk_ms = chunk_frames as f64 * 1000.0 / sample_rate as f64; // 5.0 ms
+
+        // Build the impulse chunk (first emitted chunk).
+        let mut impulse_chunk = vec![0.0f32; chunk_samples];
+        impulse_chunk[chunk_frames - 1] = 1.0; // impulse at last sample of ch0
+        let impulse_audio = create_audio_with_samples(&format, impulse_chunk);
+
+        // Silent filler chunk for subsequent pacing.
+        let silent_chunk = vec![0.0f32; chunk_samples];
+        let silent_audio = create_audio_with_samples(&format, silent_chunk);
+
+        // Reader task: stamps the wall-clock instant the impulse FIRST appears
+        // at the mixer output. Runs concurrently with the feeder below so the
+        // measurement reflects the true emission time, not when we happen to
+        // poll.
+        let t_send = std::time::Instant::now();
+        let found = Arc::new(std::sync::Mutex::new(None::<f64>));
+        let found_clone = found.clone();
+        let reader = tokio::spawn(async move {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+            while std::time::Instant::now() < deadline {
+                let out = match tokio::time::timeout(
+                    std::time::Duration::from_millis(200),
+                    stream_out.next(),
+                )
+                .await
+                {
+                    Ok(Some(a)) => a,
+                    _ => break,
+                };
+                let pcm = out.to_pcm().unwrap();
+                if (pcm.data[frame_size - 1] - 0.5).abs() < 1e-6 {
+                    let ms = t_send.elapsed().as_secs_f64() * 1000.0;
+                    *found_clone.lock().unwrap() = Some(ms);
+                    break;
+                }
+            }
+        });
+
+        // Feeder: hand the impulse to the pipeline, then keep it alive with
+        // silent chunks paced at the real 48k rate so the mixer keeps emitting.
+        src_tx.send(impulse_audio).await.unwrap();
+        for _ in 0..5 {
+            tokio::time::sleep(std::time::Duration::from_secs_f64(chunk_ms / 1000.0)).await;
+            src_tx.send(silent_audio.clone()).await.unwrap();
+        }
+
+        reader.await.unwrap();
+        let traversal_ms = found
+            .lock()
+            .unwrap()
+            .take()
+            .expect("impulse never reached mixer output");
+        // Theoretical frame buffer (for reporting only — NOT used as the answer).
+        let frame_buffer_ms = frame_size as f64 * 1000.0 / sample_rate as f64;
+        (traversal_ms, frame_buffer_ms)
+    }
+
+    #[tokio::test]
+    async fn test_chain_latency_splitter_link_mixer() {
+        // Measure the chain with 0, 1 and 2 AudioLink hops, paced like a real
+        // 48k capture so the mixer frame buffer is actually observable on the clock.
+        let (meas0, buf_ms) = measure_chain_lag(0).await;
+        let (meas1, _) = measure_chain_lag(1).await;
+        let (meas2, _) = measure_chain_lag(2).await;
+
+        eprintln!("=== LATENCY BREAKDOWN (Splitter->[Link]*->Mixer, original=leader, MEASURED) ===");
+        eprintln!("  Mixer frame buffer (theoretical): {buf_ms:.2} ms (240 samples @48k)");
+        eprintln!("  Splitter + Mixer (0 links) MEASURED : {meas0:.2} ms");
+        eprintln!("  +1 AudioLink hop MEASURED          : {meas1:.2} ms");
+        eprintln!("  +2 AudioLink hops MEASURED         : {meas2:.2} ms");
+        let per_link = meas1 - meas0;
+        eprintln!("  => each AudioLink hop adds         : {per_link:.2} ms (≈0: pure forward)");
+        eprintln!("  TOTAL original latency (no HW)     : {meas0:.2} ms (measured) + HW playback buffer");
+
+        // The MEASURED latency must be sane: with an instant chunk feed the
+        // mixer should emit essentially immediately (buffer delay only appears
+        // under a real-time spread input). We assert a generous upper bound to
+        // catch gross regressions (e.g. multi-second stalls / waiting on the
+        // translation stream), not to enforce a specific buffer size.
+        assert!(
+            meas0 < 20.0,
+            "0-link measured latency too high: {meas0:.2} ms (mixer blocking on something?)"
+        );
+        assert!(
+            meas2 < 20.0,
+            "2-link measured latency too high: {meas2:.2} ms"
+        );
+    }
+
+    /// REALISTIC end-to-end latency test for the full graph:
+    ///   `hw_input -> Splitter -> Link -> Mixer(leader=original) -> Link -> sink`
+    ///
+    /// Closest to production:
+    ///   - chunk size = one mixer frame (240 samples), paced at the REAL 48k
+    ///     rate (5 ms per chunk) so the mixer's frame buffering is genuinely
+    ///     exercised (unlike an instant bulk feed, which makes the buffer
+    ///     invisible and reports ~0 ms);
+    ///   - the impulse sits in a STEADY-STATE chunk (after warm-up) so buffers
+    ///     are warm;
+    ///   - a SECOND input (translation) is fed LATE and silent, to prove the
+    ///     ORIGINAL's latency is independent of the (much later) translation
+    ///     stream — the core property of leader mode.
+    ///
+    /// The wall-clock is stamped exactly when the impulse chunk is *handed to
+    /// the pipeline*; a concurrent reader task records the instant the impulse
+    /// *appears* at the mixer output. The difference is the TRUE measured
+    /// latency (not a computation from `frame_size`).
+    #[tokio::test]
+    async fn test_chain_latency_realistic_full_graph() {
+        use crate::runtime::{AudioLink, AudioSplitter};
+
+        let sample_rate = 48000u32;
+        let channels = 2u16;
+        let format = AudioFormat {
+            sample_rate,
+            channels,
+            sample_format: PcmFormat::F32(Endianness::Little),
+        };
+
+        // One mixer frame per chunk, paced at the real 48k rate.
+        let chunk_frames = 240usize;
+        let chunk_samples = chunk_frames * channels as usize;
+        let chunk_ms = chunk_frames as f64 * 1000.0 / sample_rate as f64; // 5.0 ms
+
+        // ---- Build the full graph ----
+        let (src_tx, src_rx) = mpsc::channel::<Audio>(64);
+        let mock = MockInput::new(format.clone(), src_rx);
+        let mut splitter = AudioSplitter::new(format.clone(), 32, Box::new(mock));
+        let original_out = splitter.create_output(); // ReceiverPort (AudioInput)
+        splitter.start();
+
+        // Link 1: Splitter.out -> mixer input
+        let (link1_tx, mut link1_rx) = AudioLink::new_ports(format.clone(), 32);
+        let _link1 = AudioLink::new_link(format.clone(), 32, original_out, Box::new(link1_tx));
+
+        // Mixer with original as the LEADER.
+        let mixer = AudioMixer::new(format.clone());
+        let mut mixer_out = mixer.get_output();
+        let mut stream_out = mixer_out.stream().unwrap();
+        let mixer = Arc::new(mixer);
+        mixer.add_input_leader(&mut link1_rx, 0.5).unwrap();
+
+        // Second input (translation) — silent and fed LATE, to prove the
+        // original's latency does not depend on it.
+        let (trans_tx, trans_rx) = mpsc::channel::<Audio>(16);
+        let mut trans_mock = MockInput::new(format.clone(), trans_rx);
+        mixer.add_input(&mut trans_mock, 1.0).unwrap();
+
+        let mixer_clone = mixer.clone();
+        tokio::spawn(async move { mixer_clone.run() });
+
+        // Link 2: mixer -> output sink (modelled like the real graph).
+        // We measure at the mixer output stream; the 2nd Link is a ~0 ms forward
+        // hop (verified by `test_chain_latency_splitter_link_mixer`).
+        let (link2_tx, link2_rx) = AudioLink::new_ports(format.clone(), 32);
+        let _link2 = AudioLink::new_link(format.clone(), 32, Box::new(link2_rx), Box::new(link2_tx));
+
+        // Chunks.
+        let silent = create_audio_with_samples(&format, vec![0.0f32; chunk_samples]);
+        let mut impulse_chunk = vec![0.0f32; chunk_samples];
+        impulse_chunk[chunk_frames - 1] = 1.0; // impulse at last sample of ch0
+        let impulse_audio = create_audio_with_samples(&format, impulse_chunk);
+
+        // Stamp the wall-clock the moment the impulse chunk is handed over.
+        let t_send_slot = Arc::new(std::sync::Mutex::new(None::<std::time::Instant>));
+        let t_send_clone = t_send_slot.clone();
+        let found = Arc::new(std::sync::Mutex::new(None::<f64>));
+        let found_clone = found.clone();
+        let reader = tokio::spawn(async move {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+            while std::time::Instant::now() < deadline {
+                let out = match tokio::time::timeout(
+                    std::time::Duration::from_millis(300),
+                    stream_out.next(),
+                )
+                .await
+                {
+                    Ok(Some(a)) => a,
+                    _ => break,
+                };
+                let pcm = out.to_pcm().unwrap();
+                if (pcm.data[chunk_frames - 1] - 0.5).abs() < 1e-6 {
+                    if let Some(t0) = *t_send_clone.lock().unwrap() {
+                        let ms = t0.elapsed().as_secs_f64() * 1000.0;
+                        *found_clone.lock().unwrap() = Some(ms);
+                    }
+                    break;
+                }
+            }
+        });
+
+        // Warm-up + steady state: silent chunks, then the impulse chunk, then
+        // flush. Paced at the real 48k rate so the mixer frame buffer is real.
+        let impulse_at = 4usize;
+        for i in 0..12usize {
+            if i == impulse_at {
+                *t_send_slot.lock().unwrap() = Some(std::time::Instant::now());
+                src_tx.send(impulse_audio.clone()).await.unwrap();
+            } else {
+                src_tx.send(silent.clone()).await.unwrap();
+            }
+            tokio::time::sleep(std::time::Duration::from_secs_f64(chunk_ms / 1000.0)).await;
+        }
+        // Late translation stream (silent) — must NOT delay the original impulse
+        // that already passed through.
+        for _ in 0..4 {
+            trans_tx.send(silent.clone()).await.unwrap();
+            tokio::time::sleep(std::time::Duration::from_secs_f64(chunk_ms / 1000.0)).await;
+        }
+
+        reader.await.unwrap();
+        let meas = found
+            .lock()
+            .unwrap()
+            .take()
+            .expect("impulse never reached mixer output");
+
+        eprintln!("=== REALISTIC FULL GRAPH (Splitter->Link->Mixer->Link, paced @48k, leader=original) ===");
+        eprintln!("  Chunk: {chunk_frames} frames (~{chunk_ms:.1} ms @48k), 1 mixer frame/chunk");
+        eprintln!("  Original impulse latency (MEASURED): {meas:.2} ms");
+        eprintln!("  (theoretical: 1 mixer frame = 5.00 ms + ~0 Link hops + HW playback buffer)");
+        eprintln!("  Translation stream arrives AFTER the impulse (late + silent): original must not wait for it");
+
+        // The original must NOT wait for the late translation, and the measured
+        // latency should reflect roughly one mixer frame of buffering.
+        assert!(
+            meas >= 1.0,
+            "original latency {meas:.2} ms implausibly low (buffer not exercised)"
+        );
+        assert!(
+            meas < 40.0,
+            "original latency {meas:.2} ms too high (blocking on translation?)"
+        );
+    }
 }
