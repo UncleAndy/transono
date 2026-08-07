@@ -142,8 +142,9 @@ async fn main() -> Result<()> {
         AudioLink::new_ports(output_for_translate.format(), 32);
     // Добавляем в микшер вход из линка от line (перевод на полной громкости)
     let direct_translate_ch = mixer.add_input(&mut to_mixer_receiver, 1.0)?;
-    // Параллельный приглушённый канал оригинального голоса (0.5)
-    let direct_original_ch = mixer.add_input(original_out.as_mut(), 0.5)?;
+    // Параллельный приглушённый канал оригинального голоса (0.5) — ЛИДЕР:
+    // задаёт темп выдачи, чтобы оригинал не ждал перевода (иначе отстаёт).
+    let direct_original_ch = mixer.add_input_leader(original_out.as_mut(), 0.5)?;
     // Выход микшера как отдельный порт, соединяем с виртуальным микрофоном
     let mixer_out = mixer.get_output();
     let _link_from_mixer_to_virt_mic = AudioLink::new_link(
@@ -221,7 +222,7 @@ async fn main() -> Result<()> {
     let (to_mixer_back_sender, mut to_mixer_back_receiver) =
         AudioLink::new_ports(translated_out.format(), 32);
     let back_translate_ch = mixer_back.add_input(&mut to_mixer_back_receiver, 1.0)?;
-    let back_original_ch = mixer_back.add_input(original_back_out.as_mut(), 0.5)?;
+    let back_original_ch = mixer_back.add_input_leader(original_back_out.as_mut(), 0.5)?;
     // Выход микшера как отдельный порт, соединяем с реальным динамиком
     let mixer_back_out = mixer_back.get_output();
     let _link_back = AudioLink::new_link(

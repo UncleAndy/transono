@@ -20,6 +20,12 @@ struct MixerChannel {
     /// incoming chunks are not multiples of `frame_size`.
     buffers: Vec<VecDeque<f32>>,
     last_timestamp: Option<Instant>,
+    /// Leader channels set the output cadence. The mixer emits a frame as soon
+    /// as every LEADER has a full frame buffered; non-leader (e.g. translation)
+    /// inputs that are short are silence-padded. This keeps the original audio
+    /// flowing in real time instead of being held hostage until translation
+    /// (which arrives hundreds of ms later) shows up.
+    is_leader: bool,
 }
 
 /// Real-time audio mixer.
@@ -89,9 +95,28 @@ impl AudioMixer {
                 stream: input_stream,
                 buffers: vec![VecDeque::new(); self.format.channels as usize],
                 last_timestamp: None,
+                is_leader: false,
             },
         );
 
+        Ok(id)
+    }
+
+    /// Adds an input that drives the mixer's output cadence (the "leader").
+    ///
+    /// The mixer emits a frame as soon as every leader has buffered a full
+    /// frame; non-leader inputs (translation) are mixed in when present and
+    /// silence-padded when absent. Use the original audio as the leader so it
+    /// never lags behind the (much later) translation stream.
+    pub fn add_input_leader(
+        &self,
+        input: &mut dyn AudioInput,
+        weight: f32,
+    ) -> Result<ChannelId> {
+        let id = self.add_input(input, weight)?;
+        if let Some(ch) = self.channels.lock().unwrap().get_mut(&id) {
+            ch.is_leader = true;
+        }
         Ok(id)
     }
 
@@ -180,17 +205,30 @@ impl AudioMixer {
                     }
                 }
 
-                // Emit a frame as soon as ANY channel has a full frame buffered.
-                // Emit a frame as soon as ANY channel has a full frame buffered
-                // on every one of its channels. Per-channel queues keep samples
-                // frame-aligned, so silence-padding an input that is short never
-                // desynchronizes L/R.
+                // Cadence rule:
+                // - If ANY leader is configured, emit a frame as soon as EVERY
+                //   leader has a full frame buffered. Non-leaders (translation)
+                //   are silence-padded when short, so the original (leader) flows
+                //   in real time instead of waiting for the (much later)
+                //   translation.
+                // - If NO leader is configured (legacy / single-input tests),
+                //   fall back to emitting as soon as ANY input has a full frame
+                //   buffered — keeps old behaviour and avoids deadlock when no
+                //   leader exists.
                 let ready = {
                     let channels = channels_lock.lock().unwrap();
-                    channels.values().any(|c| {
-                        c.buffers.len() == format.channels as usize
-                            && c.buffers.iter().all(|b| b.len() >= frame_size)
-                    })
+                    let leaders: Vec<_> = channels.values().filter(|c| c.is_leader).collect();
+                    if leaders.is_empty() {
+                        channels.values().any(|c| {
+                            c.buffers.len() == format.channels as usize
+                                && c.buffers.iter().all(|b| b.len() >= frame_size)
+                        })
+                    } else {
+                        leaders.iter().all(|c| {
+                            c.buffers.len() == format.channels as usize
+                                && c.buffers.iter().all(|b| b.len() >= frame_size)
+                        })
+                    }
                 };
 
                 if !ready {
@@ -265,6 +303,7 @@ mod tests {
     use super::*;
     use crate::audio::{Audio, AudioFormat, AudioInput, PcmAudio, PcmFormat, Endianness};
     use std::sync::Arc;
+    use std::time::Duration;
     use tokio::sync::mpsc;
     use tokio_stream::wrappers::ReceiverStream;
     use symphonia::core::audio::Channels;
@@ -526,5 +565,79 @@ mod tests {
         for &sample in pcm.data.iter() {
             assert_eq!(sample, 1.0, "Expected clamped 1.0, got {}", sample);
         }
+    }
+
+    /// DELAY TEST: the ORIGINAL (leader) channel must flow through the mixer
+    /// WITHOUT waiting for the translation channel.
+    ///
+    /// Before the leader fix, the mixer emitted a frame only when EVERY input
+    /// had buffered a full `frame_size` on every channel. The original arrives
+    /// immediately (Splitter clones it with no delay), but the translation
+    /// arrives hundreds of ms later (capture -> STT -> LLM -> TTS). So the
+    /// original was held hostage in the mixer buffer until translation showed
+    /// up -> the original audio lagged. That is exactly the "оригинал
+    /// отстает" regression.
+    ///
+    /// This test feeds ONLY the original and asserts the mixer still emits
+    /// original frames promptly (within a couple of frames), independent of any
+    /// translation input. It would hang/fail on the old "wait for all" logic.
+    #[tokio::test]
+    async fn test_original_flows_without_translation() {
+        let sample_rate = 48000u32;
+        let channels = 2u16;
+        let format = AudioFormat {
+            sample_rate,
+            channels,
+            sample_format: PcmFormat::F32(Endianness::Little),
+        };
+        let frame_size = (sample_rate as usize * 5 / 1000) as usize;
+
+        let mixer = AudioMixer::new(format.clone());
+        let mut mixer_out = mixer.get_output();
+        let mut stream_out = mixer_out.stream().unwrap();
+        let mixer = Arc::new(mixer);
+
+        // Original channel only (no translation sender created at all).
+        let (tx_orig, rx_orig) = mpsc::channel(10);
+        let mut original = MockInput::new(format.clone(), rx_orig);
+        mixer.add_input_leader(&mut original, 0.5).unwrap();
+
+        // Feed a few original frames.
+        for _ in 0..3 {
+            let s = vec![0.5f32; frame_size * channels as usize];
+            tx_orig
+                .send(create_audio_with_samples(&format, s))
+                .await
+                .unwrap();
+        }
+
+        let mixer_clone = mixer.clone();
+        tokio::spawn(async move { mixer_clone.run(); });
+
+        // The mixer MUST emit original frames promptly, with NO translation input.
+        let deadline = Duration::from_millis(500);
+        let start = std::time::Instant::now();
+        let mut frames = 0;
+        while start.elapsed() < deadline {
+            match tokio::time::timeout(Duration::from_millis(200), stream_out.next()).await {
+                Ok(Some(audio)) => {
+                    let pcm = audio.to_pcm().unwrap();
+                    // Original weight 0.5 * 0.5 sample = 0.25 expected.
+                    for &sample in pcm.data.iter() {
+                        assert!(
+                            (sample - 0.25).abs() < 1e-6,
+                            "original expected 0.25 got {sample}"
+                        );
+                    }
+                    frames += 1;
+                    if frames >= 2 {
+                        break;
+                    }
+                }
+                Ok(None) => break,
+                Err(_) => break, // timeout waiting => would indicate original is blocked
+            }
+        }
+        assert!(frames >= 2, "original was blocked waiting for translation (delay bug)");
     }
 }
