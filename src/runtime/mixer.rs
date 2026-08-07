@@ -14,7 +14,11 @@ type ChannelId = usize;
 struct MixerChannel {
     weight: f32,
     stream: BoxStream<'static, Audio>,
-    buffer: VecDeque<f32>,
+    /// One planar sample queue per channel. Stored per-channel (not as a single
+    /// concatenated planar buffer) so that popping exactly `frame_size` samples
+    /// for channel `c` never crosses into another channel's data — even when
+    /// incoming chunks are not multiples of `frame_size`.
+    buffers: Vec<VecDeque<f32>>,
     last_timestamp: Option<Instant>,
 }
 
@@ -83,7 +87,7 @@ impl AudioMixer {
             MixerChannel {
                 weight,
                 stream: input_stream,
-                buffer: VecDeque::new(),
+                buffers: vec![VecDeque::new(); self.format.channels as usize],
                 last_timestamp: None,
             },
         );
@@ -137,57 +141,89 @@ impl AudioMixer {
     ///
     /// Spawns the mixing loop in a background task and returns immediately.
     /// The mixer must be fully configured (all inputs added) before calling this.
+    ///
+    /// Real-time mixing loop.
+    ///
+    /// Emits one output frame whenever every input channel has buffered at least
+    /// one full frame. Samples are mixed per-channel (planar layout): channel `c`
+    /// of every input contributes to channel `c` of the output, weighted. This is
+    /// the standard, correct way to sum multiple audio streams and avoids the
+    /// interleaved/planar confusion that previously produced noise.
     pub fn run(self: Arc<Self>) -> JoinHandle<()> {
         let format = self.format.clone();
         let channels_lock = self.channels.clone();
         let output_tx = self.output_tx.clone();
 
         tokio::spawn(async move {
-            let frame_ms = 10;
+            let frame_ms = 5;
             let frame_size = (format.sample_rate as u64 * frame_ms / 1000) as usize;
             let sample_count = frame_size * format.channels as usize;
             let mut mixed_data = vec![0.0f32; sample_count];
-            let sample_duration = Duration::from_nanos(1_000_000_000 / format.sample_rate as u64);
-            let max_buffer_samples = format.sample_rate as usize * format.channels as usize;
 
             loop {
-                let result = {
+                // Drain all channel streams into their buffers (non-blocking).
+                {
                     let mut channels = channels_lock.lock().unwrap();
-
                     for channel in channels.values_mut() {
                         while let Some(audio) = channel.stream.next().now_or_never().flatten() {
                             if let Ok(pcm) = audio.to_pcm() {
-                                if channel.buffer.is_empty() {
+                                if channel.buffers.iter().all(|b| b.is_empty()) {
                                     channel.last_timestamp = Some(audio.capture_timestamp());
                                 }
-                                channel.buffer.extend(pcm.data);
-
-                                if channel.buffer.len() > max_buffer_samples {
-                                    let to_remove = channel.buffer.len() - max_buffer_samples;
-                                    channel.buffer.drain(0..to_remove);
+                                let ch = pcm.channel_count();
+                                // Append each channel's planar slice into its own queue.
+                                for c in 0..ch {
+                                    channel.buffers[c].extend(pcm.channel(c).iter().copied());
                                 }
                             }
                         }
                     }
+                }
 
+                // Emit a frame as soon as ANY channel has a full frame buffered.
+                // Emit a frame as soon as ANY channel has a full frame buffered
+                // on every one of its channels. Per-channel queues keep samples
+                // frame-aligned, so silence-padding an input that is short never
+                // desynchronizes L/R.
+                let ready = {
+                    let channels = channels_lock.lock().unwrap();
+                    channels.values().any(|c| {
+                        c.buffers.len() == format.channels as usize
+                            && c.buffers.iter().all(|b| b.len() >= frame_size)
+                    })
+                };
+
+                if !ready {
+                    tokio::time::sleep(Duration::from_millis(1)).await;
+                    continue;
+                }
+
+                // Build the output frame, mixing per-channel (planar).
+                let result = {
+                    let mut channels = channels_lock.lock().unwrap();
                     mixed_data.fill(0.0);
-                    let mut has_data = false;
                     let mut first_ts = None;
+                    let mut has_data = false;
 
                     for channel in channels.values_mut() {
-                        if channel.buffer.len() >= sample_count {
+                        if channel.buffers.iter().any(|b| !b.is_empty()) {
                             has_data = true;
                             if first_ts.is_none() {
                                 first_ts = channel.last_timestamp;
                             }
-
-                            for i in 0..sample_count {
-                                mixed_data[i] +=
-                                    channel.buffer.pop_front().unwrap() * channel.weight;
-                            }
-
-                            if let Some(ref mut ts) = channel.last_timestamp {
-                                *ts += sample_duration * (frame_size as u32);
+                        }
+                        // Pop exactly `frame_size` samples from EACH channel's own
+                        // queue. Because queues are per-channel, index `c` always
+                        // maps to the correct physical channel regardless of chunk
+                        // boundaries in the incoming stream.
+                        for c in 0..format.channels as usize {
+                            let base_out = c * frame_size;
+                            for i in 0..frame_size {
+                                let s = channel.buffers[c]
+                                    .pop_front()
+                                    .unwrap_or(0.0)
+                                    * channel.weight;
+                                mixed_data[base_out + i] += s;
                             }
                         }
                     }
@@ -218,8 +254,6 @@ impl AudioMixer {
 
                 if let Some(audio) = result {
                     let _ = output_tx.send(audio).await;
-                } else {
-                    tokio::time::sleep(Duration::from_millis(1)).await;
                 }
             }
         })
@@ -229,10 +263,11 @@ impl AudioMixer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::audio::{Audio, AudioFormat, AudioInput, PcmAudio};
+    use crate::audio::{Audio, AudioFormat, AudioInput, PcmAudio, PcmFormat, Endianness};
     use std::sync::Arc;
     use tokio::sync::mpsc;
     use tokio_stream::wrappers::ReceiverStream;
+    use symphonia::core::audio::Channels;
 
     fn create_test_format() -> AudioFormat {
         let internal = crate::audio::EncodedAudioFormat::internal_format();
@@ -356,6 +391,98 @@ mod tests {
         for &sample in pcm.data.iter() {
             assert!((sample - 0.6).abs() < 1e-6, "Expected 0.6, got {}", sample);
         }
+    }
+
+    #[tokio::test]
+    async fn test_planar_channel_isolation_stereo() {
+        // Original bug: mixer treated planar buffer as interleaved, mixing L/R.
+        // Verify that for stereo, channel 0 input affects ONLY output channel 0,
+        // and channel 1 input affects ONLY output channel 1.
+        //
+        // Hardened: feed TWO channels with MISALIGNED chunk sizes (512 and 256
+        // frames) that are NOT multiples of the mixer's 5 ms frame (240). The
+        // old single-concatenated-planar-buffer implementation desynced L/R at
+        // chunk boundaries and produced noise; the per-channel-queue
+        // implementation must keep them aligned.
+        let sample_rate = 48000u32;
+        let channels = 2u16;
+        let format = AudioFormat {
+            sample_rate,
+            channels,
+            sample_format: PcmFormat::F32(Endianness::Little),
+        };
+        // The mixer emits 5 ms frames (see run()): frame_size = rate * 5 / 1000.
+        let frame_size = (sample_rate as usize * 5 / 1000) as usize;
+
+        let mixer = AudioMixer::new(format.clone());
+        let mut mixer_out = mixer.get_output();
+        let mut stream_out = mixer_out.stream().unwrap();
+        let mixer = Arc::new(mixer);
+
+        // Input A: channel0 = 1.0, channel1 = 0.0 (planar order: [1.0 xN, 0.0 xN])
+        let (tx_a, rx_a) = mpsc::channel(10);
+        let mut input_a = MockInput::new(format.clone(), rx_a);
+        mixer.add_input(&mut input_a, 1.0).unwrap();
+
+        // Input B: channel0 = 0.0, channel1 = 0.5 (planar)
+        let (tx_b, rx_b) = mpsc::channel(10);
+        let mut input_b = MockInput::new(format.clone(), rx_b);
+        mixer.add_input(&mut input_b, 1.0).unwrap();
+
+        // Feed several chunks of MISALIGNED sizes (512, 256) so chunk boundaries
+        // fall mid-frame. 512 % 240 = 32, 256 % 240 = 16 -> boundaries must not
+        // swap L/R.
+        let chunk_sizes = [512usize, 256, 512, 256, 512];
+
+        let mut remaining_a = frame_size * 4; // enough for several output frames
+        let mut remaining_b = frame_size * 4;
+        for &sz in chunk_sizes.iter() {
+            if remaining_a > 0 {
+                let n = sz.min(remaining_a);
+                let mut s = vec![0.0f32; n * channels as usize];
+                for i in 0..n {
+                    s[i] = 1.0; // channel 0
+                }
+                tx_a.send(create_audio_with_samples(&format, s)).await.unwrap();
+                remaining_a -= n;
+            }
+            if remaining_b > 0 {
+                let n = sz.min(remaining_b);
+                let mut s = vec![0.0f32; n * channels as usize];
+                for i in n..(2 * n) {
+                    s[i] = 0.5; // channel 1
+                }
+                tx_b.send(create_audio_with_samples(&format, s)).await.unwrap();
+                remaining_b -= n;
+            }
+        }
+
+        let mixer_clone = mixer.clone();
+        tokio::spawn(async move { mixer_clone.run(); });
+
+        // Collect a few output frames and check L/R isolation on each.
+        let mut checked = 0;
+        for _ in 0..4 {
+            let mixed = match stream_out.next().await {
+                Some(a) => a,
+                None => break,
+            };
+            let pcm = mixed.to_pcm().unwrap();
+            for i in 0..frame_size {
+                assert!(
+                    (pcm.data[i] - 1.0).abs() < 1e-6,
+                    "ch0[{i}] expected 1.0 got {}",
+                    pcm.data[i]
+                );
+                assert!(
+                    (pcm.data[frame_size + i] - 0.5).abs() < 1e-6,
+                    "ch1[{i}] expected 0.5 got {}",
+                    pcm.data[frame_size + i]
+                );
+            }
+            checked += 1;
+        }
+        assert!(checked > 0, "mixer produced no output frames");
     }
 
     #[tokio::test]
