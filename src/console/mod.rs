@@ -1,10 +1,12 @@
 use std::io;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use tokio::sync::mpsc;
 
 use crate::audio::diagnost::indicator::VolumeIndicator;
 use crate::audio::{LatencySnapshot, LatencyStats};
 use crate::core::session_event::SessionEvent;
+use crate::runtime::AudioMixer;
 use crossterm::{
     event::{self, Event, KeyCode},
     execute,
@@ -17,12 +19,29 @@ use ratatui::{
     style::{Color, Style},
     widgets::{Block, Borders, Gauge, Paragraph, Wrap},
 };
-use tokio::sync::mpsc;
 
 const SIGNAL_FLOOR_DBFS: f32 = -60.0;
 const SIGNAL_ATTACK: Duration = Duration::from_millis(40);
 const SIGNAL_RELEASE: Duration = Duration::from_millis(650);
 const SIGNAL_KIND_WIDTH: u16 = 4;
+
+/// Режим живого управления звуком для одной стороны.
+/// `Mix`      — перевод (1.0) + исходный звук (0.5)  [умолчание]
+/// `Original` — только исходный звук на полной громкости (1.0), перевод заглушён (0.0)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AudioMode {
+    Mix,
+    Original,
+}
+
+impl AudioMode {
+    fn label(&self) -> &'static str {
+        match self {
+            AudioMode::Mix => "MIX",
+            AudioMode::Original => "ORIG",
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 struct SignalLevel {
@@ -112,6 +131,17 @@ pub struct ConsoleApp {
     direct_status: String,
     back_status: String,
 
+    // Живое управление режимами звука (hotkeys)
+    direct_mixer: Arc<AudioMixer>,
+    direct_translate_ch: usize,
+    direct_original_ch: usize,
+    back_mixer: Arc<AudioMixer>,
+    back_translate_ch: usize,
+    back_original_ch: usize,
+
+    direct_mode: AudioMode,
+    back_mode: AudioMode,
+
     should_quit: bool,
 }
 
@@ -126,7 +156,14 @@ impl ConsoleApp {
         direct_output_indicator_rx: mpsc::Receiver<VolumeIndicator>,
         back_input_indicator_rx: mpsc::Receiver<VolumeIndicator>,
         back_output_indicator_rx: mpsc::Receiver<VolumeIndicator>,
-    ) -> Self {
+        // Микшеры + id каналов для живого переключения режимов звука (hotkeys)
+        direct_mixer: Arc<AudioMixer>,
+        direct_translate_ch: usize,
+        direct_original_ch: usize,
+        back_mixer: Arc<AudioMixer>,
+        back_translate_ch: usize,
+        back_original_ch: usize,
+        ) -> Self {
         Self {
             direct_rx,
             back_rx,
@@ -148,6 +185,14 @@ impl ConsoleApp {
             back_output_signal: SignalLevel::default(),
             direct_status: "IDLE".to_string(),
             back_status: "IDLE".to_string(),
+            direct_mixer,
+            direct_translate_ch,
+            direct_original_ch,
+            back_mixer,
+            back_translate_ch,
+            back_original_ch,
+            direct_mode: AudioMode::Mix,
+            back_mode: AudioMode::Mix,
             should_quit: false,
         }
     }
@@ -175,8 +220,27 @@ impl ConsoleApp {
 
             if event::poll(timeout)? {
                 if let Event::Key(key) = event::read()? {
-                    if let KeyCode::Char('q') | KeyCode::Esc = key.code {
-                        self.should_quit = true;
+                    match key.code {
+                        KeyCode::Char('q') | KeyCode::Esc => self.should_quit = true,
+                        // Direct (RU->EN, left panel): 'z' = Mix, 'x' = Original
+                        KeyCode::Char('z') => {
+                            self.direct_mode = AudioMode::Mix;
+                            self.apply_mode(&self.direct_mixer, self.direct_translate_ch, self.direct_original_ch, self.direct_mode);
+                        }
+                        KeyCode::Char('x') => {
+                            self.direct_mode = AudioMode::Original;
+                            self.apply_mode(&self.direct_mixer, self.direct_translate_ch, self.direct_original_ch, self.direct_mode);
+                        }
+                        // Back (EN->RU, right panel): ',' = Mix, '.' = Original
+                        KeyCode::Char(',') => {
+                            self.back_mode = AudioMode::Mix;
+                            self.apply_mode(&self.back_mixer, self.back_translate_ch, self.back_original_ch, self.back_mode);
+                        }
+                        KeyCode::Char('.') => {
+                            self.back_mode = AudioMode::Original;
+                            self.apply_mode(&self.back_mixer, self.back_translate_ch, self.back_original_ch, self.back_mode);
+                        }
+                        _ => {}
                     }
                 }
             }
@@ -229,6 +293,18 @@ impl ConsoleApp {
         }
     }
 
+    /// Применяет выбранный режим к микшеру: переключает веса перевода и оригинала.
+    /// Mode A (Mix):      перевод 1.0, оригинал 0.5
+    /// Mode B (Original): перевод 0.0, оригинал 1.0  (только исходный звук на полной громкости)
+    fn apply_mode(&self, mixer: &Arc<AudioMixer>, translate_ch: usize, original_ch: usize, mode: AudioMode) {
+        let (translate_w, original_w) = match mode {
+            AudioMode::Mix => (1.0, 0.5),
+            AudioMode::Original => (0.0, 1.0),
+        };
+        let _ = mixer.set_weight(translate_ch, translate_w);
+        let _ = mixer.set_weight(original_ch, original_w);
+    }
+
     fn read_indicators(&mut self) {
         while let Ok(indicator) = self.direct_input_indicator_rx.try_recv() {
             self.direct_input_signal.update(indicator);
@@ -260,6 +336,7 @@ impl ConsoleApp {
                 Constraint::Percentage(25),
                 Constraint::Min(3),
                 Constraint::Length(4),
+                Constraint::Length(3),
             ])
             .split(f.area());
 
@@ -349,6 +426,16 @@ impl ConsoleApp {
             .title(" Status & Latency ");
         let status_para = Paragraph::new(status_text).block(status_block);
         f.render_widget(status_para, chunks[2]);
+
+        // Нижняя строка статуса: текущий режим звука + подсказка по клавишам
+        let audio_status = format!(
+            "Audio modes  |  Direct (RU-EN, left): {}  [ 'z' = MIX | 'x' = ORIG ]   |   Back (EN-RU, right): {}  [ ',' = MIX | '.' = ORIG ]",
+            self.direct_mode.label(),
+            self.back_mode.label(),
+        );
+        let audio_status_block = Block::default().borders(Borders::ALL).title(" Sound Mode ");
+        let audio_status_para = Paragraph::new(audio_status).block(audio_status_block);
+        f.render_widget(audio_status_para, chunks[3]);
     }
 
     fn render_signal_pair(

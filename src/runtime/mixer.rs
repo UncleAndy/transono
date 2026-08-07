@@ -91,6 +91,32 @@ impl AudioMixer {
         Ok(id)
     }
 
+    /// Updates the volume `weight` of an already-added input channel at runtime.
+    ///
+    /// Used for live hotkey control (e.g. switch between "translation + original (0.5)"
+    /// and "original only (1.0)") without reconfiguring the mixer graph.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - The [`ChannelId`] returned by [`AudioMixer::add_input`].
+    /// * `weight` - New volume multiplier for this channel.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CoreError::Internal`] if the channel `id` is not found.
+    pub fn set_weight(&self, id: ChannelId, weight: f32) -> Result<()> {
+        let mut channels = self.channels.lock().unwrap();
+        match channels.get_mut(&id) {
+            Some(channel) => {
+                channel.weight = weight;
+                Ok(())
+            }
+            None => Err(CoreError::Internal(format!(
+                "mixer channel {id} not found"
+            ))),
+        }
+    }
+
     /// Returns an output port carrying the mixed audio stream.
     ///
     /// The returned [`ReceiverPort`] owns the mixer's output channel receiver,

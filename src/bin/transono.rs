@@ -141,9 +141,9 @@ async fn main() -> Result<()> {
     let (to_mixer_sender, mut to_mixer_receiver) =
         AudioLink::new_ports(output_for_translate.format(), 32);
     // Добавляем в микшер вход из линка от line (перевод на полной громкости)
-    let _ = mixer.add_input(&mut to_mixer_receiver, 1.0);
+    let direct_translate_ch = mixer.add_input(&mut to_mixer_receiver, 1.0)?;
     // Параллельный приглушённый канал оригинального голоса (0.5)
-    mixer.add_input(original_out.as_mut(), 0.5)?;
+    let direct_original_ch = mixer.add_input(original_out.as_mut(), 0.5)?;
     // Выход микшера как отдельный порт, соединяем с виртуальным микрофоном
     let mixer_out = mixer.get_output();
     let _link_from_mixer_to_virt_mic = AudioLink::new_link(
@@ -154,7 +154,7 @@ async fn main() -> Result<()> {
     );
     // Запускаем фоновый цикл микшера (spawn внутри run, не блокирует)
     let mixer = Arc::new(mixer);
-    let _mixer_handle = mixer.run();
+    let _mixer_handle = mixer.clone().run();
 
     // Прописываем на вход line выход сплиттера
     // а на выход - микшер
@@ -220,8 +220,8 @@ async fn main() -> Result<()> {
     let mixer_back = AudioMixer::new(translated_out.format());
     let (to_mixer_back_sender, mut to_mixer_back_receiver) =
         AudioLink::new_ports(translated_out.format(), 32);
-    mixer_back.add_input(&mut to_mixer_back_receiver, 1.0)?;
-    mixer_back.add_input(original_back_out.as_mut(), 0.5)?;
+    let back_translate_ch = mixer_back.add_input(&mut to_mixer_back_receiver, 1.0)?;
+    let back_original_ch = mixer_back.add_input(original_back_out.as_mut(), 0.5)?;
     // Выход микшера как отдельный порт, соединяем с реальным динамиком
     let mixer_back_out = mixer_back.get_output();
     let _link_back = AudioLink::new_link(
@@ -232,7 +232,7 @@ async fn main() -> Result<()> {
     );
     // Запускаем фоновый цикл микшера (spawn внутри run, не блокирует)
     let mixer_back = Arc::new(mixer_back);
-    let _mixer_back_handle = mixer_back.run();
+    let _mixer_back_handle = mixer_back.clone().run();
 
     // TranslationLine "en" -> "ru"
     let mut line_back = TranslationLine::new(
@@ -283,6 +283,12 @@ async fn main() -> Result<()> {
         direct_output_indicator_rx,
         back_input_indicator_rx,
         back_output_indicator_rx,
+        mixer.clone(),
+        direct_translate_ch,
+        direct_original_ch,
+        mixer_back.clone(),
+        back_translate_ch,
+        back_original_ch,
     );
 
     println!("Press 'q' to stop.");
