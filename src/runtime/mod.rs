@@ -27,3 +27,5 @@ pub use rtrb_ports::*;
 
 #[cfg(test)]
 pub mod integration_tests;
+#[cfg(test)]
+pub mod integration_tests_timed;
