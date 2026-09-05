@@ -5,7 +5,7 @@ use futures_util::stream::BoxStream;
 use futures_util::{FutureExt, StreamExt};
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 use tokio::task::JoinHandle;
 
@@ -232,7 +232,7 @@ impl AudioMixer {
                 };
 
                 if !ready {
-                    tokio::time::sleep(Duration::from_millis(1)).await;
+                    tokio::task::yield_now().await;
                     continue;
                 }
 
@@ -930,14 +930,22 @@ mod tests {
         eprintln!("=== REALISTIC FULL GRAPH (Splitter->Link->Mixer->Link, paced @48k, leader=original) ===");
         eprintln!("  Chunk: {chunk_frames} frames (~{chunk_ms:.1} ms @48k), 1 mixer frame/chunk");
         eprintln!("  Original impulse latency (MEASURED): {meas:.2} ms");
-        eprintln!("  (theoretical: 1 mixer frame = 5.00 ms + ~0 Link hops + HW playback buffer)");
+        eprintln!("  (theoretical: 1 mixer frame buffered in steady state; sub-ms traversal after Part 1 yield_now() + HW playback buffer)");
         eprintln!("  Translation stream arrives AFTER the impulse (late + silent): original must not wait for it");
 
-        // The original must NOT wait for the late translation, and the measured
-        // latency should reflect roughly one mixer frame of buffering.
+        // The original must NOT wait for the late translation (upper bound), and
+        // the measured latency must be a real positive traversal (lower bound).
+        //
+        // NOTE: the lower bound was relaxed from `>= 1.0 ms` after Part 1 (step 1.4):
+        // the mixer loop no longer `sleep(1ms)` on the "not ready" branch — it uses
+        // `tokio::task::yield_now()`. With a warm leader buffer the impulse now
+        // traverses in sub-millisecond time (pure channel/async hops); the mixer
+        // STILL buffers one frame in steady state, so the property holds — only the
+        // artificial 1 ms throttle is gone. The lower bound therefore guards against
+        // a true zero-buffering passthrough regression, not against the removed sleep.
         assert!(
-            meas >= 1.0,
-            "original latency {meas:.2} ms implausibly low (buffer not exercised)"
+            meas >= 0.05,
+            "original latency {meas:.2} ms implausibly low (no buffering / instant passthrough?)"
         );
         assert!(
             meas < 40.0,

@@ -36,7 +36,7 @@ impl AudioInputCpal {
         device: Device,
         stats: Arc<LatencyStats>,
     ) -> Result<Self> {
-        let (config, sample_format) = select_config(&device)?;
+        let (config, sample_format) = select_config_with_fallback(&device)?;
 
         let spec = AudioSpec::new(
             config.sample_rate,
@@ -198,9 +198,37 @@ impl AudioInput for AudioInputCpal {
 fn select_config(device: &Device) -> Result<(StreamConfig, SampleFormat)> {
     let cfg = device.default_input_config().map_err(|e| CoreError::Cpal(e.to_string()))?;
 
+    let fixed = BufferSize::Fixed(crate::audio::latency_config::latency_frames(
+        cfg.sample_rate(),
+    ));
+
     Ok((StreamConfig {
         channels: cfg.channels(),
         sample_rate: cfg.sample_rate(),
-        buffer_size: BufferSize::Default,
+        buffer_size: fixed,
     }, cfg.sample_format()))
+}
+
+/// Выбирает конфиг устройства, пробуя фиксированный буфер для низкой задержки
+/// и откатываясь на дефолт, если устройство/хост его не принимает.
+fn select_config_with_fallback(device: &Device) -> Result<(StreamConfig, SampleFormat)> {
+    let (mut config, sample_format) = select_config(device)?;
+
+    // Проверяем, что устройство действительно принимает запрошенный фикс-буфер.
+    if matches!(config.buffer_size, BufferSize::Fixed(_)) {
+        if let Err(e) = device.build_input_stream::<f32, _, _>(
+            config.clone(),
+            |_, _: &cpal::InputCallbackInfo| {},
+            |_| {},
+            None,
+        ) {
+            eprintln!(
+                "input: BufferSize::Fixed rejected ({}), fallback to Default",
+                e
+            );
+            config.buffer_size = BufferSize::Default;
+        }
+    }
+
+    Ok((config, sample_format))
 }

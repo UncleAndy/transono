@@ -12,6 +12,13 @@
         pkgs = import nixpkgs {
           inherit system;
         };
+
+        fixRights = pkgs.writeShellScriptBin "fixr" ''
+          mkdir -p target
+          sudo chown -R andy:hermes ./
+          sudo chmod -R g+wX ./
+        '';
+
       in {
         devShells.default = pkgs.mkShell {
           name = "transono-dev";
@@ -35,6 +42,7 @@ EOF
 '';
 
           nativeBuildInputs = with pkgs; [
+            fixRights
             pkg-config
             clang
             rustc

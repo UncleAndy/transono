@@ -30,6 +30,8 @@ pub mod pcm_audio;
 pub mod pcm_pool;
 /// Audio encoding and decoding implementations.
 pub mod encoders;
+/// Target hardware buffer sizing for low-latency paths.
+pub mod latency_config;
 /// Audio encoder and decoder traits.
 pub mod audio_encoder;
 /// Diagnostic tools for audio processing.
