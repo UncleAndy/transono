@@ -89,7 +89,7 @@ impl DspProcessor for ChannelConverter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::audio::{PcmAudio, PcmFormat, Endianness};
+    use crate::audio::PcmAudio;
     use symphonia::core::audio::{AudioSpec, Channels};
 
     fn stereo_pcm(ch0: f32, ch1: f32, frames: usize) -> PcmAudio {

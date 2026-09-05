@@ -13,6 +13,8 @@ pub mod sender_port;
 pub mod splitter;
 /// Mixer for combining multiple audio inputs.
 pub mod mixer;
+/// rtrb-backed ports (SPSC lock-free) for the graph.
+pub mod rtrb_ports;
 
 pub use link::*;
 pub use sender_port::*;

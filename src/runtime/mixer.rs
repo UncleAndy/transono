@@ -306,7 +306,6 @@ mod tests {
     use std::time::Duration;
     use tokio::sync::mpsc;
     use tokio_stream::wrappers::ReceiverStream;
-    use symphonia::core::audio::Channels;
 
     fn create_test_format() -> AudioFormat {
         let internal = crate::audio::EncodedAudioFormat::internal_format();

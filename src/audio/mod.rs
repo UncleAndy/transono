@@ -32,6 +32,8 @@ pub mod pcm_pool;
 pub mod encoders;
 /// Target hardware buffer sizing for low-latency paths.
 pub mod latency_config;
+/// Lock-free SPSC audio channel built on `rtrb`.
+pub mod rtrb_chan;
 /// Audio encoder and decoder traits.
 pub mod audio_encoder;
 /// Diagnostic tools for audio processing.
@@ -51,7 +53,7 @@ pub use audio_buffer::*;
 pub use frame::*;
 pub use frame_pool::*;
 pub use pipeline::*;
-pub use cpal::output_cpal::*;
+pub use cpal::output_cpal::AudioOutputCpal;
 pub use processor::*;
 pub use audio::*;
 pub use sample_buffer::*;

@@ -6,6 +6,7 @@ use futures_util::{SinkExt, StreamExt};
 use crate::audio::{AudioFormat, AudioInput, AudioOutput};
 use crate::runtime::receiver_port::ReceiverPort;
 use crate::runtime::sender_port::SenderPort;
+use crate::runtime::rtrb_ports::{new_rtrb_ports, RtrbReceiverPort, RtrbSenderPort};
 
 /// A utility for linking audio graph components.
 ///
@@ -47,6 +48,61 @@ impl AudioLink {
     /// * `input` - The input [`ReceiverPort`] providing the audio stream.
     /// * `output` - The output [`SenderPort`] receiving the audio stream.
     pub fn new_link(
+        _format: AudioFormat,
+        _capacity: usize,
+        mut input: Box<dyn AudioInput>,
+        mut output: Box<dyn AudioOutput>,
+    ) -> Self {
+        let cancel = CancellationToken::new();
+        let cancel_clone = cancel.clone();
+
+        let Ok(mut input_stream) = input.stream() else {
+            panic!("Failed to create input stream");
+        };
+        let Ok(mut output_sink) = output.sink() else {
+            panic!("Failed to create output sink");
+        };
+
+        let join_handle = tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    _ = cancel_clone.cancelled() => {
+                        break;
+                    }
+                    opt_audio = input_stream.next() => {
+                        let Some(audio) = opt_audio else {
+                            break;
+                        };
+                        if output_sink.send(audio).await.is_err() {
+                            break;
+                        }
+                    }
+                }
+            }
+        });
+
+        Self {
+            cancel: Some(cancel),
+            join_handle: Some(join_handle),
+            receiver: input,
+            sender: output,
+        }
+    }
+
+    /// rtrb-backed variant of [`AudioLink::new_ports`].
+    ///
+    /// Returns an `(RtrbSenderPort, RtrbReceiverPort)` pair built on a lock-free
+    /// SPSC ring instead of `tokio::sync::mpsc`. Use with [`AudioLink::new_link_rtrb`].
+    pub fn new_ports_rtrb(format: AudioFormat, capacity: usize) -> (RtrbSenderPort, RtrbReceiverPort) {
+        new_rtrb_ports(format, capacity)
+    }
+
+    /// rtrb-backed variant of [`AudioLink::new_link`].
+    ///
+    /// Copies data between the input (`AudioInput`) and output (`AudioOutput`)
+    /// ports in a background task. The ports themselves carry the rtrb engine,
+    /// so no `tokio::sync::mpsc` is involved on the hot path.
+    pub fn new_link_rtrb(
         _format: AudioFormat,
         _capacity: usize,
         mut input: Box<dyn AudioInput>,
@@ -134,5 +190,27 @@ mod tests {
             receiver: Box::new(_rx_port),
         };
         drop(link);
+    }
+
+    #[tokio::test]
+    async fn test_audio_link_rtrb_ports_and_link() {
+        let format = AudioFormat::from(EncodedAudioFormat::internal_format());
+        let (tx_port, rx_port) = AudioLink::new_ports_rtrb(format.clone(), 10);
+
+        let (feed_tx, feed_rx) = AudioLink::new_ports(format.clone(), 4);
+        let _feed_link = AudioLink::new_link(
+            format.clone(),
+            4,
+            Box::new(rx_port),
+            Box::new(feed_tx),
+        );
+
+        let link = AudioLink::new_link_rtrb(
+            format,
+            10,
+            Box::new(feed_rx),
+            Box::new(tx_port),
+        );
+        link.stop();
     }
 }

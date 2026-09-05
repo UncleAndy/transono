@@ -71,7 +71,7 @@ mod tests {
     async fn sender_forwards_audio_to_receiver() -> Result<()> {
         let format = test_format();
         let (tx, rx) = tokio::sync::mpsc::channel(4);
-        let mut port = SenderPort::new(format.clone(), tx);
+        let port = SenderPort::new(format.clone(), tx);
         let mut receiver = ReceiverPort::new(format.clone(), rx);
 
         let audio = Audio::from_pcm(
