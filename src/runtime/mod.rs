@@ -24,3 +24,6 @@ pub use splitter::*;
 pub use mixer::*;
 #[allow(unused_imports)]
 pub use rtrb_ports::*;
+
+#[cfg(test)]
+pub mod integration_tests;
