@@ -22,3 +22,5 @@ pub use receiver_port::*;
 #[allow(unused_imports)]
 pub use splitter::*;
 pub use mixer::*;
+#[allow(unused_imports)]
+pub use rtrb_ports::*;

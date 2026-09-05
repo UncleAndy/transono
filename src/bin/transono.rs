@@ -131,23 +131,23 @@ async fn main() -> Result<()> {
 
     // Сплиттер пока с одной линией для отладки
     let mut splitter = AudioSplitter::new(input_hw.format(), 32, Box::new(input_hw));
-    let output_for_translate = splitter.create_output();
+    let output_for_translate = splitter.create_output_rtrb();
     // Второй выход сплиттера — оригинальный голос для мониторинга на той стороне
-    let mut original_out = splitter.create_output();
+    let mut original_out = splitter.create_output_rtrb();
 
     // Микшер, для которого создаем входы, а выход направляем на виртуальный микрофон
     let mixer = AudioMixer::new(output_for_translate.format());
     // Создаем линк для передачи данных из line в микшер
     let (to_mixer_sender, mut to_mixer_receiver) =
-        AudioLink::new_ports(output_for_translate.format(), 32);
+        AudioLink::new_ports_rtrb(output_for_translate.format(), 32);
     // Добавляем в микшер вход из линка от line (перевод на полной громкости)
     let direct_translate_ch = mixer.add_input(&mut to_mixer_receiver, 1.0)?;
     // Параллельный приглушённый канал оригинального голоса (0.5) — ЛИДЕР:
     // задаёт темп выдачи, чтобы оригинал не ждал перевода (иначе отстаёт).
     let direct_original_ch = mixer.add_input_leader(original_out.as_mut(), 0.5)?;
     // Выход микшера как отдельный порт, соединяем с виртуальным микрофоном
-    let mixer_out = mixer.get_output();
-    let _link_from_mixer_to_virt_mic = AudioLink::new_link(
+    let mixer_out = mixer.get_output_rtrb();
+    let _link_from_mixer_to_virt_mic = AudioLink::new_link_rtrb(
         output_for_translate.format(),
         32,
         Box::new(mixer_out),
@@ -155,7 +155,7 @@ async fn main() -> Result<()> {
     );
     // Запускаем фоновый цикл микшера (spawn внутри run, не блокирует)
     let mixer = Arc::new(mixer);
-    let _mixer_handle = mixer.clone().run();
+    let _mixer_handle = mixer.clone().run_rtrb();
 
     // Прописываем на вход line выход сплиттера
     // а на выход - микшер
@@ -167,7 +167,7 @@ async fn main() -> Result<()> {
     )
     .await?;
     // Запускаем фоновую рассылку аудио по выходам сплиттера
-    splitter.start();
+    splitter.start_rtrb();
 
     let remote_format = AudioFormat::from(line.provider().audio_format());
 
@@ -213,19 +213,19 @@ async fn main() -> Result<()> {
     // Сплиттер на виртуальном динамике (оригинал собеседника)
     let mut splitter_back =
         AudioSplitter::new(from_speaker_virt.format(), 32, Box::new(from_speaker_virt));
-    let translated_out = splitter_back.create_output();
+    let translated_out = splitter_back.create_output_rtrb();
     // Второй выход сплиттера — оригинальный голос собеседника для мониторинга
-    let mut original_back_out = splitter_back.create_output();
+    let mut original_back_out = splitter_back.create_output_rtrb();
 
     // Микшер: перевод (1.0) + оригинал собеседника приглушённо (0.5)
     let mixer_back = AudioMixer::new(translated_out.format());
     let (to_mixer_back_sender, mut to_mixer_back_receiver) =
-        AudioLink::new_ports(translated_out.format(), 32);
+        AudioLink::new_ports_rtrb(translated_out.format(), 32);
     let back_translate_ch = mixer_back.add_input(&mut to_mixer_back_receiver, 1.0)?;
     let back_original_ch = mixer_back.add_input_leader(original_back_out.as_mut(), 0.5)?;
     // Выход микшера как отдельный порт, соединяем с реальным динамиком
-    let mixer_back_out = mixer_back.get_output();
-    let _link_back = AudioLink::new_link(
+    let mixer_back_out = mixer_back.get_output_rtrb();
+    let _link_back = AudioLink::new_link_rtrb(
         translated_out.format(),
         32,
         Box::new(mixer_back_out),
@@ -233,7 +233,7 @@ async fn main() -> Result<()> {
     );
     // Запускаем фоновый цикл микшера (spawn внутри run, не блокирует)
     let mixer_back = Arc::new(mixer_back);
-    let _mixer_back_handle = mixer_back.clone().run();
+    let _mixer_back_handle = mixer_back.clone().run_rtrb();
 
     // TranslationLine "en" -> "ru"
     let mut line_back = TranslationLine::new(
@@ -244,7 +244,7 @@ async fn main() -> Result<()> {
     )
     .await?;
     // Запускаем фоновую рассылку аудио по выходам сплиттера
-    splitter_back.start();
+    splitter_back.start_rtrb();
 
     // Input DSP
     {

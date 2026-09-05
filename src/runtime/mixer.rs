@@ -1,6 +1,8 @@
 use crate::audio::{Audio, AudioFormat, AudioInput, PcmAudio};
 use crate::core::error::{CoreError, Result};
 use crate::runtime::ReceiverPort;
+use crate::runtime::rtrb_ports::RtrbReceiverPort;
+use crate::audio::rtrb_chan::RtrbProducer;
 use futures_util::stream::BoxStream;
 use futures_util::{FutureExt, StreamExt};
 use std::collections::{HashMap, VecDeque};
@@ -37,6 +39,7 @@ pub struct AudioMixer {
     channels: Arc<Mutex<HashMap<ChannelId, MixerChannel>>>,
     output_tx: Sender<Audio>,
     output_rx: Mutex<Option<Receiver<Audio>>>,
+    output_rtrb: Mutex<Option<RtrbProducer>>,
     next_channel_id: Mutex<ChannelId>,
 }
 
@@ -53,6 +56,7 @@ impl AudioMixer {
             channels: Arc::new(Mutex::new(HashMap::new())),
             output_tx: tx,
             output_rx: Mutex::new(Some(rx)),
+            output_rtrb: Mutex::new(None),
             next_channel_id: Mutex::new(0),
         }
     }
@@ -160,6 +164,23 @@ impl AudioMixer {
             .take()
             .expect("mixer output already taken; call get_output only once");
         ReceiverPort::new(self.format.clone(), rx)
+    }
+
+    /// rtrb-backed variant of [`AudioMixer::get_output`].
+    ///
+    /// Returns an [`RtrbReceiverPort`] carrying the mixed audio stream over a
+    /// lock-free SPSC ring (no mpsc allocation / scheduler cost). Must be
+    /// paired with [`AudioMixer::run_rtrb`], which writes into the matching
+    /// producer. Call once, before wrapping the mixer in `Arc`.
+    pub fn get_output_rtrb(&self) -> RtrbReceiverPort {
+        use crate::audio::rtrb_chan::RtrbChannel;
+        let chan = RtrbChannel::new(32);
+        let (producer, consumer) = chan.split();
+        self.output_rtrb
+            .lock()
+            .unwrap()
+            .replace(producer);
+        RtrbReceiverPort::new(self.format.clone(), consumer)
     }
 
     /// Runs the mixer's processing loop.
@@ -292,6 +313,121 @@ impl AudioMixer {
 
                 if let Some(audio) = result {
                     let _ = output_tx.send(audio).await;
+                }
+            }
+        })
+    }
+
+    /// rtrb-backed variant of [`AudioMixer::run`].
+    ///
+    /// Identical mixing logic, but the mixed frame is pushed into the lock-free
+    /// SPSC ring created by [`AudioMixer::get_output_rtrb`] via `try_send`
+    /// (no scheduler await, no mpsc allocation). On a full ring the frame is
+    /// dropped — the same back-pressure contract as the mpsc variant, which
+    /// also ignored send errors.
+    pub fn run_rtrb(self: Arc<Self>) -> JoinHandle<()> {
+        let format = self.format.clone();
+        let channels_lock = self.channels.clone();
+        let mut output_rtrb = self.output_rtrb.lock().unwrap().take().expect(
+            "rtrb producer missing; call get_output_rtrb() before run_rtrb()",
+        );
+
+        tokio::spawn(async move {
+            let frame_ms = 5;
+            let frame_size = (format.sample_rate as u64 * frame_ms / 1000) as usize;
+            let sample_count = frame_size * format.channels as usize;
+            let mut mixed_data = vec![0.0f32; sample_count];
+
+            loop {
+                {
+                    let mut channels = channels_lock.lock().unwrap();
+                    for channel in channels.values_mut() {
+                        while let Some(audio) = channel.stream.next().now_or_never().flatten() {
+                            if let Ok(pcm) = audio.to_pcm() {
+                                if channel.buffers.iter().all(|b| b.is_empty()) {
+                                    channel.last_timestamp = Some(audio.capture_timestamp());
+                                }
+                                let ch = pcm.channel_count();
+                                for c in 0..ch {
+                                    channel.buffers[c].extend(pcm.channel(c).iter().copied());
+                                }
+                            }
+                        }
+                    }
+                }
+
+                let ready = {
+                    let channels = channels_lock.lock().unwrap();
+                    let leaders: Vec<_> = channels.values().filter(|c| c.is_leader).collect();
+                    if leaders.is_empty() {
+                        channels.values().any(|c| {
+                            c.buffers.len() == format.channels as usize
+                                && c.buffers.iter().all(|b| b.len() >= frame_size)
+                        })
+                    } else {
+                        leaders.iter().all(|c| {
+                            c.buffers.len() == format.channels as usize
+                                && c.buffers.iter().all(|b| b.len() >= frame_size)
+                        })
+                    }
+                };
+
+                if !ready {
+                    tokio::task::yield_now().await;
+                    continue;
+                }
+
+                let result = {
+                    let mut channels = channels_lock.lock().unwrap();
+                    mixed_data.fill(0.0);
+                    let mut first_ts = None;
+                    let mut has_data = false;
+
+                    for channel in channels.values_mut() {
+                        if channel.buffers.iter().any(|b| !b.is_empty()) {
+                            has_data = true;
+                            if first_ts.is_none() {
+                                first_ts = channel.last_timestamp;
+                            }
+                        }
+                        for c in 0..format.channels as usize {
+                            let base_out = c * frame_size;
+                            for i in 0..frame_size {
+                                let s = channel.buffers[c]
+                                    .pop_front()
+                                    .unwrap_or(0.0)
+                                    * channel.weight;
+                                mixed_data[base_out + i] += s;
+                            }
+                        }
+                    }
+
+                    if has_data {
+                        for sample in mixed_data.iter_mut() {
+                            *sample = sample.clamp(-1.0, 1.0);
+                        }
+
+                        let mut pcm = PcmAudio::new(
+                            symphonia::core::audio::AudioSpec::new(
+                                format.sample_rate,
+                                symphonia::core::audio::Channels::Discrete(format.channels),
+                            ),
+                            frame_size,
+                        );
+                        pcm.data = mixed_data.clone();
+
+                        let mut audio = Audio::from_pcm(&pcm).unwrap();
+                        if let Some(ts) = first_ts {
+                            audio.set_capture_timestamp(ts);
+                        }
+                        Some(audio)
+                    } else {
+                        None
+                    }
+                };
+
+                if let Some(audio) = result {
+                    let _ = output_rtrb.try_send(audio);
                 }
             }
         })
@@ -950,5 +1086,39 @@ mod tests {
             meas < 40.0,
             "original latency {meas:.2} ms too high (blocking on translation?)"
         );
+    }
+
+    /// Verifies the rtrb-backed mixer output path (`get_output_rtrb` +
+    /// `run_rtrb`) actually forwards mixed audio through the lock-free ring —
+    /// the exact code path the binary now uses after the 2.1 switch.
+    #[tokio::test]
+    async fn test_mixer_rtrb_output_path_forwards_audio() {
+        let format = create_test_format();
+        let mixer = AudioMixer::new(format.clone());
+        // Take the rtrb output port (binary uses this, not `get_output()`).
+        let mut mixer_out = mixer.get_output_rtrb();
+        let mut stream_out = mixer_out.stream().unwrap();
+        let mixer = Arc::new(mixer);
+
+        // One leader input so the mixer emits promptly.
+        let (tx, rx) = mpsc::channel(10);
+        let mut input = MockInput::new(format.clone(), rx);
+        mixer.add_input_leader(&mut input, 1.0).unwrap();
+
+        let (frames, ch) = (480usize, format.channels as usize);
+        tx.send(create_audio_with_samples(&format, vec![0.5f32; frames * ch]))
+            .await
+            .unwrap();
+
+        mixer.clone().run_rtrb();
+
+        let got = tokio::time::timeout(Duration::from_secs(1), stream_out.next())
+            .await
+            .expect("rtrb mixer output produced nothing")
+            .expect("rtrb mixer output ended early");
+        let pcm = got.to_pcm().unwrap();
+        for &s in pcm.data.iter() {
+            assert!((s - 0.5).abs() < 1e-6, "rtrb path altered sample: {s}");
+        }
     }
 }

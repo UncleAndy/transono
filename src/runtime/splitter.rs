@@ -4,6 +4,8 @@ use crate::audio::{AudioFormat, AudioInput};
 use crate::runtime::AudioLink;
 use crate::runtime::receiver_port::ReceiverPort;
 use crate::runtime::sender_port::SenderPort;
+use crate::runtime::rtrb_ports::RtrbReceiverPort;
+use crate::audio::rtrb_chan::RtrbProducer;
 
 #[allow(unused)]
 /// A component for splitting one audio stream into multiple outputs.
@@ -17,6 +19,8 @@ pub struct AudioSplitter {
     capacity: usize,
 
     outputs: Vec<SenderPort>,
+    /// rtrb-backed broadcast outputs (one lock-free SPSC ring per fan-out).
+    outputs_rtrb: Vec<RtrbProducer>,
 }
 
 impl AudioSplitter {
@@ -32,6 +36,7 @@ impl AudioSplitter {
             input,
             cancel: CancellationToken::new(),
             outputs: Vec::new(),
+            outputs_rtrb: Vec::new(),
             format,
             capacity,
         }
@@ -74,6 +79,56 @@ impl AudioSplitter {
                             };
                             for tx in &senders {
                                 let _ = tx.send(audio.clone()).await;
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    }
+
+    #[allow(unused)]
+    /// rtrb-backed variant of [`AudioSplitter::create_output`].
+    ///
+    /// Each fan-out output gets its own lock-free SPSC ring (no mpsc
+    /// allocation / async-scheduler cost per frame). Use with
+    /// [`AudioSplitter::start_rtrb`].
+    pub fn create_output_rtrb(&mut self) -> Box<RtrbReceiverPort> {
+        use crate::audio::rtrb_chan::RtrbChannel;
+        let chan = RtrbChannel::new(self.capacity);
+        let (link_sender_port, link_receiver_port) = chan.split();
+
+        self.outputs_rtrb.push(link_sender_port);
+
+        Box::new(RtrbReceiverPort::new(self.format, link_receiver_port))
+    }
+
+    #[allow(unused)]
+    /// rtrb-backed variant of [`AudioSplitter::start`].
+    ///
+    /// Broadcasts cloned frames into each lock-free ring via `try_send`
+    /// (lock-free, drops on a full ring — same back-pressure as the mpsc
+    /// variant which ignored send errors).
+    pub fn start_rtrb(&mut self) {
+        let cancel = self.cancel.clone();
+        let mut senders: Vec<RtrbProducer> = self.outputs_rtrb.drain(..).collect();
+
+        let stream_result = self.input.stream();
+        let start_result = self.input.start();
+
+        if let (Ok(mut stream), Ok(())) = (stream_result, start_result) {
+            tokio::spawn(async move {
+                loop {
+                    tokio::select! {
+                        _ = cancel.cancelled() => {
+                            break;
+                        }
+                        opt_audio = stream.next() => {
+                            let Some(audio) = opt_audio else {
+                                break;
+                            };
+                            for tx in senders.iter_mut() {
+                                let _ = tx.try_send(audio.clone());
                             }
                         }
                     }
