@@ -206,40 +206,100 @@ impl AudioOutput for AudioOutputCpal {
     }
 }
 
+/// Чистая сборка конфига выхода с фиксированным (малым) буфером.
+/// Не обращается к устройству — тестируется напрямую.
+fn build_fixed_config(sample_rate: u32, channels: u16) -> StreamConfig {
+    StreamConfig {
+        channels,
+        sample_rate,
+        buffer_size: BufferSize::Fixed(
+            crate::audio::latency_config::latency_frames(sample_rate),
+        ),
+    }
+}
+
+/// Решает итоговый BufferSize: фикс-буфер, если устройство его приняло,
+/// иначе дефолт. Чистая функция — тестируется напрямую.
+fn resolve_buffer_size(fixed_accepted: bool, sample_rate: u32) -> BufferSize {
+    if fixed_accepted {
+        BufferSize::Fixed(crate::audio::latency_config::latency_frames(sample_rate))
+    } else {
+        BufferSize::Default
+    }
+}
+
 fn select_config(device: &Device) -> Result<(StreamConfig, SampleFormat)> {
     let cfg = device.default_output_config().map_err(|e| CoreError::Cpal(e.to_string()))?;
 
-    let fixed = BufferSize::Fixed(crate::audio::latency_config::latency_frames(
-        cfg.sample_rate(),
-    ));
+    let config = build_fixed_config(cfg.sample_rate(), cfg.channels());
 
-    Ok((StreamConfig {
-        channels: cfg.channels(),
-        sample_rate: cfg.sample_rate(),
-        buffer_size: fixed,
-    }, cfg.sample_format()))
+    Ok((config, cfg.sample_format()))
 }
 
 /// Выбирает конфиг устройства, пробуя фиксированный буфер для низкой задержки
 /// и откатываясь на дефолт, если устройство/хост его не принимает.
 fn select_config_with_fallback(device: &Device) -> Result<(StreamConfig, SampleFormat)> {
+    let cfg = device.default_output_config().map_err(|e| CoreError::Cpal(e.to_string()))?;
+    let sample_rate = cfg.sample_rate();
+
     let (mut config, sample_format) = select_config(device)?;
 
     // Проверяем, что устройство действительно принимает запрошенный фикс-буфер.
-    if matches!(config.buffer_size, BufferSize::Fixed(_)) {
-        if let Err(e) = device.build_output_stream::<f32, _, _>(
-            config.clone(),
-            |_: &mut [f32], _: &cpal::OutputCallbackInfo| {},
-            |_| {},
-            None,
-        ) {
-            eprintln!(
-                "output: BufferSize::Fixed rejected ({}), fallback to Default",
-                e
-            );
-            config.buffer_size = BufferSize::Default;
-        }
+    if let Err(e) = device.build_output_stream::<f32, _, _>(
+        config.clone(),
+        |_: &mut [f32], _: &cpal::OutputCallbackInfo| {},
+        |_| {},
+        None,
+    ) {
+        eprintln!(
+            "output: BufferSize::Fixed rejected ({}), fallback to Default",
+            e
+        );
+        config.buffer_size = resolve_buffer_size(false, sample_rate);
     }
 
     Ok((config, sample_format))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fixed_config_uses_small_fixed_buffer() {
+        let cfg = build_fixed_config(48000, 2);
+        match cfg.buffer_size {
+            BufferSize::Fixed(n) => assert_eq!(n, 480),
+            other => panic!("expected Fixed(480), got {other:?}"),
+        }
+        assert_eq!(cfg.sample_rate, 48000);
+        assert_eq!(cfg.channels, 2);
+    }
+
+    #[test]
+    fn fixed_config_at_44100() {
+        let cfg = build_fixed_config(44100, 1);
+        match cfg.buffer_size {
+            BufferSize::Fixed(n) => assert_eq!(n, 441),
+            other => panic!("expected Fixed(441), got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn resolve_keeps_fixed_when_accepted() {
+        let bs = resolve_buffer_size(true, 48000);
+        match bs {
+            BufferSize::Fixed(n) => assert_eq!(n, 480),
+            other => panic!("expected Fixed(480), got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn resolve_falls_back_to_default_when_rejected() {
+        let bs = resolve_buffer_size(false, 48000);
+        assert!(matches!(bs, BufferSize::Default));
+
+        // И в другой частоте — дефолт без привязки к latency_frames.
+        assert!(matches!(resolve_buffer_size(false, 16000), BufferSize::Default));
+    }
 }
