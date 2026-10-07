@@ -11,7 +11,7 @@ use tokio_tungstenite::tungstenite::handshake::client::Request;
 
 use crate::audio::{AudioCodec, AudioContainer, BinaryEncoding, EncodedAudioFormat, Endianness, PcmFormat};
 use crate::core::error::{CoreError, ProtocolError, Result};
-use crate::providers::openai::realtime::protocol::TurnDetection;
+use crate::providers::openai::realtime::protocol::{OutputModality, TurnDetection};
 
 /// Connection and session defaults for the OpenAI Realtime WebSocket API.
 ///
@@ -57,6 +57,14 @@ pub struct OpenAIRealtimeConfig {
     /// `SessionEvent::InputText` events containing the transcribed
     /// user speech.
     pub transcription_model: Option<String>,
+
+    /// Output modalities for model responses, sent in `session.update`.
+    ///
+    /// The Realtime API accepts either `["audio"]` (audio plus a text
+    /// transcript, the server default) or `["text"]` (text only) — it is
+    /// **not** possible to request both at once. `None` leaves the field out
+    /// of the update so the server default (`["audio"]`) applies.
+    pub output_modalities: Option<Vec<OutputModality>>,
 }
 
 impl OpenAIRealtimeConfig {
@@ -116,6 +124,34 @@ impl OpenAIRealtimeConfig {
     /// containing the transcribed user speech.
     pub fn with_transcription(&mut self, model: &str) -> &mut Self {
         self.transcription_model = Some(model.to_string());
+        self
+    }
+
+    /// Set the output modalities sent in `session.update`.
+    ///
+    /// Pass either `vec![OutputModality::Text]` or `vec![OutputModality::Audio]`.
+    /// The API rejects a request for both `text` and `audio` at the same time.
+    pub fn with_output_modalities(&mut self, modalities: Vec<OutputModality>) -> &mut Self {
+        self.output_modalities = Some(modalities);
+        self
+    }
+
+    /// Request text-only responses (`output_modalities = ["text"]`).
+    ///
+    /// The model's answer arrives as `SessionEvent::Text` via
+    /// `response.output_text.delta`, and no audio is generated.
+    pub fn with_output_text(&mut self) -> &mut Self {
+        self.output_modalities = Some(vec![OutputModality::Text]);
+        self
+    }
+
+    /// Request audio responses plus a text transcript
+    /// (`output_modalities = ["audio"]`, the server default).
+    ///
+    /// The answer text arrives as `SessionEvent::Text` via
+    /// `response.output_audio_transcript.delta`.
+    pub fn with_output_audio(&mut self) -> &mut Self {
+        self.output_modalities = Some(vec![OutputModality::Audio]);
         self
     }
 }
@@ -249,6 +285,30 @@ mod tests {
     fn test_default_config_has_no_transcription() {
         let cfg = OpenAIRealtimeConfig::default();
         assert!(cfg.transcription_model.is_none());
+    }
+
+    #[test]
+    fn test_default_config_has_no_output_modalities() {
+        let cfg = OpenAIRealtimeConfig::default();
+        assert!(cfg.output_modalities.is_none());
+    }
+
+    #[test]
+    fn test_with_output_text_requests_text_modality_only() {
+        let mut cfg = OpenAIRealtimeConfig::default();
+        cfg.with_output_text();
+        let mods = cfg.output_modalities.as_ref().unwrap();
+        assert_eq!(mods.len(), 1);
+        assert!(matches!(mods[0], OutputModality::Text));
+    }
+
+    #[test]
+    fn test_with_output_audio_requests_audio_modality_only() {
+        let mut cfg = OpenAIRealtimeConfig::default();
+        cfg.with_output_audio();
+        let mods = cfg.output_modalities.as_ref().unwrap();
+        assert_eq!(mods.len(), 1);
+        assert!(matches!(mods[0], OutputModality::Audio));
     }
 
     #[test]

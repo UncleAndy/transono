@@ -22,7 +22,7 @@ use crate::core::transport::Transport;
 use crate::core::{error::Result, provider::ProviderSession, websocket::WebSocketTransport};
 use crate::providers::openai::realtime::{
     AudioConfig, AudioFormat, AudioInputConfig, AudioOutputConfig, InputAudioBufferAppend,
-    InputAudioTranscription, OutputModality, ProtocolCommand::SessionUpdate,
+    InputAudioTranscription, ProtocolCommand::SessionUpdate,
     SessionConfig, SessionUpdateEvent, commands::ProtocolCommand, config::OpenAIRealtimeConfig,
     events::ProtocolEvent, protocol::RealtimeProtocol,
 };
@@ -175,10 +175,7 @@ impl ProviderSession for RealtimeSession {
                                                     voice: self.config.voice.clone(),
                                                 },
                                             },
-                                            output_modalities: Some(vec![
-                                                OutputModality::Text,
-                                                OutputModality::Audio,
-                                            ]),
+                                            output_modalities: self.config.output_modalities.clone(),
                                         },
                                     }
                                 )).await?;
@@ -381,18 +378,26 @@ impl RealtimeSession {
             ProtocolEvent::ResponseOutputAudioDone => Ok(None),
             ProtocolEvent::ResponseTextDelta { delta } => Ok(Some(SessionEvent::Text(delta))),
             ProtocolEvent::ResponseTextDone { .. } => Ok(None),
-            ProtocolEvent::ConversationItemCreated { item } => {
-                // Extract transcribed input text from the first content item
-                // that has a non-empty transcript (type "input_audio").
-                for content in &item.content {
-                    if let Some(transcript) = &content.transcript {
-                        if !transcript.is_empty() {
-                            return Ok(Some(SessionEvent::InputText(transcript.clone())));
-                        }
-                    }
-                }
-                Ok(None)
+            // When the `audio` modality is requested the model returns audio
+            // plus a transcript; the transcript deltas are the answer text.
+            ProtocolEvent::ResponseOutputAudioTranscriptDelta { delta } => {
+                Ok(Some(SessionEvent::Text(delta)))
             }
+            // The transcript of user input audio is delivered asynchronously
+            // via `conversation.item.input_audio_transcription.completed`,
+            // not embedded in `conversation.item.created`.
+            ProtocolEvent::ConversationItemCreated { .. } => Ok(None),
+            ProtocolEvent::InputAudioTranscriptionCompleted { transcript, .. } => {
+                if transcript.is_empty() {
+                    Ok(None)
+                } else {
+                    Ok(Some(SessionEvent::InputText(transcript)))
+                }
+            }
+            // Streaming transcript deltas are ignored: the `completed` event
+            // carries the authoritative final transcript, and emitting both
+            // would make downstream accumulators double-count.
+            ProtocolEvent::InputAudioTranscriptionDelta { .. } => Ok(None),
             ProtocolEvent::ResponseDone => Ok(Some(SessionEvent::ResponseFinished)),
             ProtocolEvent::InputAudioBufferSpeechStarted => Ok(Some(SessionEvent::RequestStarted)),
             ProtocolEvent::InputAudioBufferSpeechStopped => Ok(Some(SessionEvent::RequestFinished)),

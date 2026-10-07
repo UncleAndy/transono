@@ -1,4 +1,10 @@
 //! Server event types for the OpenAI Realtime WebSocket API.
+//!
+//! Event type strings follow the official Realtime server-event reference
+//! (<https://developers.openai.com/api/reference/resources/realtime/server-events>).
+//! Every type uses dot-separated segments. Where the API has renamed an event
+//! over time, the current name is the primary `rename` and the legacy name is
+//! kept as a `serde(alias)` so older deployments keep working.
 
 use serde::Deserialize;
 use crate::providers::openai::error::OpenAiError;
@@ -55,25 +61,69 @@ pub enum ProtocolEvent {
     #[serde(rename = "response.created")]
     ResponseCreated,
 
-    /// `response.text.delta` — incremental text chunk from the model response.
-    #[serde(rename = "response.text.delta")]
+    /// `response.output_text.delta` — incremental text chunk from the model
+    /// response. The pre-2025 `response.text.delta` name is accepted as an
+    /// alias.
+    #[serde(rename = "response.output_text.delta", alias = "response.text.delta")]
     ResponseTextDelta {
         /// Text delta from the model response.
         delta: String,
     },
 
-    /// `response.text.done` — model response text completed.
-    #[serde(rename = "response.text.done")]
+    /// `response.output_text.done` — model response text completed. The
+    /// pre-2025 `response.text.done` name is accepted as an alias.
+    #[serde(rename = "response.output_text.done", alias = "response.text.done")]
     ResponseTextDone {
         /// Full response text (may be empty if accumulated from deltas).
         text: String,
     },
 
-    /// `conversation.item/created` — a new conversation item (e.g. transcribed input).
-    #[serde(rename = "conversation.item/created")]
+    /// `response.output_audio_transcript.delta` — incremental transcript of the
+    /// model's audio output. When the `audio` modality is requested the model
+    /// returns audio **plus a transcript**, and this is where the answer text
+    /// arrives.
+    #[serde(rename = "response.output_audio_transcript.delta")]
+    ResponseOutputAudioTranscriptDelta {
+        /// Transcript delta.
+        delta: String,
+    },
+
+    /// `conversation.item.created` — a new conversation item (e.g. input audio,
+    /// an assistant message). Note the dot separators: the API uses
+    /// `conversation.item.created`, not `conversation.item/created`.
+    #[serde(rename = "conversation.item.created")]
     ConversationItemCreated {
         /// The conversation item.
         item: ConversationItem,
+    },
+
+    /// `conversation.item.input_audio_transcription.delta` — incremental
+    /// transcript of the user's input audio.
+    #[serde(rename = "conversation.item.input_audio_transcription.delta")]
+    InputAudioTranscriptionDelta {
+        /// Item id this transcript belongs to.
+        #[serde(default)]
+        item_id: Option<String>,
+        /// Content part index within the item.
+        #[serde(default)]
+        content_index: Option<u32>,
+        /// Transcript delta.
+        delta: String,
+    },
+
+    /// `conversation.item.input_audio_transcription.completed` — final
+    /// transcript of the user's input audio. This is the authoritative source
+    /// for `SessionEvent::InputText`.
+    #[serde(rename = "conversation.item.input_audio_transcription.completed")]
+    InputAudioTranscriptionCompleted {
+        /// Item id this transcript belongs to.
+        #[serde(default)]
+        item_id: Option<String>,
+        /// Content part index within the item.
+        #[serde(default)]
+        content_index: Option<u32>,
+        /// The transcribed text.
+        transcript: String,
     },
 
     /// `error` — API error payload.
@@ -134,9 +184,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_deserialize_response_text_delta() {
+    fn test_deserialize_response_output_text_delta() {
         let json = r#"{
-            "type": "response.text.delta",
+            "type": "response.output_text.delta",
             "delta": "Hello, world!",
             "response_id": "resp_123",
             "item_id": "item_456",
@@ -152,10 +202,46 @@ mod tests {
         }
     }
 
+    /// Legacy event name must still deserialize (backward compatibility).
     #[test]
-    fn test_deserialize_response_text_done() {
+    fn test_deserialize_legacy_response_text_delta_alias() {
         let json = r#"{
-            "type": "response.text.done",
+            "type": "response.text.delta",
+            "delta": "legacy",
+            "response_id": "resp_123",
+            "item_id": "item_456",
+            "output_index": 0,
+            "content_index": 0
+        }"#;
+        let event: ProtocolEvent = serde_json::from_str(json).unwrap();
+        match event {
+            ProtocolEvent::ResponseTextDelta { delta } => assert_eq!(delta, "legacy"),
+            other => panic!("expected ResponseTextDelta, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_deserialize_response_output_audio_transcript_delta() {
+        let json = r#"{
+            "type": "response.output_audio_transcript.delta",
+            "item_id": "item_456",
+            "output_index": 0,
+            "content_index": 0,
+            "delta": "Hello"
+        }"#;
+        let event: ProtocolEvent = serde_json::from_str(json).unwrap();
+        match event {
+            ProtocolEvent::ResponseOutputAudioTranscriptDelta { delta } => {
+                assert_eq!(delta, "Hello");
+            }
+            other => panic!("expected ResponseOutputAudioTranscriptDelta, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_deserialize_response_output_text_done() {
+        let json = r#"{
+            "type": "response.output_text.done",
             "text": "Hello, world!",
             "response_id": "resp_123",
             "item_id": "item_456",
@@ -174,7 +260,7 @@ mod tests {
     #[test]
     fn test_deserialize_conversation_item_created_with_transcript() {
         let json = r#"{
-            "type": "conversation.item/created",
+            "type": "conversation.item.created",
             "item": {
                 "id": "msg_abc123",
                 "type": "message",
@@ -207,7 +293,7 @@ mod tests {
     #[test]
     fn test_deserialize_conversation_item_created_text_content() {
         let json = r#"{
-            "type": "conversation.item/created",
+            "type": "conversation.item.created",
             "item": {
                 "id": "msg_xyz",
                 "type": "message",
@@ -235,7 +321,7 @@ mod tests {
     #[test]
     fn test_deserialize_conversation_item_created_empty_content() {
         let json = r#"{
-            "type": "conversation.item/created",
+            "type": "conversation.item.created",
             "item": {
                 "id": "msg_empty",
                 "type": "message",
@@ -249,6 +335,40 @@ mod tests {
                 assert_eq!(item.content.len(), 0);
             }
             other => panic!("expected ConversationItemCreated, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_deserialize_input_audio_transcription_completed() {
+        let json = r#"{
+            "type": "conversation.item.input_audio_transcription.completed",
+            "item_id": "item_003",
+            "content_index": 0,
+            "transcript": "Hello, how are you?"
+        }"#;
+        let event: ProtocolEvent = serde_json::from_str(json).unwrap();
+        match event {
+            ProtocolEvent::InputAudioTranscriptionCompleted { transcript, .. } => {
+                assert_eq!(transcript, "Hello, how are you?");
+            }
+            other => panic!("expected InputAudioTranscriptionCompleted, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_deserialize_input_audio_transcription_delta() {
+        let json = r#"{
+            "type": "conversation.item.input_audio_transcription.delta",
+            "item_id": "item_003",
+            "content_index": 0,
+            "delta": "Hello,"
+        }"#;
+        let event: ProtocolEvent = serde_json::from_str(json).unwrap();
+        match event {
+            ProtocolEvent::InputAudioTranscriptionDelta { delta, .. } => {
+                assert_eq!(delta, "Hello,");
+            }
+            other => panic!("expected InputAudioTranscriptionDelta, got {:?}", other),
         }
     }
 

@@ -74,8 +74,10 @@ pub struct SessionConfig {
     /// Input/output audio configuration.
     pub audio: AudioConfig,
 
-    /// Optional output modalities (`audio`, `text`).
-    #[serde(rename = "modalities")]
+    /// Optional output modalities for model responses.
+    ///
+    /// The Realtime API accepts either `["audio"]` or `["text"]` — never both.
+    #[serde(rename = "output_modalities")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub output_modalities: Option<Vec<OutputModality>>,
 }
@@ -165,7 +167,7 @@ impl TurnDetection {
 }
 
 /// Output modality requested from the model.
-#[derive(Debug, Clone, Copy, Serialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum OutputModality {
     /// Audio response chunks.
@@ -197,7 +199,7 @@ mod tests {
                     voice: Some("alloy".to_string()),
                 },
             },
-            output_modalities: Some(vec![OutputModality::Text, OutputModality::Audio]),
+            output_modalities: Some(vec![OutputModality::Text]),
         };
 
         let json = serde_json::to_string(&cfg).unwrap();
@@ -211,11 +213,10 @@ mod tests {
         assert_eq!(v["turn_detection"]["prefix_padding_ms"], 300);
         assert_eq!(v["turn_detection"]["silence_duration_ms"], 200);
 
-        // Modalities are serialized as a JSON array at the top level.
-        let modalities = v["modalities"].as_array().unwrap();
-        assert_eq!(modalities.len(), 2);
+        // Modalities are serialized at the top level under `output_modalities`.
+        let modalities = v["output_modalities"].as_array().unwrap();
+        assert_eq!(modalities.len(), 1);
         assert_eq!(modalities[0], "text");
-        assert_eq!(modalities[1], "audio");
 
         // turn_detection is NOT nested inside audio.input anymore.
         assert!(v["audio"]["input"]["turn_detection"].is_null());
@@ -247,7 +248,7 @@ mod tests {
         assert!(v["instructions"].is_null());
         assert!(v["input_audio_transcription"].is_null());
         assert!(v["turn_detection"].is_null());
-        assert!(v["modalities"].is_null());
+        assert!(v["output_modalities"].is_null());
         assert!(v["audio"]["input"].is_null());
     }
 
