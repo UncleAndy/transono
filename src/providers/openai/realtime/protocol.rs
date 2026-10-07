@@ -63,12 +63,28 @@ pub struct SessionConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub instructions: Option<String>,
 
+    /// Optional server-side ASR transcription of input audio.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_audio_transcription: Option<InputAudioTranscription>,
+
+    /// Server-side turn detection (VAD) settings.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub turn_detection: Option<TurnDetection>,
+
     /// Input/output audio configuration.
     pub audio: AudioConfig,
 
     /// Optional output modalities (`audio`, `text`).
+    #[serde(rename = "modalities")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub output_modalities: Option<Vec<OutputModality>>,
+}
+
+/// ASR model configuration for `input_audio_transcription`.
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct InputAudioTranscription {
+    /// Transcription model id (for example `"whisper-1"`).
+    pub model: String,
 }
 
 /// Nested audio input and output settings for a Realtime session.
@@ -82,15 +98,12 @@ pub struct AudioConfig {
     pub output: AudioOutputConfig,
 }
 
-/// Input audio format and turn detection for the session.
+/// Input audio format for the session.
 #[derive(Debug, Serialize)]
 pub struct AudioInputConfig {
     /// Encoded input format (for example PCM 24 kHz).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub format: Option<AudioFormat>,
-
-    /// Server VAD / turn-taking; `None` disables automatic turn detection.
-    pub turn_detection: Option<TurnDetection>,
 }
 
 /// Output audio format and voice for model responses.
@@ -159,4 +172,108 @@ pub enum OutputModality {
     Audio,
     /// Text response chunks.
     Text,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_session_config_serializes_transcription_and_modalities() {
+        let cfg = SessionConfig {
+            session_type: Some("realtime"),
+            model: "gpt-4o-realtime".to_string(),
+            instructions: Some("You are a helpful assistant.".to_string()),
+            input_audio_transcription: Some(InputAudioTranscription {
+                model: "whisper-1".to_string(),
+            }),
+            turn_detection: Some(TurnDetection::server_vad()),
+            audio: AudioConfig {
+                input: Some(AudioInputConfig {
+                    format: Some(AudioFormat::pcm_24khz()),
+                }),
+                output: AudioOutputConfig {
+                    format: Some(AudioFormat::pcm_24khz()),
+                    voice: Some("alloy".to_string()),
+                },
+            },
+            output_modalities: Some(vec![OutputModality::Text, OutputModality::Audio]),
+        };
+
+        let json = serde_json::to_string(&cfg).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+        // Top-level fields are correctly serialized.
+        assert_eq!(v["model"], "gpt-4o-realtime");
+        assert_eq!(v["instructions"], "You are a helpful assistant.");
+        assert_eq!(v["input_audio_transcription"]["model"], "whisper-1");
+        assert_eq!(v["turn_detection"]["type"], "server_vad");
+        assert_eq!(v["turn_detection"]["prefix_padding_ms"], 300);
+        assert_eq!(v["turn_detection"]["silence_duration_ms"], 200);
+
+        // Modalities are serialized as a JSON array at the top level.
+        let modalities = v["modalities"].as_array().unwrap();
+        assert_eq!(modalities.len(), 2);
+        assert_eq!(modalities[0], "text");
+        assert_eq!(modalities[1], "audio");
+
+        // turn_detection is NOT nested inside audio.input anymore.
+        assert!(v["audio"]["input"]["turn_detection"].is_null());
+    }
+
+    #[test]
+    fn test_session_config_serializes_without_optional_fields() {
+        let cfg = SessionConfig {
+            session_type: None,
+            model: "gpt-4o-realtime".to_string(),
+            instructions: None,
+            input_audio_transcription: None,
+            turn_detection: None,
+            audio: AudioConfig {
+                input: None,
+                output: AudioOutputConfig {
+                    format: None,
+                    voice: None,
+                },
+            },
+            output_modalities: None,
+        };
+
+        let json = serde_json::to_string(&cfg).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+        // Optional fields are skipped.
+        assert!(v.get("type").is_none() || v["type"].is_null());
+        assert!(v["instructions"].is_null());
+        assert!(v["input_audio_transcription"].is_null());
+        assert!(v["turn_detection"].is_null());
+        assert!(v["modalities"].is_null());
+        assert!(v["audio"]["input"].is_null());
+    }
+
+    #[test]
+    fn test_output_modality_serde() {
+        assert_eq!(
+            serde_json::to_string(&OutputModality::Audio).unwrap(),
+            "\"audio\""
+        );
+        assert_eq!(
+            serde_json::to_string(&OutputModality::Text).unwrap(),
+            "\"text\""
+        );
+    }
+
+    #[test]
+    fn test_turn_detection_server_vad_defaults() {
+        let td = TurnDetection::server_vad();
+        assert_eq!(td.detection_type, "server_vad");
+        assert_eq!(td.prefix_padding_ms, 300);
+        assert_eq!(td.silence_duration_ms, 200);
+    }
+
+    #[test]
+    fn test_input_audio_transcription_default() {
+        let iat = InputAudioTranscription::default();
+        assert_eq!(iat.model, "");
+    }
 }

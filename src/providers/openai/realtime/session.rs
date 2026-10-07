@@ -1,11 +1,14 @@
 //! [`RealtimeSession`] — live OpenAI Realtime WebSocket session.
+//!
+//! Like the Translation session, a Realtime session can emit both
+//! transcribed input text (`SessionEvent::InputText`) and model response
+//! text (`SessionEvent::Text`) when `input_audio_transcription` is enabled
+//! on [`OpenAIRealtimeConfig`] and `Text` modality is requested.
 
 use async_trait::async_trait;
 use futures_util::stream::BoxStream;
+use futures_util::{SinkExt, StreamExt};
 use crate::audio::output::BoxSink;
-use futures_util::{StreamExt, SinkExt};
-use tokio::io;
-use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
@@ -19,8 +22,9 @@ use crate::core::transport::Transport;
 use crate::core::{error::Result, provider::ProviderSession, websocket::WebSocketTransport};
 use crate::providers::openai::realtime::{
     AudioConfig, AudioFormat, AudioInputConfig, AudioOutputConfig, InputAudioBufferAppend,
-    ProtocolCommand::SessionUpdate, SessionConfig, SessionUpdateEvent, commands::ProtocolCommand,
-    config::OpenAIRealtimeConfig, events::ProtocolEvent, protocol::RealtimeProtocol,
+    InputAudioTranscription, OutputModality, ProtocolCommand::SessionUpdate,
+    SessionConfig, SessionUpdateEvent, commands::ProtocolCommand, config::OpenAIRealtimeConfig,
+    events::ProtocolEvent, protocol::RealtimeProtocol,
 };
 
 use tokio_tungstenite::tungstenite::{Message, Utf8Bytes};
@@ -30,17 +34,15 @@ use crate::core::transport::TransportData;
 ///
 /// Implements [`ProviderSession`] for line-level capture→playback bridging and
 /// [`Session`] for lower-level push/pull use. After [`Self::connect`], the first
-/// server `session.created` triggers a `session.update` with audio and turn
-/// settings from [`OpenAIRealtimeConfig`].
+/// server `session.created` triggers a `session.update` with audio, turn
+/// detection, and optional input transcription settings from
+/// [`OpenAIRealtimeConfig`].
 pub struct RealtimeSession {
     closed: bool,
-
     encoder: Option<Box<dyn AudioEncoder>>,
     decoder: Box<dyn AudioDecoder>,
-
     transport: WebSocketTransport,
     protocol: RealtimeProtocol,
-
     config: OpenAIRealtimeConfig,
 }
 
@@ -66,10 +68,8 @@ impl RealtimeSender {
     async fn send_audio(&mut self, audio: Audio) -> Result<()> {
         let pcm = audio.to_pcm()?;
         let encoded = self.encoder.encode(&pcm)?;
-
         self.send(InputAudioBufferAppend::new(encoded.bytes().clone()))
             .await?;
-
         Ok(())
     }
 }
@@ -81,11 +81,9 @@ impl ProviderSession for RealtimeSession {
         mut playback_sink: BoxSink<'static, Audio, CoreError>,
         pipelines: Pipelines,
         cancel: CancellationToken,
-        _event_tx: Option<mpsc::UnboundedSender<SessionEvent>>,
+        event_tx: Option<mpsc::UnboundedSender<SessionEvent>>,
     ) -> JoinHandle<Result<Pipelines>> {
         tokio::spawn(async move {
-            let mut stdout = io::stdout();
-
             let mut jitter_buffer: Vec<Audio> = Vec::new();
             let mut is_playing = false;
             let jitter_threshold = std::time::Duration::from_millis(100);
@@ -114,7 +112,6 @@ impl ProviderSession for RealtimeSession {
                                     let Some((audio, _)) = input_pipeline.process_stream(audio)? else {
                                         continue
                                     };
-
                                     // Send audio directly from the input task.
                                     tokio::select! {
                                         _ = cancel_input.cancelled() => break,
@@ -153,8 +150,9 @@ impl ProviderSession for RealtimeSession {
                         };
                         match event {
                             SessionEvent::SessionStarted(_) => {
-                                // println!("{}", msg);
-                                // Apply session config via `session.update`.
+                                // Apply session config via `session.update`:
+                                // instructions, input transcription, turn
+                                // detection, and output modalities.
                                 self.send(SessionUpdate(
                                     SessionUpdateEvent {
                                         event_type: "session.update",
@@ -162,25 +160,33 @@ impl ProviderSession for RealtimeSession {
                                             session_type: Some("realtime"),
                                             model: self.config.model.clone(),
                                             instructions: self.config.instructions.clone(),
+                                            input_audio_transcription: self.config.transcription_model.as_ref().map(|m| {
+                                                InputAudioTranscription { model: m.clone() }
+                                            }),
+                                            turn_detection: Some(self.config.turn_mode.clone()),
                                             audio: AudioConfig {
                                                 input: Some(
-                                                        AudioInputConfig {
-                                                            format: Some(AudioFormat::pcm_24khz()),
-                                                            turn_detection: Some(self.config.turn_mode.clone()),
-                                                        }
-                                                    ),
+                                                    AudioInputConfig {
+                                                        format: Some(AudioFormat::pcm_24khz()),
+                                                    }
+                                                ),
                                                 output: AudioOutputConfig {
                                                     format: Some(AudioFormat::pcm_24khz()),
                                                     voice: self.config.voice.clone(),
                                                 },
                                             },
-                                            output_modalities: None,
+                                            output_modalities: Some(vec![
+                                                OutputModality::Text,
+                                                OutputModality::Audio,
+                                            ]),
                                         },
                                     }
                                 )).await?;
                             }
                             SessionEvent::SessionConfigured(_) => {
-                                // println!("{}", msg)
+                                if let Some(tx) = &event_tx {
+                                    let _ = tx.send(SessionEvent::SessionConfigured("Realtime session configured".to_string()));
+                                }
                             }
                             SessionEvent::Audio(audio) => {
                                 let Some((audio, pipeline_duration)) = output_pipeline.process_stream(audio)? else {
@@ -221,39 +227,41 @@ impl ProviderSession for RealtimeSession {
                                     }
                                 }
                             }
-
                             SessionEvent::Text(delta) => {
-                                stdout.write_all(delta.as_bytes()).await
-                                    .map_err(CoreError::Io)?;
-                                stdout.flush().await
-                                    .map_err(CoreError::Io)?;
+                                if let Some(tx) = &event_tx {
+                                    let _ = tx.send(SessionEvent::Text(delta));
+                                }
                             }
-
-                            SessionEvent::RequestStarted => {}
-
-                            SessionEvent::RequestFinished => {}
-
+                            SessionEvent::InputText(delta) => {
+                                if let Some(tx) = &event_tx {
+                                    let _ = tx.send(SessionEvent::InputText(delta));
+                                }
+                            }
+                            SessionEvent::RequestStarted => {
+                                if let Some(tx) = &event_tx {
+                                    let _ = tx.send(SessionEvent::RequestStarted);
+                                }
+                            }
+                            SessionEvent::RequestFinished => {
+                                if let Some(tx) = &event_tx {
+                                    let _ = tx.send(SessionEvent::RequestFinished);
+                                }
+                            }
                             SessionEvent::ResponseStarted => {
                                 is_playing = false;
                                 jitter_buffer.clear();
+                                stats.set_output_active(true);
+                                if let Some(tx) = &event_tx {
+                                    let _ = tx.send(SessionEvent::ResponseStarted);
+                                }
                             }
-
                             SessionEvent::ResponseFinished => {
-                                if !is_playing && !jitter_buffer.is_empty() {
-                                    stats.set_output_active(true);
-                                }
-                                for a in jitter_buffer.drain(..) {
-                                    tokio::select! {
-                                        _ = cancel.cancelled() => break 'main_loop,
-                                        res = playback_sink.send(a) => {
-                                            res.map_err(|e| CoreError::Internal(format!("playback sink error: {}", e)))?;
-                                        }
-                                    }
-                                }
                                 is_playing = false;
                                 stats.set_output_active(false);
+                                if let Some(tx) = &event_tx {
+                                    let _ = tx.send(SessionEvent::ResponseFinished);
+                                }
                             }
-                            _ => {}
                         }
                     }
                 }
@@ -285,7 +293,6 @@ impl Session for RealtimeSession {
         let encoder = self.encoder.as_mut().ok_or_else(|| CoreError::Internal("encoder taken".to_string()))?;
 
         let pcm = audio.to_pcm()?;
-
         let encoded = encoder.encode(&pcm)?;
 
         self.send(InputAudioBufferAppend::new(encoded.bytes().clone()))
@@ -298,14 +305,14 @@ impl Session for RealtimeSession {
         if self.closed {
             return Err(CoreError::Internal("session closed".to_string()));
         }
-
         loop {
             let data = self.transport.recv().await?;
 
-            let event = self.protocol.decode(data)?;
-
+            let event = self.protocol.decode(data.clone())?;
             if let Some(event) = self.map_event(event)? {
                 return Ok(event);
+            } else {
+                eprintln!("ERROR MAP EVENT: {:#?}", data);
             }
         }
     }
@@ -355,7 +362,6 @@ impl RealtimeSession {
 
     fn map_audio(&mut self, delta: String) -> Result<SessionEvent> {
         let encoded = EncodedAudio::new(self.decoder.format().clone(), delta.into_bytes().into())?;
-
         let pcm = self.decoder.decode(&encoded)?;
 
         let audio = Audio::from_pcm(&pcm)?;
@@ -366,13 +372,27 @@ impl RealtimeSession {
     fn map_event(&mut self, event: ProtocolEvent) -> Result<Option<SessionEvent>> {
         match event {
             ProtocolEvent::SessionCreated { .. } => Ok(Some(SessionEvent::SessionStarted(
-                "Translation session created".to_string(),
+                "Realtime session created".to_string(),
             ))),
             ProtocolEvent::SessionUpdated { .. } => Ok(Some(SessionEvent::SessionConfigured(
-                "Translation session configured".to_string(),
+                "Realtime session configured".to_string(),
             ))),
             ProtocolEvent::ResponseOutputAudioDelta { delta } => Ok(Some(self.map_audio(delta)?)),
             ProtocolEvent::ResponseOutputAudioDone => Ok(None),
+            ProtocolEvent::ResponseTextDelta { delta } => Ok(Some(SessionEvent::Text(delta))),
+            ProtocolEvent::ResponseTextDone { .. } => Ok(None),
+            ProtocolEvent::ConversationItemCreated { item } => {
+                // Extract transcribed input text from the first content item
+                // that has a non-empty transcript (type "input_audio").
+                for content in &item.content {
+                    if let Some(transcript) = &content.transcript {
+                        if !transcript.is_empty() {
+                            return Ok(Some(SessionEvent::InputText(transcript.clone())));
+                        }
+                    }
+                }
+                Ok(None)
+            }
             ProtocolEvent::ResponseDone => Ok(Some(SessionEvent::ResponseFinished)),
             ProtocolEvent::InputAudioBufferSpeechStarted => Ok(Some(SessionEvent::RequestStarted)),
             ProtocolEvent::InputAudioBufferSpeechStopped => Ok(Some(SessionEvent::RequestFinished)),

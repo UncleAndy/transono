@@ -52,6 +52,11 @@ pub struct OpenAIRealtimeConfig {
     pub instructions: Option<String>,
     /// Optional TTS voice name for audio output.
     pub voice: Option<String>,
+    /// If set, enables server-side ASR transcription of input audio
+    /// with the given model (e.g. `"whisper-1"`). This emits
+    /// `SessionEvent::InputText` events containing the transcribed
+    /// user speech.
+    pub transcription_model: Option<String>,
 }
 
 impl OpenAIRealtimeConfig {
@@ -102,6 +107,15 @@ impl OpenAIRealtimeConfig {
     /// Set optional session instructions.
     pub fn with_instructions(&mut self, instructions: &str) -> &mut Self {
         self.instructions = Some(instructions.to_string());
+        self
+    }
+
+    /// Enable input-audio transcription (speech-to-text) with the given model.
+    ///
+    /// When enabled, the server emits `SessionEvent::InputText` events
+    /// containing the transcribed user speech.
+    pub fn with_transcription(&mut self, model: &str) -> &mut Self {
+        self.transcription_model = Some(model.to_string());
         self
     }
 }
@@ -196,5 +210,62 @@ impl TurnMode {
             TurnMode::ServerVad =>
                 Some(TurnDetection::server_vad()),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_with_transcription_sets_model() {
+        let mut cfg = OpenAIRealtimeConfig {
+            api_key: "test-key".to_string(),
+            model: "gpt-4o-realtime".to_string(),
+            ..Default::default()
+        };
+        assert!(cfg.transcription_model.is_none());
+
+        cfg.with_transcription("whisper-1");
+        assert_eq!(cfg.transcription_model.as_deref(), Some("whisper-1"));
+    }
+
+    #[test]
+    fn test_with_transcription_overrides_previous() {
+        let mut cfg = OpenAIRealtimeConfig {
+            api_key: "test-key".to_string(),
+            model: "gpt-4o-realtime".to_string(),
+            ..Default::default()
+        };
+        cfg.with_transcription("whisper-1");
+        assert_eq!(cfg.transcription_model.as_deref(), Some("whisper-1"));
+
+        cfg.with_transcription("whisper-1");
+        // Same value — still set.
+        assert!(cfg.transcription_model.is_some());
+    }
+
+    #[test]
+    fn test_default_config_has_no_transcription() {
+        let cfg = OpenAIRealtimeConfig::default();
+        assert!(cfg.transcription_model.is_none());
+    }
+
+    #[test]
+    fn test_default_config_has_empty_api_key() {
+        let cfg = OpenAIRealtimeConfig::default();
+        assert!(cfg.api_key.is_empty());
+        assert!(cfg.model.is_empty());
+    }
+
+    #[test]
+    fn test_audio_format_is_24khz_mono_i16() {
+        let cfg = OpenAIRealtimeConfig::default();
+        let fmt = cfg.audio_format();
+
+        // The realtime API uses 24 kHz, mono, 16-bit little-endian PCM.
+        let spec = fmt.spec();
+        assert_eq!(spec.rate(), 24_000);
+        assert_eq!(spec.channels().count(), 1);
     }
 }

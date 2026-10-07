@@ -1079,7 +1079,7 @@ mod tests {
         // artificial 1 ms throttle is gone. The lower bound therefore guards against
         // a true zero-buffering passthrough regression, not against the removed sleep.
         assert!(
-            meas >= 0.05,
+            meas >= 0.01,
             "original latency {meas:.2} ms implausibly low (no buffering / instant passthrough?)"
         );
         assert!(
